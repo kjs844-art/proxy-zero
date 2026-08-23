@@ -132,6 +132,46 @@ const canChase = (snapshot: Readonly<EnemyBrainSnapshot>): boolean => {
   return delta.x <= snapshot.definition.chaseDistance && delta.y <= snapshot.definition.chaseDistance
 }
 
+const validateEnemyDefinition = (definition: Readonly<EnemyVariantDefinition>): void => {
+  if (
+    !Number.isFinite(definition.intentWeights.attack) ||
+    definition.intentWeights.attack < 0 ||
+    !Number.isFinite(definition.intentWeights.guard) ||
+    definition.intentWeights.guard < 0
+  ) {
+    throw new Error('Invalid enemy intent weights: expected finite non-negative attack and guard weights.')
+  }
+  if (
+    definition.intentWeights.guard > 0 &&
+    (!Number.isFinite(definition.guardDurationMs) || definition.guardDurationMs <= 0)
+  ) {
+    throw new Error(
+      'Invalid enemy guard duration: expected a finite positive duration when guard weight is positive.',
+    )
+  }
+  if (definition.attacks.length === 0) {
+    throw new Error('Invalid enemy attacks: expected at least one authored attack.')
+  }
+
+  for (const attack of definition.attacks) {
+    if (
+      !Number.isFinite(attack.telegraphMs) ||
+      attack.telegraphMs <= 0 ||
+      !Number.isFinite(attack.activeMs) ||
+      attack.activeMs <= 0 ||
+      !Number.isFinite(attack.recoveryMs) ||
+      attack.recoveryMs <= 0
+    ) {
+      throw new Error(
+        `Invalid enemy attack timing for "${attack.id}": expected finite positive telegraph, active, and recovery durations.`,
+      )
+    }
+    if (!Number.isFinite(attack.weight) || attack.weight < 0) {
+      throw new Error(`Invalid enemy attack weight for "${attack.id}": expected a finite non-negative weight.`)
+    }
+  }
+}
+
 const shouldGuard = (
   definition: Readonly<EnemyVariantDefinition>,
   random: EnemyRandomSource,
@@ -151,6 +191,7 @@ export const stepEnemyBrain = (
   snapshot: Readonly<EnemyBrainSnapshot>,
   random: EnemyRandomSource,
 ): EnemyBrainResult => {
+  validateEnemyDefinition(snapshot.definition)
   let remainingMs = finiteElapsed(snapshot.deltaMs)
   let state = cloneState(snapshot.state)
   const intents: EnemyIntent[] = []
@@ -208,7 +249,7 @@ export const stepEnemyBrain = (
       if (remainingMs < untilAttackMs) {
         return {
           state: stateFor('telegraph', attack.id, state.elapsedMs + remainingMs),
-          intents: [...intents, telegraphIntent(attack)],
+          intents,
         }
       }
       remainingMs -= untilAttackMs
@@ -225,7 +266,7 @@ export const stepEnemyBrain = (
       if (remainingMs < untilRecoveryMs) {
         return {
           state: stateFor('attack', attack.id, state.elapsedMs + remainingMs),
-          intents: [...intents, attackIntent(attack)],
+          intents,
         }
       }
       remainingMs -= untilRecoveryMs
@@ -251,12 +292,16 @@ export const stepEnemyBrain = (
     if (remainingMs < untilGuardReleaseMs) {
       return {
         state: stateFor('guard', null, state.elapsedMs + remainingMs),
-        intents: [...intents, { type: 'guard', durationMs: snapshot.definition.guardDurationMs }],
+        intents,
       }
     }
     remainingMs -= untilGuardReleaseMs
     state = stateFor('chase')
     if (remainingMs === 0) return { state, intents }
+  }
+
+  if (remainingMs > 0) {
+    throw new Error('Enemy brain transition limit exceeded while simulated time remains.')
   }
 
   // A fixed upper bound prevents malformed zero-duration authored data from looping forever.

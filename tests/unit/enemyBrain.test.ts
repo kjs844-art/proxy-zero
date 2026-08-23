@@ -27,6 +27,19 @@ const snapshotFor = (
   deltaMs,
 })
 
+const snapshotWithDefinition = (
+  state: ReturnType<typeof createEnemyBrainState>,
+  definition: EnemyBrainSnapshot['definition'],
+  deltaMs = 0,
+): EnemyBrainSnapshot => ({
+  enemyId: 'enemy-1',
+  definition,
+  state,
+  position: { x: 48, y: 0 },
+  playerPosition,
+  deltaMs,
+})
+
 const scriptedRandom = (...values: number[]): EnemyRandomSource => {
   let index = 0
   return {
@@ -118,7 +131,7 @@ describe('enemy content and deterministic brain', () => {
       attackId: selectedAttack.id,
       elapsedMs: selectedAttack.activeMs - 1,
     })
-    expect(active.intents).toEqual([expect.objectContaining({ type: 'attack' })])
+    expect(active.intents).toEqual([])
 
     const recovered = stepEnemyBrain(snapshotFor(active.state, 'scout-striker', 1), random)
     expect(recovered.state).toEqual({
@@ -127,6 +140,43 @@ describe('enemy content and deterministic brain', () => {
       elapsedMs: 0,
     })
     expect(recovered.intents).toEqual([])
+  })
+
+  it('emits each timed phase intent once, in chronological transition order', () => {
+    const chaseTelegraph = stepEnemyBrain(
+      snapshotFor(createEnemyBrainState('chase'), 'scout-striker', 1),
+      scriptedRandom(0),
+    )
+    expect(chaseTelegraph.state).toMatchObject({ mode: 'telegraph', elapsedMs: 1 })
+    expect(chaseTelegraph.intents.map((intent) => intent.type)).toEqual(['telegraph'])
+
+    const chaseGuard = stepEnemyBrain(
+      snapshotFor(createEnemyBrainState('chase'), 'bulwark-sentinel', 1),
+      scriptedRandom(0),
+    )
+    expect(chaseGuard.state).toMatchObject({ mode: 'guard', elapsedMs: 1 })
+    expect(chaseGuard.intents).toEqual([
+      {
+        type: 'guard',
+        durationMs: getEnemyVariant('bulwark-sentinel').guardDurationMs,
+      },
+    ])
+
+    const attack = getEnemyVariant('scout-striker').attacks[0]
+    const telegraphOvershoot = stepEnemyBrain(
+      snapshotFor(
+        { mode: 'telegraph', attackId: attack.id, elapsedMs: 0 },
+        'scout-striker',
+        attack.telegraphMs + attack.activeMs + 20,
+      ),
+      scriptedRandom(),
+    )
+    expect(telegraphOvershoot.state).toEqual({
+      mode: 'recover',
+      attackId: attack.id,
+      elapsedMs: 20,
+    })
+    expect(telegraphOvershoot.intents.map((intent) => intent.type)).toEqual(['attack'])
   })
 
   it('carries telegraph, attack, and recovery overshoot identically across frame slicing', () => {
@@ -228,6 +278,52 @@ describe('enemy content and deterministic brain', () => {
     const attackId = getEnemyVariant('bulwark-sentinel').attacks[0].id
     expect(oneFrameOvershoot.state).toEqual({ mode: 'telegraph', attackId, elapsedMs: 1 })
     expect(splitOvershoot.state).toEqual(oneFrameOvershoot.state)
+  })
+
+  it('keeps a large valid delta equivalent to split simulation below the transition limit', () => {
+    const initial = createEnemyBrainState('chase')
+    const single = stepEnemyBrain(snapshotFor(initial, 'scout-patrol', 2_441), scriptedRandom(0))
+
+    let splitState = initial
+    const splitIntents: string[] = []
+    for (const deltaMs of [610, 610, 610, 611]) {
+      const result = stepEnemyBrain(snapshotFor(splitState, 'scout-patrol', deltaMs), scriptedRandom(0))
+      splitState = result.state
+      splitIntents.push(...result.intents.map((intent) => intent.type))
+    }
+
+    expect(single.state).toEqual(splitState)
+    expect(single.intents.map((intent) => intent.type)).toEqual(splitIntents)
+  })
+
+  it('fails explicitly instead of discarding simulated time after the transition limit', () => {
+    expect(() =>
+      stepEnemyBrain(
+        snapshotFor(createEnemyBrainState('chase'), 'scout-patrol', Number.MAX_SAFE_INTEGER),
+        scriptedRandom(0),
+      ),
+    ).toThrowError('Enemy brain transition limit exceeded while simulated time remains.')
+  })
+
+  it('rejects authored timing and weights that cannot guarantee deterministic progress', () => {
+    const base = getEnemyVariant('scout-patrol')
+    const invalidTiming = {
+      ...base,
+      attacks: base.attacks.map((attack) => ({ ...attack, activeMs: 0 })),
+    }
+    const invalidWeights = {
+      ...base,
+      intentWeights: { attack: Number.NaN, guard: 0 },
+    }
+
+    expect(() =>
+      stepEnemyBrain(snapshotWithDefinition(createEnemyBrainState('chase'), invalidTiming, 0), scriptedRandom()),
+    ).toThrowError(
+      'Invalid enemy attack timing for "scout-patrol-kick": expected finite positive telegraph, active, and recovery durations.',
+    )
+    expect(() =>
+      stepEnemyBrain(snapshotWithDefinition(createEnemyBrainState('chase'), invalidWeights, 0), scriptedRandom()),
+    ).toThrowError('Invalid enemy intent weights: expected finite non-negative attack and guard weights.')
   })
 
   it('supports the down state without mutating the caller state', () => {
