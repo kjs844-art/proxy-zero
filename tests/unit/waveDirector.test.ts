@@ -1,0 +1,179 @@
+import { describe, expect, it } from 'vitest'
+import {
+  advanceWaveDirector,
+  createWaveDirectorState,
+  resetWaveDirector,
+  type WaveDirectorInput,
+} from '../../src/domain/waves/waveDirector'
+import type { WaveDefinition } from '../../src/domain/enemies/types'
+
+const wave: WaveDefinition = {
+  id: 'n9-depot-wave-1',
+  orders: [
+    { id: 'first', enemyVariantId: 'scout-striker', delayMs: 0 },
+    { id: 'tie-a', enemyVariantId: 'bulwark-sentinel', delayMs: 500 },
+    { id: 'tie-b', enemyVariantId: 'scout-patrol', delayMs: 500 },
+    { id: 'last', enemyVariantId: 'bulwark-enforcer', delayMs: 1_000 },
+  ],
+}
+
+const arena = { minX: -120, maxX: 120, minY: -80, maxY: 80 }
+const playerPosition = { x: 0, y: 0 }
+
+const input = (overrides: Partial<WaveDirectorInput> = {}): WaveDirectorInput => ({
+  deltaMs: 0,
+  playerPosition,
+  arena,
+  playerSafeSeparation: { x: 40, y: 28 },
+  activeEnemies: [],
+  ...overrides,
+})
+
+const spawnedIds = (events: ReturnType<typeof advanceWaveDirector>['events']) =>
+  events
+    .filter((event) => event.type === 'enemy-spawned')
+    .map((event) => event.enemyId)
+
+describe('deterministic wave director', () => {
+  it('emits authored spawn orders once by delay with stable authored tie order', () => {
+    let state = createWaveDirectorState(wave, 24)
+
+    let result = advanceWaveDirector(state, input())
+    expect(spawnedIds(result.events)).toEqual(['n9-depot-wave-1:first'])
+    state = result.state
+
+    result = advanceWaveDirector(state, input({ deltaMs: 500 }))
+    expect(spawnedIds(result.events)).toEqual([
+      'n9-depot-wave-1:tie-a',
+      'n9-depot-wave-1:tie-b',
+    ])
+    state = result.state
+
+    result = advanceWaveDirector(state, input({ deltaMs: 500 }))
+    expect(spawnedIds(result.events)).toEqual(['n9-depot-wave-1:last'])
+    expect(result.state.emittedOrderIds).toEqual(['first', 'tie-a', 'tie-b', 'last'])
+  })
+
+  it('does not clear until every order has spawned and every spawned enemy is defeated', () => {
+    let state = createWaveDirectorState(wave, 24)
+    let result = advanceWaveDirector(state, input())
+    state = result.state
+
+    result = advanceWaveDirector(
+      state,
+      input({ defeatedEnemyIds: ['n9-depot-wave-1:first'] }),
+    )
+    expect(result.events.some((event) => event.type === 'wave-cleared')).toBe(false)
+    state = result.state
+
+    result = advanceWaveDirector(state, input({ deltaMs: 1_000 }))
+    state = result.state
+    const ids = state.spawnedEnemyIds
+
+    result = advanceWaveDirector(state, input({ defeatedEnemyIds: ids }))
+    expect(result.events).toContainEqual({ type: 'wave-cleared', waveId: wave.id })
+    expect(result.state.cleared).toBe(true)
+  })
+
+  it('requests return after two seconds and force-repositions only after eight seconds without progress', () => {
+    let state = createWaveDirectorState(wave, 24)
+    state = advanceWaveDirector(state, input()).state
+    const activeEnemies = [
+      {
+        enemyId: 'n9-depot-wave-1:first',
+        position: { x: 400, y: 100 },
+        down: false,
+        defeated: false,
+        madeRecoveryProgress: false,
+      },
+    ]
+
+    let result = advanceWaveDirector(state, input({ deltaMs: 1_999, activeEnemies }))
+    expect(result.events.some((event) => event.type === 'enemy-return-requested')).toBe(false)
+    state = result.state
+
+    result = advanceWaveDirector(state, input({ deltaMs: 1, activeEnemies }))
+    expect(result.events).toContainEqual(
+      expect.objectContaining({ type: 'enemy-return-requested', enemyId: 'n9-depot-wave-1:first' }),
+    )
+    state = result.state
+
+    result = advanceWaveDirector(state, input({ deltaMs: 5_999, activeEnemies }))
+    expect(result.events.some((event) => event.type === 'enemy-force-repositioned')).toBe(false)
+    state = result.state
+
+    result = advanceWaveDirector(state, input({ deltaMs: 1, activeEnemies }))
+    const forced = result.events.find((event) => event.type === 'enemy-force-repositioned')
+    expect(forced).toBeDefined()
+    if (forced?.type === 'enemy-force-repositioned') {
+      expect(forced.position.x).toBeGreaterThanOrEqual(arena.minX)
+      expect(forced.position.x).toBeLessThanOrEqual(arena.maxX)
+      expect(forced.position.y).toBeGreaterThanOrEqual(arena.minY)
+      expect(forced.position.y).toBeLessThanOrEqual(arena.maxY)
+      expect(
+        Math.abs(forced.position.x - playerPosition.x) >= 40 ||
+          Math.abs(forced.position.y - playerPosition.y) >= 28,
+      ).toBe(true)
+    }
+  })
+
+  it('resets recovery timers for progress or a return inside the arena, and ignores down enemies', () => {
+    let state = createWaveDirectorState(wave, 24)
+    state = advanceWaveDirector(state, input()).state
+    const outside = {
+      enemyId: 'n9-depot-wave-1:first',
+      position: { x: 400, y: 100 },
+      down: false,
+      defeated: false,
+      madeRecoveryProgress: false,
+    }
+
+    state = advanceWaveDirector(state, input({ deltaMs: 2_000, activeEnemies: [outside] })).state
+    state = advanceWaveDirector(
+      state,
+      input({ deltaMs: 1, activeEnemies: [{ ...outside, madeRecoveryProgress: true }] }),
+    ).state
+    let result = advanceWaveDirector(state, input({ deltaMs: 7_999, activeEnemies: [outside] }))
+    expect(result.events.some((event) => event.type === 'enemy-force-repositioned')).toBe(false)
+    state = result.state
+
+    result = advanceWaveDirector(
+      state,
+      input({ deltaMs: 2_000, activeEnemies: [{ ...outside, down: true }] }),
+    )
+    expect(result.events.some((event) => event.type.includes('return'))).toBe(false)
+    expect(result.events.some((event) => event.type.includes('reposition'))).toBe(false)
+
+    state = advanceWaveDirector(
+      state,
+      input({ activeEnemies: [{ ...outside, position: { x: 0, y: 0 } }] }),
+    ).state
+    expect(state.recoveryByEnemyId['n9-depot-wave-1:first']).toEqual({
+      offscreenMs: 0,
+      noProgressMs: 0,
+      returnRequested: false,
+      forcedRepositioned: false,
+    })
+  })
+
+  it('reconstructs fresh zone wave state from authored content and the initial seed only', () => {
+    let used = createWaveDirectorState(wave, 4_242)
+    used = advanceWaveDirector(used, input()).state
+    used = advanceWaveDirector(
+      used,
+      input({ defeatedEnemyIds: ['n9-depot-wave-1:first'] }),
+    ).state
+
+    const rebuilt = resetWaveDirector(wave, 4_242)
+    expect(rebuilt).toEqual(createWaveDirectorState(wave, 4_242))
+    expect(rebuilt).not.toEqual(used)
+    expect(rebuilt).toMatchObject({
+      initialSeed: 4_242,
+      elapsedMs: 0,
+      emittedOrderIds: [],
+      spawnedEnemyIds: [],
+      defeatedEnemyIds: [],
+      recoveryByEnemyId: {},
+    })
+  })
+})
