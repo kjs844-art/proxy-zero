@@ -44,7 +44,7 @@ export const enemyVariants: readonly EnemyVariantDefinition[] = freeze([
     guardDurationMs: 0,
     intentWeights: { attack: 1, guard: 0 },
     attacks: [
-      attack('scout-striker-jab', 260, 90, 180, 64, 24, 3),
+      attack('scout-striker-jab', 260, 90, 180, 62, 24, 3),
       attack('scout-striker-sweep', 320, 110, 220, 78, 30, 1),
     ],
   },
@@ -74,8 +74,8 @@ export const enemyVariants: readonly EnemyVariantDefinition[] = freeze([
     guardDurationMs: 300,
     intentWeights: { attack: 4, guard: 1 },
     attacks: [
-      attack('bulwark-enforcer-punch', 360, 120, 260, 68, 28, 2),
-      attack('bulwark-enforcer-charge', 520, 160, 400, 112, 34, 1),
+      attack('bulwark-enforcer-punch', 360, 120, 260, 65, 28, 2),
+      attack('bulwark-enforcer-charge', 520, 160, 400, 78, 34, 1),
     ],
   },
 ])
