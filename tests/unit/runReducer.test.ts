@@ -26,9 +26,9 @@ const createRun = (overrides: Partial<RunState> = {}): RunState => ({
 
 const checkpoint = (): RunCheckpoint => ({
   schemaVersion: 1,
-  characterId: 'mina',
-  zoneId: 'service-train',
-  zoneStartWaveId: 'service-train-wave-1',
+  characterId: 'han',
+  zoneId: 'n9-depot',
+  zoneStartWaveId: 'n9-depot-wave-1',
   inventory: {
     itemId: 'emp',
     count: 1,
@@ -42,6 +42,7 @@ describe('runReducer', () => {
 
     expect(state).toMatchObject({
       lives: 2,
+      zoneStartWaveId: 'n9-depot-wave-1',
       continueUsed: false,
       hp: 100,
       maxHp: 100,
@@ -131,9 +132,10 @@ describe('runReducer', () => {
     })
 
     expect(result.state).toMatchObject({
-      characterId: 'mina',
-      zoneId: 'service-train',
-      currentWaveId: 'service-train-wave-1',
+      characterId: 'han',
+      zoneId: 'n9-depot',
+      zoneStartWaveId: 'n9-depot-wave-1',
+      currentWaveId: 'n9-depot-wave-1',
       lives: 2,
       hp: 100,
       score: 0,
@@ -147,13 +149,37 @@ describe('runReducer', () => {
     expect(result.effects).toEqual([
       {
         type: 'rebuild-zone',
-        zoneId: 'service-train',
-        waveId: 'service-train-wave-1',
+        zoneId: 'n9-depot',
+        waveId: 'n9-depot-wave-1',
       },
     ])
 
     saved.inventory.available = false
     expect(result.state.inventory.available).toBe(true)
+  })
+
+  it('rejects a checkpoint that belongs to another run identity', () => {
+    const gameOver = createRun({
+      lives: 0,
+      hp: 0,
+      status: 'game-over',
+      continueAvailable: true,
+      currentWaveId: 'n9-depot-wave-3',
+    })
+    const staleCheckpoint: RunCheckpoint = {
+      ...checkpoint(),
+      characterId: 'mina',
+      zoneId: 'service-train',
+      zoneStartWaveId: 'service-train-wave-1',
+    }
+
+    const result = runReducer(gameOver, {
+      type: 'continue-from-checkpoint',
+      checkpoint: staleCheckpoint,
+    })
+
+    expect(result.state).toEqual(gameOver)
+    expect(result.effects).toEqual([])
   })
 
   it('keeps exhausted post-Continue Game Over terminal and ignores another Continue', () => {

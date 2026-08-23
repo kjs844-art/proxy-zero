@@ -114,6 +114,12 @@ const browserStorage = (): StorageLike | null => {
   }
 }
 
+const immutableCheckpoint = (checkpoint: RunCheckpoint): RunCheckpoint =>
+  Object.freeze({
+    ...checkpoint,
+    inventory: Object.freeze({ ...checkpoint.inventory }),
+  })
+
 export class CombatScene extends Phaser.Scene {
   private state!: CombatState
   private runState!: RunState
@@ -150,13 +156,13 @@ export class CombatScene extends Phaser.Scene {
       maxHp: character.maxHp,
       inventory: { itemId: null, count: 0, available: false },
     })
-    this.zoneCheckpoint = {
+    this.zoneCheckpoint = immutableCheckpoint({
       schemaVersion: CHECKPOINT_SCHEMA_VERSION,
       characterId: character.id,
       zoneId: N9_DEPOT_ID,
       zoneStartWaveId: N9_DEPOT_START_WAVE_ID,
       inventory: { itemId: null, count: 0, available: false },
-    }
+    })
     this.checkpointStore = new CheckpointStore(browserStorage())
     this.checkpointStore.save(this.zoneCheckpoint)
     this.finished = false
@@ -265,6 +271,7 @@ export class CombatScene extends Phaser.Scene {
       )
     ) {
       this.handlePlayerDefeat()
+      if (this.runState.status === 'game-over') return
     }
 
     if (
@@ -382,7 +389,10 @@ export class CombatScene extends Phaser.Scene {
 
   private tryContinue(): void {
     if (!this.runState.continueAvailable) return
-    const checkpoint = this.checkpointStore.load() ?? this.zoneCheckpoint
+    const storedCheckpoint = this.checkpointStore.load()
+    const checkpoint = this.matchesCurrentRun(storedCheckpoint)
+      ? storedCheckpoint
+      : this.zoneCheckpoint
     if (!checkpoint) return
 
     const result = runReducer(this.runState, {
@@ -391,6 +401,17 @@ export class CombatScene extends Phaser.Scene {
     })
     this.runState = result.state
     this.applyRunEffects(result.effects)
+  }
+
+  private matchesCurrentRun(
+    checkpoint: RunCheckpoint | null,
+  ): checkpoint is RunCheckpoint {
+    return (
+      checkpoint !== null &&
+      checkpoint.characterId === this.runState.characterId &&
+      checkpoint.zoneId === this.runState.zoneId &&
+      checkpoint.zoneStartWaveId === this.runState.zoneStartWaveId
+    )
   }
 
   private rebuildZoneFromCheckpoint(): void {

@@ -24,6 +24,7 @@ export type RunRankCap = 'C' | null
 export interface RunState {
   characterId: CharacterId
   zoneId: ZoneId
+  zoneStartWaveId: string
   currentWaveId: string
   lives: number
   continueUsed: boolean
@@ -74,6 +75,7 @@ const cloneState = (state: Readonly<RunState>): RunState => ({
 export const createRunState = (options: Readonly<CreateRunStateOptions>): RunState => ({
   characterId: options.characterId,
   zoneId: options.zoneId,
+  zoneStartWaveId: options.waveId,
   currentWaveId: options.waveId,
   lives: 2,
   continueUsed: false,
@@ -141,8 +143,14 @@ export const runReducer = (
   }
 
   const saved = command.checkpoint
-  state.characterId = saved.characterId
-  state.zoneId = saved.zoneId
+  if (
+    saved.characterId !== state.characterId ||
+    saved.zoneId !== state.zoneId ||
+    saved.zoneStartWaveId !== state.zoneStartWaveId
+  ) {
+    return { state, effects: [] }
+  }
+
   state.currentWaveId = saved.zoneStartWaveId
   state.lives = 2
   state.continueUsed = true
