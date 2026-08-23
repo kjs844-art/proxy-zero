@@ -552,7 +552,7 @@ type CombatSceneHarness = {
   transitionRemainingMs: number
   pendingDefeatedEnemyIds: Set<string>
   enemyBrains: Map<string, EnemyBrainState>
-  enemyRngs: Map<string, unknown>
+  enemyRngs: Map<string, { snapshot(): { value: number } }>
   enemyVariantIds: Map<string, string>
   returningEnemyIds: Set<string>
   lastRecoveryPositions: Map<string, { x: number; y: number }>
@@ -563,10 +563,18 @@ type CombatSceneHarness = {
   inputAdapter: { dispose(): void } | null
   scene: { start: ReturnType<typeof vi.fn> }
   input: { keyboard?: { off: ReturnType<typeof vi.fn> } }
+  actionQueue: {
+    buffer: {
+      enqueue(
+        edge: { type: 'attack'; limb: 'right-foot' },
+        enqueuedAtMs: number,
+      ): void
+    }
+  }
   create(): void
   stepDomain(): void
   recordEnemyDefeats(enemyIds: readonly string[]): void
-  applyPlayerFacingAssist(command: Readonly<CombatCommand>): void
+  resolvePlayerFacingAssist(command: Readonly<CombatCommand>): -1 | 1 | null
   applyEnemyIntent(enemyId: string, intent: Readonly<EnemyIntent>): Partial<CombatCommand>
   applyEnemyGuardState(
     enemyId: string,
@@ -615,7 +623,68 @@ const clearCurrentWave = (scene: CombatSceneHarness): void => {
 }
 
 describe('CombatScene N-9 Depot orchestration', () => {
-  it('assists only a neutral-move attack toward the nearest in-range enemy with stable ties', () => {
+  it('does not flip an uncancellable active hitbox for a buffered attack behind the player', () => {
+    const { scene } = createLiveScene()
+    scene.stepDomain()
+    const player = scene.state.actors.han
+    const spawnedEnemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
+    const spawnedEnemy = scene.state.actors[spawnedEnemyId]
+    player.position = { x: 250, y: 248, z: 0 }
+    player.facing = 1
+    spawnedEnemy.position = { x: 200, y: 248, z: 0 }
+    player.mode = 'attacking'
+    player.activeAttack = {
+      attackId: 'han-right-hand',
+      elapsedMs: 90,
+      phase: 'startup',
+      hitRecords: {},
+    }
+    const enemyHpBefore = spawnedEnemy.hp
+
+    scene.actionQueue.buffer.enqueue(
+      { type: 'attack', limb: 'right-foot' },
+      scene.state.elapsedMs,
+    )
+    scene.stepDomain()
+
+    expect(scene.state.actors.han.facing).toBe(1)
+    expect(scene.state.actors.han.activeAttack?.attackId).toBe('han-right-hand')
+    expect(scene.state.actors[spawnedEnemyId].hp).toBe(enemyHpBefore)
+    expect(scene.state.events).not.toContainEqual(
+      expect.objectContaining({
+        type: 'attack-started',
+        actorId: 'han',
+        attackId: 'han-right-foot',
+      }),
+    )
+  })
+
+  it('consumes a neutral facing hint only when the reducer accepts the new attack', () => {
+    const { scene } = createLiveScene()
+    scene.stepDomain()
+    const player = scene.state.actors.han
+    const spawnedEnemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
+    player.position = { x: 250, y: 248, z: 0 }
+    player.facing = 1
+    scene.state.actors[spawnedEnemyId].position = { x: 200, y: 248, z: 0 }
+
+    scene.actionQueue.buffer.enqueue(
+      { type: 'attack', limb: 'right-foot' },
+      scene.state.elapsedMs,
+    )
+    scene.stepDomain()
+
+    expect(scene.state.events).toContainEqual(
+      expect.objectContaining({
+        type: 'attack-started',
+        actorId: 'han',
+        attackId: 'han-right-foot',
+      }),
+    )
+    expect(scene.state.actors.han.facing).toBe(-1)
+  })
+
+  it('resolves neutral assist candidates by range, depth, movement, and stable ID', () => {
     const { scene } = createLiveScene()
     scene.stepDomain()
     const player = scene.state.actors.han
@@ -625,13 +694,13 @@ describe('CombatScene N-9 Depot orchestration', () => {
     player.facing = 1
     spawnedEnemy.position = { x: 200, y: 248, z: 0 }
 
-    scene.applyPlayerFacingAssist({
+    expect(scene.resolvePlayerFacingAssist({
       actorId: 'han',
       moveX: 0,
       moveY: 0,
       attackId: 'han-right-foot',
-    })
-    expect(player.facing).toBe(-1)
+    })).toBe(-1)
+    expect(player.facing).toBe(1)
 
     scene.state.actors['a-stable-tie'] = {
       ...spawnedEnemy,
@@ -640,42 +709,133 @@ describe('CombatScene N-9 Depot orchestration', () => {
       velocity: { ...spawnedEnemy.velocity },
       body: { ...spawnedEnemy.body },
     }
-    player.facing = -1
-    scene.applyPlayerFacingAssist({
+    expect(scene.resolvePlayerFacingAssist({
       actorId: 'han',
       moveX: 0,
       moveY: 0,
       attackId: 'han-right-foot',
-    })
-    expect(player.facing).toBe(1)
+    })).toBe(1)
 
-    player.facing = -1
-    scene.applyPlayerFacingAssist({
+    expect(scene.resolvePlayerFacingAssist({
       actorId: 'han',
       moveX: 1,
       moveY: 0,
       attackId: 'han-right-foot',
-    })
-    expect(player.facing).toBe(-1)
+    })).toBeNull()
 
     spawnedEnemy.position = { x: 431, y: 248, z: 0 }
     scene.state.actors['a-stable-tie'].mode = 'defeated'
-    scene.applyPlayerFacingAssist({
+    expect(scene.resolvePlayerFacingAssist({
       actorId: 'han',
       moveX: 0,
       moveY: 0,
       attackId: 'han-right-foot',
-    })
-    expect(player.facing).toBe(-1)
+    })).toBeNull()
 
     spawnedEnemy.position = { x: 300, y: 309, z: 0 }
-    scene.applyPlayerFacingAssist({
+    expect(scene.resolvePlayerFacingAssist({
       actorId: 'han',
       moveX: 0,
       moveY: 0,
       attackId: 'han-right-foot',
+    })).toBeNull()
+  })
+
+  it('preserves a telegraph and one-shot attack intent through a full hitstop tick', () => {
+    const { scene } = createLiveScene()
+    scene.stepDomain()
+    const enemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
+    const attack = getEnemyVariant('scout-patrol').attacks[0]
+    scene.state.actors.han.position = { x: 250, y: 248, z: 0 }
+    scene.state.actors[enemyId].position = { x: 290, y: 248, z: 0 }
+    scene.enemyBrains.set(enemyId, {
+      mode: 'telegraph',
+      attackId: attack.id,
+      elapsedMs: attack.telegraphMs - fixedStepMs / 2,
     })
-    expect(player.facing).toBe(-1)
+    scene.applyEnemyIntent(enemyId, {
+      type: 'telegraph',
+      attackId: attack.id,
+      durationMs: fixedStepMs / 2,
+      range: attack.range,
+    })
+    scene.state.hitstopRemainingMs = fixedStepMs
+    const brainBefore = scene.enemyBrains.get(enemyId)
+    const waveElapsedBefore = scene.waveRuntime.wave.elapsedMs
+    const rngBefore = scene.enemyRngs.get(enemyId)?.snapshot()
+
+    scene.stepDomain()
+
+    expect(scene.state.hitstopRemainingMs).toBe(0)
+    expect(scene.waveRuntime.wave.elapsedMs).toBe(waveElapsedBefore)
+    expect(scene.enemyBrains.get(enemyId)).toEqual(brainBefore)
+    expect(scene.enemyRngs.get(enemyId)?.snapshot()).toEqual(rngBefore)
+    expect(scene.hazardView?.snapshot().telegraphCount).toBe(1)
+    expect(scene.state.actors[enemyId].activeAttack).toBeNull()
+
+    scene.stepDomain()
+    expect(scene.state.events.filter(
+      (event) => event.type === 'attack-started' && event.actorId === enemyId,
+    )).toHaveLength(1)
+    expect(scene.state.actors[enemyId].activeAttack?.attackId).toBe(
+      n9DepotZone.enemyPatternAttackIds[attack.id],
+    )
+    expect(scene.hazardView?.snapshot().telegraphCount).toBe(0)
+
+    scene.stepDomain()
+    expect(scene.state.events.filter(
+      (event) => event.type === 'attack-started' && event.actorId === enemyId,
+    )).toHaveLength(0)
+  })
+
+  it('advances wave, AI, run, and gameplay markers by only a partial hitstop remainder', () => {
+    const { scene } = createLiveScene()
+    scene.stepDomain()
+    const enemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
+    const attack = getEnemyVariant('scout-patrol').attacks[0]
+    const frozenMs = fixedStepMs / 2
+    const activeDeltaMs = fixedStepMs - frozenMs
+    scene.enemyBrains.set(enemyId, {
+      mode: 'telegraph',
+      attackId: attack.id,
+      elapsedMs: 100,
+    })
+    scene.applyEnemyIntent(enemyId, {
+      type: 'telegraph',
+      attackId: attack.id,
+      durationMs: activeDeltaMs + 1,
+      range: attack.range,
+    })
+    scene.runState = {
+      ...scene.runState,
+      respawnInvulnerabilityRemainingMs: 100,
+    }
+    scene.state.hitstopRemainingMs = frozenMs
+    const combatElapsedBefore = scene.state.elapsedMs
+    const waveElapsedBefore = scene.waveRuntime.wave.elapsedMs
+    const rendererElapsedBefore = scene.zoneRenderer?.snapshot().elapsedMs ?? 0
+
+    scene.stepDomain()
+
+    expect(scene.state.hitstopRemainingMs).toBe(0)
+    expect(scene.state.elapsedMs - combatElapsedBefore).toBeCloseTo(activeDeltaMs, 8)
+    expect(scene.waveRuntime.wave.elapsedMs - waveElapsedBefore).toBeCloseTo(
+      activeDeltaMs,
+      8,
+    )
+    expect(scene.enemyBrains.get(enemyId)?.elapsedMs).toBeCloseTo(
+      100 + activeDeltaMs,
+      8,
+    )
+    expect(scene.runState.respawnInvulnerabilityRemainingMs).toBeCloseTo(
+      100 - activeDeltaMs,
+      8,
+    )
+    expect(scene.hazardView?.snapshot().telegraphCount).toBe(1)
+    expect((scene.zoneRenderer?.snapshot().elapsedMs ?? 0) - rendererElapsedBefore).toBeCloseTo(
+      fixedStepMs,
+      8,
+    )
   })
 
   it('arrives ready, spawns the first enemy, unlocks only between waves, and finishes after the card', () => {

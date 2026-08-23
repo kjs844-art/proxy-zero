@@ -283,20 +283,27 @@ export class CombatScene extends Phaser.Scene {
     }
     if (this.runState.status === 'game-over') return
 
-    this.runState = runReducer(this.runState, {
-      type: 'advance-time',
-      deltaMs: fixedStepMs,
-    }).state
-    this.state.actors[this.state.playerId].wakeInvulnerabilityRemainingMs =
-      this.runState.respawnInvulnerabilityRemainingMs
+    const frozenMs = Math.min(
+      Math.max(0, this.state.hitstopRemainingMs),
+      fixedStepMs,
+    )
+    const activeDeltaMs = fixedStepMs - frozenMs
+    if (activeDeltaMs > 0) {
+      this.runState = runReducer(this.runState, {
+        type: 'advance-time',
+        deltaMs: activeDeltaMs,
+      }).state
+      this.state.actors[this.state.playerId].wakeInvulnerabilityRemainingMs =
+        this.runState.respawnInvulnerabilityRemainingMs
 
-    const phaseAtStart = this.zonePhase
-    if (phaseAtStart === 'active') this.advanceWaveRuntime()
-    else this.advanceZoneClock(fixedStepMs)
+      const phaseAtStart = this.zonePhase
+      if (phaseAtStart === 'active') this.advanceWaveRuntime(activeDeltaMs)
+      else this.advanceZoneClock(activeDeltaMs)
+    }
 
     const frame = this.inputAdapter?.readFrame() ?? emptyInputFrame()
     const bufferedAction =
-      this.state.hitstopRemainingMs === 0
+      activeDeltaMs > 0
         ? this.actionQueue.nextAction(this.state.elapsedMs)
         : undefined
     const player = this.state.actors[this.state.playerId]
@@ -308,13 +315,14 @@ export class CombatScene extends Phaser.Scene {
       jump: bufferedAction?.edge.type === 'jump',
       ...(attackId ? { attackId } : {}),
     }
-    this.applyPlayerFacingAssist(playerCommand)
     const commands = [
       playerCommand,
-      ...(this.zonePhase === 'active' ? this.buildEnemyCommands() : []),
+      ...(activeDeltaMs > 0 && this.zonePhase === 'active'
+        ? this.buildEnemyCommands(activeDeltaMs)
+        : []),
     ]
 
-    this.state = combatReducer(this.state, commands, fixedStepMs)
+    this.state = this.reduceCombatWithFacingAssist(commands)
     if (this.zonePhase === 'active') this.clampLivingActors()
     this.runState = runReducer(this.runState, {
       type: 'player-hp-changed',
@@ -335,13 +343,13 @@ export class CombatScene extends Phaser.Scene {
         : [],
     )
     this.recordEnemyDefeats(defeatedEnemyIds)
-    this.hazardView?.update(fixedStepMs)
+    this.hazardView?.update(activeDeltaMs)
     this.zoneRenderer?.update(fixedStepMs)
   }
 
-  private applyPlayerFacingAssist(command: Readonly<CombatCommand>): void {
+  private resolvePlayerFacingAssist(command: Readonly<CombatCommand>): -1 | 1 | null {
     if (!command.attackId || command.moveX !== 0 || command.actorId !== this.state.playerId) {
-      return
+      return null
     }
     const player = this.state.actors[this.state.playerId]
     const target = Object.values(this.state.actors)
@@ -360,10 +368,39 @@ export class CombatScene extends Phaser.Scene {
         const rightX = right.position.x - player.position.x
         const rightY = right.position.y - player.position.y
         return leftX * leftX + leftY * leftY - (rightX * rightX + rightY * rightY) ||
-          left.id.localeCompare(right.id)
+          (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
       })[0]
-    if (!target || target.position.x === player.position.x) return
-    player.facing = target.position.x < player.position.x ? -1 : 1
+    if (!target || target.position.x === player.position.x) return null
+    return target.position.x < player.position.x ? -1 : 1
+  }
+
+  private reduceCombatWithFacingAssist(
+    commands: readonly Readonly<CombatCommand>[],
+  ): CombatState {
+    const preflight = combatReducer(this.state, commands, fixedStepMs)
+    const playerCommand = commands.find(
+      (command) => command.actorId === this.state.playerId,
+    )
+    if (!playerCommand?.attackId) return preflight
+
+    const facing = this.resolvePlayerFacingAssist(playerCommand)
+    const accepted = preflight.events.some(
+      (event) =>
+        event.type === 'attack-started' &&
+        event.actorId === this.state.playerId &&
+        event.attackId === playerCommand.attackId,
+    )
+    const player = this.state.actors[this.state.playerId]
+    if (!accepted || facing === null || facing === player.facing) return preflight
+
+    const assistedInput: CombatState = {
+      ...this.state,
+      actors: {
+        ...this.state.actors,
+        [player.id]: { ...player, facing },
+      },
+    }
+    return combatReducer(assistedInput, commands, fixedStepMs)
   }
 
   private stepUnmountedAdapter(): void {
@@ -389,9 +426,9 @@ export class CombatScene extends Phaser.Scene {
     if (defeatedEnemy) this.finishCombat('enemy-defeated')
   }
 
-  private advanceWaveRuntime(): void {
+  private advanceWaveRuntime(deltaMs: number): void {
     const result = advanceWaveDirector(this.waveRuntime.wave, {
-      deltaMs: fixedStepMs,
+      deltaMs,
       defeatedEnemyIds: [...this.pendingDefeatedEnemyIds],
       activeEnemies: this.activeEnemyObservations(),
       arena: n9DepotZone.arena,
@@ -479,7 +516,7 @@ export class CombatScene extends Phaser.Scene {
     this.services.recordEnemySpawn(enemyId, this.state.elapsedMs)
   }
 
-  private buildEnemyCommands(): CombatCommand[] {
+  private buildEnemyCommands(deltaMs = fixedStepMs): CombatCommand[] {
     const commands: CombatCommand[] = []
     const player = this.state.actors[this.state.playerId]
     for (const enemyId of [...this.enemyBrains.keys()].sort()) {
@@ -523,7 +560,7 @@ export class CombatScene extends Phaser.Scene {
             state: brain,
             position: { x: actor.position.x, y: actor.position.y },
             playerPosition: { x: player.position.x, y: player.position.y },
-            deltaMs: fixedStepMs,
+            deltaMs,
           },
           rng,
         )
