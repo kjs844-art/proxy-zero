@@ -1,4 +1,14 @@
-import type { EnemyPoint, WaveDefinition, WaveSpawnOrder } from '../enemies/types'
+import {
+  createEnemyBrainState,
+  type EnemyBrainState,
+} from '../enemies/enemyBrain'
+import type {
+  EnemyBaseBodyDefinition,
+  EnemyPoint,
+  EnemyVariantDefinition,
+  WaveDefinition,
+  WaveSpawnOrder,
+} from '../enemies/types'
 
 export interface ArenaBounds {
   readonly minX: number
@@ -37,6 +47,31 @@ export interface WaveDirectorState {
   readonly defeatedEnemyIds: readonly string[]
   readonly recoveryByEnemyId: Readonly<Record<string, EnemyRecoveryState>>
   readonly cleared: boolean
+}
+
+/** Content remains injected so wave runtime does not depend on the content module. */
+export interface EnemyContentResolver {
+  readonly getVariant: (enemyVariantId: string) => Readonly<EnemyVariantDefinition>
+  readonly getBaseBody: (baseBodyId: string) => Readonly<EnemyBaseBodyDefinition>
+}
+
+export interface ZoneEnemyRuntime {
+  readonly enemyId: string
+  readonly orderId: string
+  readonly enemyVariantId: string
+  readonly baseBodyId: string
+  readonly seed: number
+  readonly hp: number
+  readonly maxHp: number
+  readonly brain: EnemyBrainState
+  readonly defeated: boolean
+  readonly recovery: EnemyRecoveryState
+}
+
+export interface ZoneWaveRuntime {
+  readonly initialSeed: number
+  readonly wave: WaveDirectorState
+  readonly enemiesById: Readonly<Record<string, ZoneEnemyRuntime>>
 }
 
 export interface WaveDirectorInput {
@@ -80,6 +115,38 @@ const normalizedSeed = (seed: number): number =>
 
 const orderEnemyId = (waveId: string, orderId: string): string => `${waveId}:${orderId}`
 
+const isNonEmptyId = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim().length > 0
+
+/** Rejects malformed authored wave data before it can corrupt stable spawn identity. */
+export const validateWaveDefinition = (definition: Readonly<WaveDefinition>): void => {
+  if (!isNonEmptyId(definition.id)) {
+    throw new Error('Invalid wave ID: expected a non-empty string.')
+  }
+  if (!Array.isArray(definition.orders)) {
+    throw new Error('Invalid wave orders: expected an array.')
+  }
+
+  const orderIds = new Set<string>()
+  definition.orders.forEach((order, index) => {
+    if (!isNonEmptyId(order.id)) {
+      throw new Error(`Invalid wave spawn order ID at index ${index}: expected a non-empty string.`)
+    }
+    if (!isNonEmptyId(order.enemyVariantId)) {
+      throw new Error(`Invalid enemy variant ID for order "${order.id}": expected a non-empty string.`)
+    }
+    if (!Number.isFinite(order.delayMs) || order.delayMs < 0) {
+      throw new Error(
+        `Invalid wave spawn delay for order "${order.id}": expected a finite non-negative number.`,
+      )
+    }
+    if (orderIds.has(order.id)) {
+      throw new Error(`Duplicate wave spawn order ID: "${order.id}".`)
+    }
+    orderIds.add(order.id)
+  })
+}
+
 const cloneDefinition = (definition: Readonly<WaveDefinition>): WaveDefinition => ({
   id: definition.id,
   orders: definition.orders.map((order) => ({ ...order })),
@@ -95,20 +162,88 @@ const freshRecoveryState = (): EnemyRecoveryState => ({
 export const createWaveDirectorState = (
   definition: Readonly<WaveDefinition>,
   initialSeed: number,
-): WaveDirectorState => ({
-  waveId: definition.id,
-  initialSeed: normalizedSeed(initialSeed),
-  definition: cloneDefinition(definition),
-  elapsedMs: 0,
-  emittedOrderIds: [],
-  spawnedEnemyIds: [],
-  defeatedEnemyIds: [],
-  recoveryByEnemyId: {},
-  cleared: false,
-})
+): WaveDirectorState => {
+  validateWaveDefinition(definition)
+  return {
+    waveId: definition.id,
+    initialSeed: normalizedSeed(initialSeed),
+    definition: cloneDefinition(definition),
+    elapsedMs: 0,
+    emittedOrderIds: [],
+    spawnedEnemyIds: [],
+    defeatedEnemyIds: [],
+    recoveryByEnemyId: {},
+    cleared: false,
+  }
+}
 
 /** Rebuilds only authored wave runtime; no prior HP, AI phase, or timers are accepted. */
 export const resetWaveDirector = createWaveDirectorState
+
+const enemySeed = (initialSeed: number, waveId: string, orderId: string): number => {
+  let value = normalizedSeed(initialSeed) ^ 0x811c9dc5
+  for (const character of `${waveId}:${orderId}`) {
+    value = Math.imul(value ^ character.charCodeAt(0), 0x01000193) >>> 0
+  }
+  return value >>> 0
+}
+
+const createZoneEnemyRuntime = (
+  waveId: string,
+  order: Readonly<WaveSpawnOrder>,
+  initialSeed: number,
+  content: Readonly<EnemyContentResolver>,
+): ZoneEnemyRuntime => {
+  const variant = content.getVariant(order.enemyVariantId)
+  if (!variant || variant.id !== order.enemyVariantId || !isNonEmptyId(variant.baseBodyId)) {
+    throw new Error(`Enemy content resolver returned invalid variant: "${order.enemyVariantId}".`)
+  }
+  const baseBody = content.getBaseBody(variant.baseBodyId)
+  if (!baseBody || baseBody.id !== variant.baseBodyId) {
+    throw new Error(`Enemy content resolver returned invalid base body: "${variant.baseBodyId}".`)
+  }
+  if (!Number.isFinite(baseBody.maxHp) || baseBody.maxHp <= 0) {
+    throw new Error(
+      `Invalid base body max HP for variant "${order.enemyVariantId}": expected a finite positive number.`,
+    )
+  }
+
+  return {
+    enemyId: orderEnemyId(waveId, order.id),
+    orderId: order.id,
+    enemyVariantId: order.enemyVariantId,
+    baseBodyId: baseBody.id,
+    seed: enemySeed(initialSeed, waveId, order.id),
+    hp: baseBody.maxHp,
+    maxHp: baseBody.maxHp,
+    brain: createEnemyBrainState(),
+    defeated: false,
+    recovery: freshRecoveryState(),
+  }
+}
+
+/** Reconstructs a zone's wave plus every authored enemy runtime from content and seed only. */
+export const createZoneWaveRuntime = (
+  definition: Readonly<WaveDefinition>,
+  initialSeed: number,
+  content: Readonly<EnemyContentResolver>,
+): ZoneWaveRuntime => {
+  const wave = createWaveDirectorState(definition, initialSeed)
+  const enemiesById = Object.fromEntries(
+    definition.orders.map((order) => {
+      const enemy = createZoneEnemyRuntime(definition.id, order, wave.initialSeed, content)
+      return [enemy.enemyId, enemy]
+    }),
+  ) as Record<string, ZoneEnemyRuntime>
+
+  return {
+    initialSeed: wave.initialSeed,
+    wave,
+    enemiesById,
+  }
+}
+
+export const resetZoneWaveRuntime = createZoneWaveRuntime
 
 export const isInsideArena = (
   point: Readonly<EnemyPoint>,
@@ -173,12 +308,11 @@ const authoredOrder = (
     .map((order, index) => ({ order, index }))
     .filter(
       ({ order }) =>
-        !emittedOrderIds.has(order.id) && finiteNonNegative(order.delayMs) <= elapsedMs,
+        !emittedOrderIds.has(order.id) && order.delayMs <= elapsedMs,
     )
     .sort(
       (left, right) =>
-        finiteNonNegative(left.order.delayMs) - finiteNonNegative(right.order.delayMs) ||
-        left.index - right.index,
+        left.order.delayMs - right.order.delayMs || left.index - right.index,
     )
     .map(({ order }) => order)
 
@@ -242,6 +376,7 @@ export const advanceWaveDirector = (
   input: Readonly<WaveDirectorInput>,
 ): WaveDirectorResult => {
   const definition = incoming.definition
+  validateWaveDefinition(definition)
   if (incoming.waveId !== definition.id) {
     throw new Error(`Wave runtime ${incoming.waveId} cannot use definition ${definition.id}.`)
   }

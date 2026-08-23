@@ -85,6 +85,16 @@ const cloneAttack = (definition: Readonly<EnemyAttackPattern>): EnemyAttackPatte
   range: { ...definition.range },
 })
 
+const cloneBaseBody = (
+  definition: Readonly<EnemyBaseBodyDefinition>,
+): EnemyBaseBodyDefinition => ({ ...definition })
+
+export const getEnemyBaseBody = (id: string): EnemyBaseBodyDefinition => {
+  const definition = enemyBaseBodies.find((entry) => entry.id === id)
+  if (!definition) throw new Error(`Unknown enemy base body: ${id}`)
+  return cloneBaseBody(definition)
+}
+
 /** Returns a fresh data copy so one gameplay run cannot taint shared authored content. */
 export const getEnemyVariant = (id: string): EnemyVariantDefinition => {
   const definition = enemyVariants.find((entry) => entry.id === id)

@@ -47,6 +47,8 @@ export interface EnemyBrainResult {
 const finiteElapsed = (deltaMs: number): number =>
   Number.isFinite(deltaMs) ? Math.max(0, deltaMs) : 0
 
+const MAX_TRANSITIONS_PER_STEP = 32
+
 const cloneState = (state: Readonly<EnemyBrainState>): EnemyBrainState => ({ ...state })
 
 const stateFor = (mode: EnemyState, attackId: string | null = null, elapsedMs = 0): EnemyBrainState => ({
@@ -149,90 +151,114 @@ export const stepEnemyBrain = (
   snapshot: Readonly<EnemyBrainSnapshot>,
   random: EnemyRandomSource,
 ): EnemyBrainResult => {
-  const deltaMs = finiteElapsed(snapshot.deltaMs)
-  const state = snapshot.state
+  let remainingMs = finiteElapsed(snapshot.deltaMs)
+  let state = cloneState(snapshot.state)
+  const intents: EnemyIntent[] = []
 
-  if (state.mode === 'down') return { state: cloneState(state), intents: [] }
+  for (let transitionCount = 0; transitionCount < MAX_TRANSITIONS_PER_STEP; transitionCount += 1) {
+    if (state.mode === 'down') return { state, intents }
 
-  if (state.mode === 'patrol') {
-    if (canChase(snapshot)) {
+    if (state.mode === 'patrol') {
+      if (canChase(snapshot)) {
+        return {
+          state: stateFor('chase'),
+          intents: [...intents, moveIntent(snapshot.playerPosition, snapshot.definition.moveSpeed)],
+        }
+      }
+      return {
+        state: stateFor('patrol'),
+        intents: [
+          ...intents,
+          moveIntent(patrolTarget(snapshot.position, random), snapshot.definition.moveSpeed),
+        ],
+      }
+    }
+
+    if (state.mode === 'chase') {
+      const eligibleAttacks = attackInRange(
+        snapshot.definition,
+        snapshot.position,
+        snapshot.playerPosition,
+      )
+      if (eligibleAttacks.length > 0) {
+        if (shouldGuard(snapshot.definition, random)) {
+          state = stateFor('guard')
+          intents.push({ type: 'guard', durationMs: snapshot.definition.guardDurationMs })
+          if (remainingMs === 0) return { state, intents }
+          continue
+        }
+        const attack = chooseWeighted(eligibleAttacks, random)
+        if (attack) {
+          state = stateFor('telegraph', attack.id)
+          intents.push(telegraphIntent(attack))
+          if (remainingMs === 0) return { state, intents }
+          continue
+        }
+      }
       return {
         state: stateFor('chase'),
-        intents: [moveIntent(snapshot.playerPosition, snapshot.definition.moveSpeed)],
+        intents: [...intents, moveIntent(snapshot.playerPosition, snapshot.definition.moveSpeed)],
       }
     }
-    return {
-      state: stateFor('patrol'),
-      intents: [moveIntent(patrolTarget(snapshot.position, random), snapshot.definition.moveSpeed)],
-    }
-  }
 
-  if (state.mode === 'chase') {
-    const eligibleAttacks = attackInRange(
-      snapshot.definition,
-      snapshot.position,
-      snapshot.playerPosition,
-    )
-    if (eligibleAttacks.length > 0) {
-      if (shouldGuard(snapshot.definition, random)) {
+    if (state.mode === 'telegraph') {
+      const attack = attackById(snapshot.definition, state.attackId)
+      if (!attack) return { state: stateFor('chase'), intents }
+      const untilAttackMs = Math.max(0, attack.telegraphMs - state.elapsedMs)
+      if (remainingMs < untilAttackMs) {
         return {
-          state: stateFor('guard'),
-          intents: [{ type: 'guard', durationMs: snapshot.definition.guardDurationMs }],
+          state: stateFor('telegraph', attack.id, state.elapsedMs + remainingMs),
+          intents: [...intents, telegraphIntent(attack)],
         }
       }
-      const attack = chooseWeighted(eligibleAttacks, random)
-      if (attack) {
+      remainingMs -= untilAttackMs
+      state = stateFor('attack', attack.id)
+      intents.push(attackIntent(attack))
+      if (remainingMs === 0) return { state, intents }
+      continue
+    }
+
+    if (state.mode === 'attack') {
+      const attack = attackById(snapshot.definition, state.attackId)
+      if (!attack) return { state: stateFor('recover'), intents }
+      const untilRecoveryMs = Math.max(0, attack.activeMs - state.elapsedMs)
+      if (remainingMs < untilRecoveryMs) {
         return {
-          state: stateFor('telegraph', attack.id),
-          intents: [telegraphIntent(attack)],
+          state: stateFor('attack', attack.id, state.elapsedMs + remainingMs),
+          intents: [...intents, attackIntent(attack)],
         }
       }
+      remainingMs -= untilRecoveryMs
+      state = stateFor('recover', attack.id)
+      if (remainingMs === 0) return { state, intents }
+      continue
     }
-    return {
-      state: stateFor('chase'),
-      intents: [moveIntent(snapshot.playerPosition, snapshot.definition.moveSpeed)],
+
+    if (state.mode === 'recover') {
+      const attack = attackById(snapshot.definition, state.attackId)
+      if (!attack) return { state: stateFor('chase'), intents }
+      const untilReadyMs = Math.max(0, attack.recoveryMs - state.elapsedMs)
+      if (remainingMs < untilReadyMs) {
+        return { state: stateFor('recover', attack.id, state.elapsedMs + remainingMs), intents }
+      }
+      remainingMs -= untilReadyMs
+      state = stateFor(canChase(snapshot) ? 'chase' : 'patrol')
+      if (remainingMs === 0) return { state, intents }
+      continue
     }
+
+    const untilGuardReleaseMs = Math.max(0, snapshot.definition.guardDurationMs - state.elapsedMs)
+    if (remainingMs < untilGuardReleaseMs) {
+      return {
+        state: stateFor('guard', null, state.elapsedMs + remainingMs),
+        intents: [...intents, { type: 'guard', durationMs: snapshot.definition.guardDurationMs }],
+      }
+    }
+    remainingMs -= untilGuardReleaseMs
+    state = stateFor('chase')
+    if (remainingMs === 0) return { state, intents }
   }
 
-  if (state.mode === 'telegraph') {
-    const attack = attackById(snapshot.definition, state.attackId)
-    if (!attack) return { state: stateFor('chase'), intents: [] }
-    const elapsedMs = state.elapsedMs + deltaMs
-    if (elapsedMs >= attack.telegraphMs) {
-      return { state: stateFor('attack', attack.id), intents: [attackIntent(attack)] }
-    }
-    return {
-      state: stateFor('telegraph', attack.id, elapsedMs),
-      intents: [telegraphIntent(attack)],
-    }
-  }
-
-  if (state.mode === 'attack') {
-    const attack = attackById(snapshot.definition, state.attackId)
-    if (!attack) return { state: stateFor('recover'), intents: [] }
-    const elapsedMs = state.elapsedMs + deltaMs
-    if (elapsedMs >= attack.activeMs) {
-      return { state: stateFor('recover', attack.id), intents: [] }
-    }
-    return {
-      state: stateFor('attack', attack.id, elapsedMs),
-      intents: [attackIntent(attack)],
-    }
-  }
-
-  if (state.mode === 'recover') {
-    const attack = attackById(snapshot.definition, state.attackId)
-    if (!attack) return { state: stateFor('chase'), intents: [] }
-    const elapsedMs = state.elapsedMs + deltaMs
-    if (elapsedMs >= attack.recoveryMs) {
-      return { state: stateFor(canChase(snapshot) ? 'chase' : 'patrol'), intents: [] }
-    }
-    return { state: stateFor('recover', attack.id, elapsedMs), intents: [] }
-  }
-
-  const elapsedMs = state.elapsedMs + deltaMs
-  if (elapsedMs >= snapshot.definition.guardDurationMs) {
-    return { state: stateFor('chase'), intents: [] }
-  }
-  return { state: stateFor('guard', null, elapsedMs), intents: [] }
+  // A fixed upper bound prevents malformed zero-duration authored data from looping forever.
+  return { state, intents }
 }

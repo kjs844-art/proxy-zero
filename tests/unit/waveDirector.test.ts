@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
   advanceWaveDirector,
+  createZoneWaveRuntime,
   createWaveDirectorState,
+  resetZoneWaveRuntime,
   resetWaveDirector,
+  type EnemyContentResolver,
   type WaveDirectorInput,
 } from '../../src/domain/waves/waveDirector'
 import type { WaveDefinition } from '../../src/domain/enemies/types'
+import { getEnemyBaseBody, getEnemyVariant } from '../../src/content/enemies'
 
 const wave: WaveDefinition = {
   id: 'n9-depot-wave-1',
@@ -33,6 +37,11 @@ const spawnedIds = (events: ReturnType<typeof advanceWaveDirector>['events']) =>
   events
     .filter((event) => event.type === 'enemy-spawned')
     .map((event) => event.enemyId)
+
+const enemyContent: EnemyContentResolver = {
+  getVariant: getEnemyVariant,
+  getBaseBody: getEnemyBaseBody,
+}
 
 describe('deterministic wave director', () => {
   it('emits authored spawn orders once by delay with stable authored tie order', () => {
@@ -73,6 +82,47 @@ describe('deterministic wave director', () => {
     result = advanceWaveDirector(state, input({ defeatedEnemyIds: ids }))
     expect(result.events).toContainEqual({ type: 'wave-cleared', waveId: wave.id })
     expect(result.state.cleared).toBe(true)
+  })
+
+  it('fails fast for invalid authored wave IDs, order IDs, variants, and delays', () => {
+    expect(() => createWaveDirectorState({ ...wave, id: '' }, 1)).toThrowError(
+      'Invalid wave ID: expected a non-empty string.',
+    )
+    expect(() =>
+      createWaveDirectorState(
+        { ...wave, orders: [{ id: '', enemyVariantId: 'scout-striker', delayMs: 0 }] },
+        1,
+      ),
+    ).toThrowError('Invalid wave spawn order ID at index 0: expected a non-empty string.')
+    expect(() =>
+      createWaveDirectorState(
+        { ...wave, orders: [{ id: 'first', enemyVariantId: ' ', delayMs: 0 }] },
+        1,
+      ),
+    ).toThrowError('Invalid enemy variant ID for order "first": expected a non-empty string.')
+    expect(() =>
+      createWaveDirectorState(
+        {
+          ...wave,
+          orders: [
+            { id: 'first', enemyVariantId: 'scout-striker', delayMs: 0 },
+            { id: 'first', enemyVariantId: 'bulwark-sentinel', delayMs: 1 },
+          ],
+        },
+        1,
+      ),
+    ).toThrowError('Duplicate wave spawn order ID: "first".')
+
+    for (const delayMs of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        createWaveDirectorState(
+          { ...wave, orders: [{ id: 'first', enemyVariantId: 'scout-striker', delayMs }] },
+          1,
+        ),
+      ).toThrowError(
+        'Invalid wave spawn delay for order "first": expected a finite non-negative number.',
+      )
+    }
   })
 
   it('requests return after two seconds and force-repositions only after eight seconds without progress', () => {
@@ -156,24 +206,73 @@ describe('deterministic wave director', () => {
     })
   })
 
-  it('reconstructs fresh zone wave state from authored content and the initial seed only', () => {
-    let used = createWaveDirectorState(wave, 4_242)
-    used = advanceWaveDirector(used, input()).state
-    used = advanceWaveDirector(
-      used,
-      input({ defeatedEnemyIds: ['n9-depot-wave-1:first'] }),
-    ).state
+  it('reconstructs isolated full-health enemy and wave runtime from authored content and seed', () => {
+    const original = createZoneWaveRuntime(wave, 4_242, enemyContent)
+    const firstId = 'n9-depot-wave-1:first'
+    const originalEnemy = original.enemiesById[firstId]
+    const used = {
+      ...original,
+      wave: advanceWaveDirector(
+        original.wave,
+        input({
+          deltaMs: 2_000,
+          activeEnemies: [
+            {
+              enemyId: firstId,
+              position: { x: 400, y: 100 },
+              madeRecoveryProgress: false,
+            },
+          ],
+        }),
+      ).state,
+      enemiesById: {
+        ...original.enemiesById,
+        [firstId]: {
+          ...originalEnemy,
+          hp: 1,
+          defeated: true,
+          brain: {
+            mode: 'telegraph',
+            attackId: 'scout-striker-jab',
+            elapsedMs: 123,
+          },
+          recovery: {
+            offscreenMs: 2_000,
+            noProgressMs: 2_000,
+            returnRequested: true,
+            forcedRepositioned: false,
+          },
+        },
+      },
+    }
 
-    const rebuilt = resetWaveDirector(wave, 4_242)
-    expect(rebuilt).toEqual(createWaveDirectorState(wave, 4_242))
-    expect(rebuilt).not.toEqual(used)
-    expect(rebuilt).toMatchObject({
-      initialSeed: 4_242,
-      elapsedMs: 0,
-      emittedOrderIds: [],
-      spawnedEnemyIds: [],
-      defeatedEnemyIds: [],
-      recoveryByEnemyId: {},
+    const rebuilt = resetZoneWaveRuntime(wave, 4_242, enemyContent)
+    const rebuiltEnemy = rebuilt.enemiesById[firstId]
+    expect(rebuilt).not.toBe(used)
+    expect(rebuilt.wave).not.toBe(used.wave)
+    expect(rebuiltEnemy).not.toBe(used.enemiesById[firstId])
+    expect(rebuiltEnemy.brain).not.toBe(used.enemiesById[firstId].brain)
+    expect(rebuiltEnemy.recovery).not.toBe(used.enemiesById[firstId].recovery)
+    expect(rebuilt.wave).toEqual(createWaveDirectorState(wave, 4_242))
+    expect(rebuiltEnemy).toEqual({
+      enemyId: firstId,
+      orderId: 'first',
+      enemyVariantId: 'scout-striker',
+      baseBodyId: 'scout-frame',
+      seed: originalEnemy.seed,
+      hp: getEnemyBaseBody('scout-frame').maxHp,
+      maxHp: getEnemyBaseBody('scout-frame').maxHp,
+      brain: { mode: 'patrol', attackId: null, elapsedMs: 0 },
+      defeated: false,
+      recovery: {
+        offscreenMs: 0,
+        noProgressMs: 0,
+        returnRequested: false,
+        forcedRepositioned: false,
+      },
     })
+
+    const rebuiltDirector = resetWaveDirector(wave, 4_242)
+    expect(rebuiltDirector).toEqual(createWaveDirectorState(wave, 4_242))
   })
 })

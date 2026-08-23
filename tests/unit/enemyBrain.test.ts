@@ -8,6 +8,7 @@ import {
   createEnemyBrainState,
   stepEnemyBrain,
   type EnemyBrainSnapshot,
+  type EnemyRandomSource,
 } from '../../src/domain/enemies/enemyBrain'
 import { SeededRandom } from '../../src/runtime/SeededRandom'
 
@@ -25,6 +26,13 @@ const snapshotFor = (
   playerPosition,
   deltaMs,
 })
+
+const scriptedRandom = (...values: number[]): EnemyRandomSource => {
+  let index = 0
+  return {
+    next: () => values[index++] ?? values.at(-1) ?? 0,
+  }
+}
 
 describe('enemy content and deterministic brain', () => {
   it('defines exactly two reusable base bodies with data-driven variants', () => {
@@ -88,11 +96,12 @@ describe('enemy content and deterministic brain', () => {
       snapshotFor(
         stillTelegraphing.state,
         'scout-striker',
-        selectedAttack.telegraphMs,
+        selectedAttack.telegraphMs - 1,
       ),
       random,
     )
     expect(attack.state.mode).toBe('attack')
+    expect(attack.state.elapsedMs).toBe(0)
     expect(attack.intents).toEqual([
       expect.objectContaining({
         type: 'attack',
@@ -120,13 +129,108 @@ describe('enemy content and deterministic brain', () => {
     expect(recovered.intents).toEqual([])
   })
 
-  it('supports the guard and down states without mutating the caller state', () => {
+  it('carries telegraph, attack, and recovery overshoot identically across frame slicing', () => {
+    const attack = getEnemyVariant('scout-striker').attacks[0]
+    const initial = {
+      mode: 'telegraph' as const,
+      attackId: attack.id,
+      elapsedMs: 0,
+    }
+    const totalMs = attack.telegraphMs + attack.activeMs + 50
+
+    const oneFrame = stepEnemyBrain(snapshotFor(initial, 'scout-striker', totalMs), scriptedRandom())
+    const telegraphBoundary = stepEnemyBrain(
+      snapshotFor(initial, 'scout-striker', attack.telegraphMs),
+      scriptedRandom(),
+    )
+    const attackBoundary = stepEnemyBrain(
+      snapshotFor(telegraphBoundary.state, 'scout-striker', attack.activeMs),
+      scriptedRandom(),
+    )
+    const splitFrames = stepEnemyBrain(
+      snapshotFor(attackBoundary.state, 'scout-striker', 50),
+      scriptedRandom(),
+    )
+
+    expect(telegraphBoundary.state).toEqual({
+      mode: 'attack',
+      attackId: attack.id,
+      elapsedMs: 0,
+    })
+    expect(attackBoundary.state).toEqual({
+      mode: 'recover',
+      attackId: attack.id,
+      elapsedMs: 0,
+    })
+    expect(oneFrame.state).toEqual({
+      mode: 'recover',
+      attackId: attack.id,
+      elapsedMs: 50,
+    })
+    expect(splitFrames.state).toEqual(oneFrame.state)
+
+    const recoveryBoundary = stepEnemyBrain(
+      snapshotFor(splitFrames.state, 'scout-striker', attack.recoveryMs - 50),
+      scriptedRandom(),
+    )
+    const splitRecoveryOvershoot = stepEnemyBrain(
+      snapshotFor(recoveryBoundary.state, 'scout-striker', 1),
+      scriptedRandom(0),
+    )
+    const oneFrameRecoveryOvershoot = stepEnemyBrain(
+      snapshotFor(oneFrame.state, 'scout-striker', attack.recoveryMs - 49),
+      scriptedRandom(0),
+    )
+    expect(recoveryBoundary.state).toEqual({ mode: 'chase', attackId: null, elapsedMs: 0 })
+    expect(oneFrameRecoveryOvershoot.state).toEqual({
+      mode: 'telegraph',
+      attackId: attack.id,
+      elapsedMs: 1,
+    })
+    expect(splitRecoveryOvershoot.state).toEqual(oneFrameRecoveryOvershoot.state)
+  })
+
+  it('forces guard, preserves its exact boundary, and carries guard overshoot into chase timing', () => {
     const guarded = stepEnemyBrain(
       snapshotFor(createEnemyBrainState('chase'), 'bulwark-sentinel'),
-      new SeededRandom(1),
+      scriptedRandom(0, 0.99, 0),
     )
-    expect(['guard', 'telegraph']).toContain(guarded.state.mode)
+    const guardDurationMs = getEnemyVariant('bulwark-sentinel').guardDurationMs
+    expect(guarded).toEqual({
+      state: { mode: 'guard', attackId: null, elapsedMs: 0 },
+      intents: [{ type: 'guard', durationMs: guardDurationMs }],
+    })
 
+    const beforeBoundary = stepEnemyBrain(
+      snapshotFor(guarded.state, 'bulwark-sentinel', guardDurationMs - 1),
+      scriptedRandom(),
+    )
+    expect(beforeBoundary.state).toEqual({
+      mode: 'guard',
+      attackId: null,
+      elapsedMs: guardDurationMs - 1,
+    })
+
+    const exactBoundary = stepEnemyBrain(
+      snapshotFor(beforeBoundary.state, 'bulwark-sentinel', 1),
+      scriptedRandom(0.99, 0),
+    )
+    expect(exactBoundary.state).toEqual({ mode: 'chase', attackId: null, elapsedMs: 0 })
+
+    const splitOvershoot = stepEnemyBrain(
+      snapshotFor(exactBoundary.state, 'bulwark-sentinel', 1),
+      scriptedRandom(0.99, 0),
+    )
+    const oneFrameOvershoot = stepEnemyBrain(
+      snapshotFor(guarded.state, 'bulwark-sentinel', guardDurationMs + 1),
+      scriptedRandom(0.99, 0),
+    )
+    const attackId = getEnemyVariant('bulwark-sentinel').attacks[0].id
+    expect(oneFrameOvershoot.state).toEqual({ mode: 'telegraph', attackId, elapsedMs: 1 })
+    expect(splitOvershoot.state).toEqual(oneFrameOvershoot.state)
+  })
+
+  it('supports the down state without mutating the caller state', () => {
     const down = createEnemyBrainState('down')
     const result = stepEnemyBrain(snapshotFor(down, 'bulwark-sentinel', 1_000), new SeededRandom(1))
     expect(result).toEqual({ state: down, intents: [] })
