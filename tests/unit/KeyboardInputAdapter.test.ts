@@ -40,9 +40,12 @@ class FakeKeyboardEvent {
 
 function createAdapter() {
   const events = new FakeEventTarget()
-  const canvas = new FakeEventTarget() as FakeEventTarget & { ownerDocument: { activeElement: unknown } }
+  const windowBlurTarget = new FakeEventTarget()
+  const canvas = new FakeEventTarget() as FakeEventTarget & {
+    ownerDocument: { activeElement: unknown; defaultView: unknown }
+  }
   const otherElement = {}
-  canvas.ownerDocument = { activeElement: canvas }
+  canvas.ownerDocument = { activeElement: canvas, defaultView: windowBlurTarget }
   const buffer = new InputBuffer()
   const adapter = new KeyboardInputAdapter(
     canvas as unknown as HTMLCanvasElement,
@@ -51,7 +54,7 @@ function createAdapter() {
     events as unknown as EventTarget,
   )
 
-  return { adapter, buffer, canvas, events, otherElement }
+  return { adapter, buffer, canvas, events, otherElement, windowBlurTarget }
 }
 
 describe('KeyboardInputAdapter', () => {
@@ -125,5 +128,14 @@ describe('KeyboardInputAdapter', () => {
     adapter.dispose()
     events.dispatch('keydown', new FakeKeyboardEvent('KeyW'))
     expect(adapter.readFrame().moveY).toBe(0)
+  })
+
+  it('clears held movement when the browser window blurs before keyup arrives', () => {
+    const { adapter, events, windowBlurTarget } = createAdapter()
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyD'))
+    expect(adapter.readFrame().moveX).toBe(1)
+
+    windowBlurTarget.dispatch('blur')
+    expect(adapter.readFrame()).toMatchObject({ moveX: 0, moveY: 0 })
   })
 })

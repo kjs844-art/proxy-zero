@@ -24,6 +24,7 @@ export class KeyboardInputAdapter {
   private readonly heldMovementCodes = new Set<string>()
   private readonly pendingEdges: ActionEdge[] = []
   private readonly listenerTarget: EventTarget
+  private readonly windowBlurTarget: EventTarget
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -32,9 +33,10 @@ export class KeyboardInputAdapter {
     eventTarget?: EventTarget,
   ) {
     this.listenerTarget = eventTarget ?? canvas.ownerDocument
+    this.windowBlurTarget = canvas.ownerDocument.defaultView ?? canvas
     this.listenerTarget.addEventListener('keydown', this.onKeyDown)
     this.listenerTarget.addEventListener('keyup', this.onKeyUp)
-    this.listenerTarget.addEventListener('blur', this.onFocusReset)
+    this.windowBlurTarget.addEventListener('blur', this.onFocusReset)
     this.canvas.addEventListener('blur', this.onFocusReset)
   }
 
@@ -54,7 +56,7 @@ export class KeyboardInputAdapter {
   dispose(): void {
     this.listenerTarget.removeEventListener('keydown', this.onKeyDown)
     this.listenerTarget.removeEventListener('keyup', this.onKeyUp)
-    this.listenerTarget.removeEventListener('blur', this.onFocusReset)
+    this.windowBlurTarget.removeEventListener('blur', this.onFocusReset)
     this.canvas.removeEventListener('blur', this.onFocusReset)
     this.resetInput()
   }
