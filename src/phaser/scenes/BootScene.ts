@@ -20,7 +20,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.services.enterScene(SCENE_KEYS.Boot)
+    this.services.enterBootScene()
     this.services.recordCapabilities(probeGameCapabilities(globalThis))
     this.createGreyboxTextures()
     this.scene.start(SCENE_KEYS.Title)

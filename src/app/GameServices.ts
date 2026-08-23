@@ -1,4 +1,8 @@
 import type { CharacterId } from '../content/characters'
+import {
+  type BufferedAction,
+  InputBuffer,
+} from '../domain/combat/inputBuffer'
 
 export const SCENE_KEYS = {
   Boot: 'Boot',
@@ -38,6 +42,44 @@ type CapabilityHost = {
 
 const finiteTime = (atMs: number): number =>
   Number.isFinite(atMs) ? Math.max(0, atMs) : 0
+
+/**
+ * Holds one physical combat edge until the pure reducer confirms acceptance.
+ * Later edges remain FIFO-buffered and every retained edge keeps its original
+ * sequence and domain timestamp.
+ */
+export class BufferedCombatActionQueue {
+  private pendingAction: BufferedAction | undefined
+
+  constructor(readonly buffer = new InputBuffer()) {}
+
+  nextAction(domainTimeMs: number): BufferedAction | undefined {
+    const atMs = finiteTime(domainTimeMs)
+    if (this.pendingAction && atMs > this.pendingAction.expiresAtMs) {
+      this.pendingAction = undefined
+    }
+    this.buffer.expire(atMs)
+    this.pendingAction ??= this.buffer.consume(
+      atMs,
+      (entry) => entry.edge.type === 'attack' || entry.edge.type === 'jump',
+    )
+    return this.pendingAction
+  }
+
+  accept(action: Readonly<BufferedAction>): BufferedAction | undefined {
+    if (this.pendingAction?.sequence === action.sequence) {
+      const acceptedAction = this.pendingAction
+      this.pendingAction = undefined
+      return acceptedAction
+    }
+    return undefined
+  }
+
+  clear(): void {
+    this.pendingAction = undefined
+    this.buffer.clear()
+  }
+}
 
 const permittedNextScenes: Readonly<Record<SceneKey, readonly SceneKey[]>> = {
   Boot: ['Title'],
@@ -141,6 +183,14 @@ export class GameServices {
       this.result = null
     }
     return nextScene
+  }
+
+  /** Phaser lifecycle restart hook; normal scene-route transitions stay strict. */
+  enterBootScene(): SceneKey {
+    if (this.currentSceneValue === null) return this.enterScene(SCENE_KEYS.Boot)
+    this.currentSceneValue = SCENE_KEYS.Boot
+    this.sceneHistoryValue.push(SCENE_KEYS.Boot)
+    return SCENE_KEYS.Boot
   }
 
   recordCapabilities(capabilities: Readonly<GameCapabilities>): void {

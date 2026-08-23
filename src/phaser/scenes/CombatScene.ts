@@ -1,6 +1,10 @@
 import Phaser from 'phaser'
 
-import { type GameServices, SCENE_KEYS } from '../../app/GameServices'
+import {
+  BufferedCombatActionQueue,
+  type GameServices,
+  SCENE_KEYS,
+} from '../../app/GameServices'
 import {
   characters,
   type CharacterDefinition,
@@ -18,7 +22,6 @@ import {
 import {
   type BufferedAction,
   type InputFrame,
-  InputBuffer,
 } from '../../domain/combat/inputBuffer'
 import { fixedStepMs } from '../../domain/combat/tuning'
 import { HudController } from '../../presentation/HudController'
@@ -95,7 +98,7 @@ const emptyInputFrame = (): InputFrame => ({ moveX: 0, moveY: 0, edges: [] })
 export class CombatScene extends Phaser.Scene {
   private state!: CombatState
   private character!: CharacterDefinition
-  private readonly inputBuffer = new InputBuffer()
+  private readonly actionQueue = new BufferedCombatActionQueue()
   private inputAdapter: KeyboardInputAdapter | null = null
   private runner: FixedStepRunner | null = null
   private readonly actorViews = new Map<string, ActorView>()
@@ -135,7 +138,7 @@ export class CombatScene extends Phaser.Scene {
     this.focusedCanvas = canvas
     this.inputAdapter = new KeyboardInputAdapter(
       canvas,
-      this.inputBuffer,
+      this.actionQueue.buffer,
       () => this.state.elapsedMs,
     )
     canvas.addEventListener('pointerdown', this.focusCanvas)
@@ -162,26 +165,24 @@ export class CombatScene extends Phaser.Scene {
     }
 
     const frame = this.inputAdapter?.readFrame() ?? emptyInputFrame()
-    this.inputBuffer.expire(this.state.elapsedMs)
-    const bufferedAttack =
+    const bufferedAction =
       this.state.hitstopRemainingMs === 0
-        ? this.inputBuffer.consume(
-            this.state.elapsedMs,
-            (entry) => entry.edge.type === 'attack',
-          )
+        ? this.actionQueue.nextAction(this.state.elapsedMs)
         : undefined
     const player = this.state.actors[this.state.playerId]
-    const attackId = this.resolveBufferedAttack(bufferedAttack, player)
+    const attackId = this.resolveBufferedAttack(bufferedAction, player)
     const command: CombatCommand = {
       actorId: player.id,
       moveX: frame.moveX,
       moveY: frame.moveY,
-      jump: frame.edges.some((edge) => edge.type === 'jump'),
+      jump: bufferedAction?.edge.type === 'jump',
       ...(attackId ? { attackId } : {}),
     }
 
     this.state = combatReducer(this.state, [command], fixedStepMs)
-    this.recordAcceptedAttack(bufferedAttack, attackId)
+    if (bufferedAction && this.wasActionAccepted(bufferedAction, attackId, player)) {
+      this.recordAcceptedAttack(this.actionQueue.accept(bufferedAction))
+    }
 
     if (
       this.state.actors[ENEMY_ID].mode === 'defeated' ||
@@ -204,22 +205,34 @@ export class CombatScene extends Phaser.Scene {
     })?.attackId
   }
 
-  private recordAcceptedAttack(
-    bufferedAttack: BufferedAction | undefined,
+  private wasActionAccepted(
+    bufferedAction: BufferedAction | undefined,
     attackId: string | undefined,
-  ): void {
-    if (!bufferedAttack || bufferedAttack.edge.type !== 'attack' || !attackId) return
-    const started = this.state.events.some(
+    priorPlayer: Readonly<CombatActor>,
+  ): boolean {
+    if (!bufferedAction) return false
+    if (bufferedAction.edge.type === 'jump') {
+      const currentPlayer = this.state.actors[this.state.playerId]
+      return (
+        priorPlayer.position.z === 0 &&
+        currentPlayer.position.z > 0 &&
+        currentPlayer.mode === 'airborne'
+      )
+    }
+    if (bufferedAction.edge.type !== 'attack' || !attackId) return false
+    return this.state.events.some(
       (event) =>
         event.type === 'attack-started' &&
         event.actorId === this.state.playerId &&
         event.attackId === attackId,
     )
-    if (!started) return
+  }
 
+  private recordAcceptedAttack(bufferedAction: BufferedAction | undefined): void {
+    if (!bufferedAction || bufferedAction.edge.type !== 'attack') return
     this.acceptedAttackHistory.push({
-      limb: bufferedAttack.edge.limb,
-      enqueuedAtMs: bufferedAttack.enqueuedAtMs,
+      limb: bufferedAction.edge.limb,
+      enqueuedAtMs: bufferedAction.enqueuedAtMs,
     })
     if (this.acceptedAttackHistory.length > 8) this.acceptedAttackHistory.shift()
   }
@@ -261,7 +274,7 @@ export class CombatScene extends Phaser.Scene {
     this.runner = null
     this.inputAdapter?.dispose()
     this.inputAdapter = null
-    this.inputBuffer.clear()
+    this.actionQueue.clear()
     this.focusedCanvas?.removeEventListener('pointerdown', this.focusCanvas)
     this.focusedCanvas = null
     this.input.keyboard?.off('keydown', this.onDebugKeyDown)
