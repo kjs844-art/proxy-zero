@@ -147,14 +147,14 @@ describe('enemy content and deterministic brain', () => {
       snapshotFor(createEnemyBrainState('chase'), 'scout-striker', 1),
       scriptedRandom(0),
     )
-    expect(chaseTelegraph.state).toMatchObject({ mode: 'telegraph', elapsedMs: 1 })
+    expect(chaseTelegraph.state).toMatchObject({ mode: 'telegraph', elapsedMs: 0 })
     expect(chaseTelegraph.intents.map((intent) => intent.type)).toEqual(['telegraph'])
 
     const chaseGuard = stepEnemyBrain(
       snapshotFor(createEnemyBrainState('chase'), 'bulwark-sentinel', 1),
       scriptedRandom(0),
     )
-    expect(chaseGuard.state).toMatchObject({ mode: 'guard', elapsedMs: 1 })
+    expect(chaseGuard.state).toMatchObject({ mode: 'guard', elapsedMs: 0 })
     expect(chaseGuard.intents).toEqual([
       {
         type: 'guard',
@@ -177,6 +177,31 @@ describe('enemy content and deterministic brain', () => {
       elapsedMs: 20,
     })
     expect(telegraphOvershoot.intents.map((intent) => intent.type)).toEqual(['attack'])
+  })
+
+  it('keeps a telegraph externally observable when chase receives a large delta', () => {
+    const attack = getEnemyVariant('scout-striker').attacks[0]
+    const fromChase = stepEnemyBrain(
+      snapshotFor(
+        createEnemyBrainState('chase'),
+        'scout-striker',
+        attack.telegraphMs + attack.activeMs + 50,
+      ),
+      scriptedRandom(0),
+    )
+    expect(fromChase.state).toEqual({
+      mode: 'telegraph',
+      attackId: attack.id,
+      elapsedMs: 0,
+    })
+    expect(fromChase.intents.map((intent) => intent.type)).toEqual(['telegraph'])
+
+    const nextTimedStep = stepEnemyBrain(
+      snapshotFor(fromChase.state, 'scout-striker', attack.telegraphMs),
+      scriptedRandom(),
+    )
+    expect(nextTimedStep.state).toEqual({ mode: 'attack', attackId: attack.id, elapsedMs: 0 })
+    expect(nextTimedStep.intents.map((intent) => intent.type)).toEqual(['attack'])
   })
 
   it('carries telegraph, attack, and recovery overshoot identically across frame slicing', () => {
@@ -235,12 +260,12 @@ describe('enemy content and deterministic brain', () => {
     expect(oneFrameRecoveryOvershoot.state).toEqual({
       mode: 'telegraph',
       attackId: attack.id,
-      elapsedMs: 1,
+      elapsedMs: 0,
     })
     expect(splitRecoveryOvershoot.state).toEqual(oneFrameRecoveryOvershoot.state)
   })
 
-  it('forces guard, preserves its exact boundary, and carries guard overshoot into chase timing', () => {
+  it('forces guard, preserves its exact boundary, and defers post-guard chasing to the step end', () => {
     const guarded = stepEnemyBrain(
       snapshotFor(createEnemyBrainState('chase'), 'bulwark-sentinel'),
       scriptedRandom(0, 0.99, 0),
@@ -276,18 +301,29 @@ describe('enemy content and deterministic brain', () => {
       scriptedRandom(0.99, 0),
     )
     const attackId = getEnemyVariant('bulwark-sentinel').attacks[0].id
-    expect(oneFrameOvershoot.state).toEqual({ mode: 'telegraph', attackId, elapsedMs: 1 })
+    expect(oneFrameOvershoot.state).toEqual({ mode: 'telegraph', attackId, elapsedMs: 0 })
     expect(splitOvershoot.state).toEqual(oneFrameOvershoot.state)
   })
 
   it('keeps a large valid delta equivalent to split simulation below the transition limit', () => {
-    const initial = createEnemyBrainState('chase')
-    const single = stepEnemyBrain(snapshotFor(initial, 'scout-patrol', 2_441), scriptedRandom(0))
+    const base = getEnemyVariant('scout-patrol')
+    const attack = {
+      ...base.attacks[0],
+      telegraphMs: 10_000,
+      activeMs: 9_000,
+      recoveryMs: 8_000,
+    }
+    const definition = { ...base, attacks: [attack] }
+    const initial = { mode: 'telegraph' as const, attackId: attack.id, elapsedMs: 0 }
+    const single = stepEnemyBrain(snapshotWithDefinition(initial, definition, 21_000), scriptedRandom(0))
 
-    let splitState = initial
+    let splitState: ReturnType<typeof createEnemyBrainState> = initial
     const splitIntents: string[] = []
-    for (const deltaMs of [610, 610, 610, 611]) {
-      const result = stepEnemyBrain(snapshotFor(splitState, 'scout-patrol', deltaMs), scriptedRandom(0))
+    for (const deltaMs of [10_000, 9_000, 2_000]) {
+      const result = stepEnemyBrain(
+        snapshotWithDefinition(splitState, definition, deltaMs),
+        scriptedRandom(0),
+      )
       splitState = result.state
       splitIntents.push(...result.intents.map((intent) => intent.type))
     }
@@ -296,13 +332,13 @@ describe('enemy content and deterministic brain', () => {
     expect(single.intents.map((intent) => intent.type)).toEqual(splitIntents)
   })
 
-  it('fails explicitly instead of discarding simulated time after the transition limit', () => {
+  it('fails explicitly for pathological non-finite simulated time', () => {
     expect(() =>
       stepEnemyBrain(
-        snapshotFor(createEnemyBrainState('chase'), 'scout-patrol', Number.MAX_SAFE_INTEGER),
+        snapshotFor(createEnemyBrainState('chase'), 'scout-patrol', Number.POSITIVE_INFINITY),
         scriptedRandom(0),
       ),
-    ).toThrowError('Enemy brain transition limit exceeded while simulated time remains.')
+    ).toThrowError('Invalid enemy simulation delta: expected a finite non-negative number.')
   })
 
   it('rejects authored timing and weights that cannot guarantee deterministic progress', () => {

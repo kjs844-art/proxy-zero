@@ -44,8 +44,12 @@ export interface EnemyBrainResult {
   readonly intents: readonly EnemyIntent[]
 }
 
-const finiteElapsed = (deltaMs: number): number =>
-  Number.isFinite(deltaMs) ? Math.max(0, deltaMs) : 0
+const finiteElapsed = (deltaMs: number): number => {
+  if (!Number.isFinite(deltaMs) || deltaMs < 0) {
+    throw new Error('Invalid enemy simulation delta: expected a finite non-negative number.')
+  }
+  return deltaMs
+}
 
 const MAX_TRANSITIONS_PER_STEP = 32
 
@@ -225,15 +229,13 @@ export const stepEnemyBrain = (
         if (shouldGuard(snapshot.definition, random)) {
           state = stateFor('guard')
           intents.push({ type: 'guard', durationMs: snapshot.definition.guardDurationMs })
-          if (remainingMs === 0) return { state, intents }
-          continue
+          return { state, intents }
         }
         const attack = chooseWeighted(eligibleAttacks, random)
         if (attack) {
           state = stateFor('telegraph', attack.id)
           intents.push(telegraphIntent(attack))
-          if (remainingMs === 0) return { state, intents }
-          continue
+          return { state, intents }
         }
       }
       return {
