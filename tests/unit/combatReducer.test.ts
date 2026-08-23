@@ -227,6 +227,35 @@ describe('combatReducer', () => {
     expect(vulnerable.actors.target.wakeInvulnerabilityRemainingMs).toBe(0)
   })
 
+  it('does not let an overlapping hit bypass an existing knockdown and wake lifecycle', () => {
+    const knockedDown = state(
+      actor({ id: 'han' }),
+      actor({
+        id: 'target',
+        team: 'enemies',
+        position: { x: 35, y: 0, z: 0 },
+        mode: 'knocked-down',
+        knockdownRemainingMs: 700,
+      }),
+    )
+
+    const overlapDuringKnockdown = combatReducer(
+      knockedDown,
+      [attack('han', 'han-right-hand')],
+      100,
+    )
+    expect(overlapDuringKnockdown.actors.target.hp).toBe(100)
+    expect(overlapDuringKnockdown.actors.target.mode).toBe('knocked-down')
+    expect(overlapDuringKnockdown.actors.target.knockdownRemainingMs).toBe(600)
+    expect(overlapDuringKnockdown.events.some((event) => event.type === 'hit-confirmed')).toBe(
+      false,
+    )
+
+    const wake = combatReducer(overlapDuringKnockdown, [], 600)
+    expect(wake.actors.target.mode).toBe('getting-up')
+    expect(wake.actors.target.wakeInvulnerabilityRemainingMs).toBe(450)
+  })
+
   it('carries timer overflow across the exact knockdown and wake boundary', () => {
     const knockedDown = state(
       actor({ mode: 'knocked-down', knockdownRemainingMs: 850 }),

@@ -47,6 +47,7 @@ export const resolveHitTargets = (
         target.team !== attacker.team &&
         target.hp > 0 &&
         target.mode !== 'defeated' &&
+        target.mode !== 'knocked-down' &&
         target.wakeInvulnerabilityRemainingMs <= 0 &&
         target.mode !== 'getting-up' &&
         attackOverlapsTarget(attacker, target, attack)
