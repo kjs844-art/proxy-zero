@@ -1,0 +1,26 @@
+{
+  "name": "proxy-zero",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "verify": "npm run typecheck && npm run test:run && npm run build",
+    "qa:e2e": "vitest run tests/e2e",
+    "qa:fps": "vitest run tests/performance",
+    "qa:size": "vite build",
+    "qa:public": "vite build"
+  },
+  "dependencies": {
+    "phaser": "3.90.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  }
+}
