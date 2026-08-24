@@ -9,7 +9,7 @@
 | 배포 후보 Git SHA | ⬜ | `SHA:` |
 | 배포 대상 브랜치가 `main`인지 | ⬜ | `branch / SHA:` |
 | 전체 로컬 검증 게이트 성공 | ⬜ | `명령 / 실행 시각 / 결과:` |
-| 공개 release 무결성 verifier 성공 | ⬜ | `PROXY_ZERO_PUBLIC_URL / PROXY_ZERO_EXPECTED_COMMIT / npm run qa:public / 결과:` |
+| 공개 release 무결성 verifier 성공 | ⬜ | `PROXY_ZERO_PUBLIC_URL / PROXY_ZERO_EXPECTED_COMMIT / PROXY_ZERO_EXPECTED_RELEASE_SHA256 / npm run qa:public / 결과:` |
 | GitHub Pages 선택 시 Actions workflow run 성공 | ⬜/해당 없음 | `workflow run URL / 사유:` |
 | GitHub Pages 선택 시 환경 URL과 배포 SHA 일치 | ⬜/해당 없음 | `public URL / SHA / 사유:` |
 
@@ -27,7 +27,7 @@ GitHub Pages가 기본 공개 호스트입니다. Pages를 사용할 수 없는 
 
 한 릴리스에는 실제로 선택한 호스트의 공개 URL 하나만 최종 증거로 기록합니다. 선택하지 않은 호스트 전용 항목은 `해당 없음`과 사유를 기록하며 차단 항목으로 계산하지 않습니다.
 
-`npm run qa:public`은 공개 `release.json`과 manifest 파일의 HTTP 응답·크기·SHA-256·커밋 무결성을 자동 확인합니다. Chrome 시크릿 창, Microsoft Edge, 두 번째 네트워크 검증은 게임 플레이·브라우저 캐시/콘솔·네트워크 경로를 확인하는 수동 증거이며 verifier의 성공만으로 대체하지 않습니다.
+`npm run qa:public`은 공개 `release.json` raw bytes SHA-256과 manifest 파일의 HTTP 응답·크기·SHA-256·커밋 무결성을 자동 확인합니다. Chrome 시크릿 창, Microsoft Edge, 두 번째 네트워크 검증은 게임 플레이·브라우저 캐시/콘솔·네트워크 경로를 확인하는 수동 증거이며 verifier의 성공만으로 대체하지 않습니다.
 
 ## 공개 URL 브라우저 검증
 

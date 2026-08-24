@@ -37,13 +37,14 @@ npm run dev
 npm run verify
 ```
 
-공개 배포의 `release.json`·파일 크기·SHA-256·커밋 무결성은 공개 HTTPS URL과 40자리 배포 SHA를 지정해 자동 검증합니다(리디렉션은 실패 처리되며 URL의 trailing slash는 정규화됩니다).
+공개 배포의 `release.json` raw bytes SHA-256·파일 크기·SHA-256·커밋 무결성은 공개 HTTPS URL, 40자리 배포 SHA, 그리고 사전에 기록한 `release.json` SHA-256을 지정해 자동 검증합니다(리디렉션은 실패 처리되며 URL의 trailing slash는 정규화됩니다).
 
 PowerShell:
 
 ```powershell
 $env:PROXY_ZERO_PUBLIC_URL = "https://공개-호스트/경로"
 $env:PROXY_ZERO_EXPECTED_COMMIT = "40자리-배포-커밋-SHA"
+$env:PROXY_ZERO_EXPECTED_RELEASE_SHA256 = "64자리-release.json-raw-bytes-sha256"
 npm run qa:public
 ```
 

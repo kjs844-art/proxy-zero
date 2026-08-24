@@ -50,6 +50,16 @@ export const hashManifestFiles = (files) => sha256Hex(JSON.stringify(files))
 
 const isSha256 = (value) => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
 
+export const normalizeExpectedReleaseSha256 = (value) => {
+  if (typeof value !== 'string' || value.length === 0) {
+    fail('PROXY_ZERO_EXPECTED_RELEASE_SHA256 is required.')
+  }
+  if (!isSha256(value)) {
+    fail('PROXY_ZERO_EXPECTED_RELEASE_SHA256 must be a lowercase 64-character SHA-256 hex digest.')
+  }
+  return value
+}
+
 const validateManifestFile = (entry, index, label) => {
   if (!isPlainObject(entry)) fail(`${label}.files[${index}] must be an object.`)
   const keys = Object.keys(entry).sort()
@@ -331,13 +341,16 @@ const fetchResource = async (
   return readResponseBody(response, label, maxBytes, keepBody)
 }, label, deadline)
 
-const fetchJsonResource = async (url, fetchImpl, label, deadline, maxBytes) => {
+const fetchJsonResource = async (url, fetchImpl, label, deadline, maxBytes, expectedSha256) => {
   const resource = await fetchResource(url, fetchImpl, label, deadline, {
     json: true,
     maxBytes,
     keepBody: true,
   })
-  return { value: parseJsonBytes(resource.bytes, label) }
+  if (typeof expectedSha256 === 'string' && resource.sha256 !== expectedSha256) {
+    fail(`${label} sha256 does not match PROXY_ZERO_EXPECTED_RELEASE_SHA256.`)
+  }
+  return { value: parseJsonBytes(resource.bytes, label), sha256: resource.sha256 }
 }
 
 const parseIpv4Octets = (value) => {
@@ -623,6 +636,7 @@ const verifyProvenance = (provenance, release, expectedCommit) => {
 export const verifyPublicRelease = async ({
   publicUrl,
   expectedCommit,
+  expectedReleaseSha256,
   fetchImpl,
 } = {}) => {
   const deadline = Date.now() + OVERALL_TIMEOUT_MS
@@ -631,6 +645,7 @@ export const verifyPublicRelease = async ({
     fail('PROXY_ZERO_EXPECTED_COMMIT must be a full 40-character Git commit.')
   }
   const normalizedCommit = expectedCommit.toLowerCase()
+  const normalizedReleaseSha256 = normalizeExpectedReleaseSha256(expectedReleaseSha256)
   if (typeof fetchImpl !== 'undefined' && typeof fetchImpl !== 'function') {
     fail('A fetch implementation is unavailable.')
   }
@@ -640,12 +655,13 @@ export const verifyPublicRelease = async ({
     : await createProductionTransport(baseUrl, deadline)
 
   const releaseUrl = releaseJsonUrl(baseUrl)
-  const { value: release } = await fetchJsonResource(
+  const { value: release, sha256: releaseJsonSha256 } = await fetchJsonResource(
     releaseUrl,
     transport,
     RELEASE_METADATA_FILE,
     deadline,
     MAX_RELEASE_JSON_BYTES,
+    normalizedReleaseSha256,
   )
   validateReleaseMetadata(release, normalizedCommit)
   validatePublicManifestRelationship(release)
@@ -691,6 +707,7 @@ export const verifyPublicRelease = async ({
     commit: release.commit,
     provider: release.provider,
     fileCount: release.publicManifest.files.length,
+    releaseJsonSha256,
     appBundleSha256: release.appBundle.manifestSha256,
     publicManifestSha256: release.publicManifest.manifestSha256,
     releaseBuildSha256: release.publicManifest.files.find((entry) => entry.path === RELEASE_BUILD_FILE).sha256,
@@ -701,6 +718,7 @@ export const verifyPublicReleaseFromEnv = (env = process.env, fetchImpl) => (
   verifyPublicRelease({
     publicUrl: env.PROXY_ZERO_PUBLIC_URL,
     expectedCommit: env.PROXY_ZERO_EXPECTED_COMMIT,
+    expectedReleaseSha256: env.PROXY_ZERO_EXPECTED_RELEASE_SHA256,
     ...(typeof fetchImpl === 'function' ? { fetchImpl } : {}),
   })
 )
@@ -709,7 +727,7 @@ const printSuccess = (summary) => {
   console.log(`[qa:public] PASS url=${summary.url}`)
   console.log(`[qa:public] commit=${summary.commit} provider=${summary.provider} files=${summary.fileCount}`)
   console.log(
-    `[qa:public] appBundleSha256=${summary.appBundleSha256} publicManifestSha256=${summary.publicManifestSha256} releaseBuildSha256=${summary.releaseBuildSha256}`,
+    `[qa:public] releaseJsonSha256=${summary.releaseJsonSha256} appBundleSha256=${summary.appBundleSha256} publicManifestSha256=${summary.publicManifestSha256} releaseBuildSha256=${summary.releaseBuildSha256}`,
   )
 }
 

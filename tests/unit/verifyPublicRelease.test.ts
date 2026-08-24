@@ -15,6 +15,7 @@ const {
   hashManifestFiles,
   validateManifest,
   verifyPublicRelease,
+  verifyPublicReleaseFromEnv,
 } = verifier
 
 const commit = 'b'.repeat(40)
@@ -22,6 +23,71 @@ const sha256 = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex
 const entry = (path: string, size = 1) => ({ path, size, sha256: 'a'.repeat(64) })
 const expectRejected = async (operation: () => unknown) => {
   await expect(Promise.resolve().then(operation)).rejects.toThrow()
+}
+const expectRejectedWith = async (operation: () => unknown, message: string) => {
+  await expect(Promise.resolve().then(operation)).rejects.toThrow(message)
+}
+
+type TransportCall = [string, string, string]
+
+const buildReleaseFixture = () => {
+  const appBytes = Buffer.from('<!doctype html>')
+  const appEntry = { path: 'index.html', size: appBytes.length, sha256: sha256(appBytes) }
+  const appBundle = {
+    files: [appEntry],
+    manifestSha256: hashManifestFiles([appEntry]),
+  }
+  const provenanceBytes = Buffer.from(JSON.stringify({
+    schemaVersion: 2,
+    commit,
+    dirty: false,
+    builtAt: '2026-01-01T00:00:00Z',
+    appBundle,
+  }))
+  const provenanceEntry = {
+    path: 'release-build.json',
+    size: provenanceBytes.length,
+    sha256: sha256(provenanceBytes),
+  }
+  const publicFiles = [appEntry, provenanceEntry]
+  const release = {
+    schemaVersion: 2,
+    app: 'proxy-zero',
+    version: '0.1.0',
+    commit,
+    dirty: false,
+    builtAt: '2026-01-01T00:00:00Z',
+    buildProvenance: 'release-build.json',
+    appBundle,
+    publicManifest: {
+      files: publicFiles,
+      manifestSha256: hashManifestFiles(publicFiles),
+    },
+    provider: 'local',
+  }
+  const releaseBytes = Buffer.from(JSON.stringify(release))
+  return {
+    releaseSha256: sha256(releaseBytes),
+    payloads: new Map<string, Buffer>([
+      ['/proxy/release.json', releaseBytes],
+      ['/proxy/index.html', appBytes],
+      ['/proxy/release-build.json', provenanceBytes],
+    ]),
+  }
+}
+
+const createTransport = (payloads: Map<string, Buffer>, calls: TransportCall[] = []) => {
+  const transport = async (url: URL, options: RequestInit) => {
+    calls.push([url.href, String(options.cache), String(options.redirect)])
+    const bytes = payloads.get(url.pathname) ?? Buffer.from('missing')
+    return new Response(new Uint8Array(bytes), {
+      status: payloads.has(url.pathname) ? 200 : 404,
+      headers: {
+        'content-type': url.pathname.endsWith('.json') ? 'application/json' : 'text/html',
+      },
+    })
+  }
+  return { calls, transport }
 }
 
 describe('public release verifier safety boundaries', () => {
@@ -95,73 +161,80 @@ describe('public release verifier safety boundaries', () => {
   })
 
   it('uses the streaming injectable transport and enforces the JSON decoded cap', async () => {
-    const appBytes = Buffer.from('<!doctype html>')
-    const appEntry = { path: 'index.html', size: appBytes.length, sha256: sha256(appBytes) }
-    const appBundle = {
-      files: [appEntry],
-      manifestSha256: hashManifestFiles([appEntry]),
-    }
-    const provenanceBytes = Buffer.from(JSON.stringify({
-      schemaVersion: 2,
-      commit,
-      dirty: false,
-      builtAt: '2026-01-01T00:00:00Z',
-      appBundle,
-    }))
-    const provenanceEntry = {
-      path: 'release-build.json',
-      size: provenanceBytes.length,
-      sha256: sha256(provenanceBytes),
-    }
-    const publicFiles = [appEntry, provenanceEntry]
-    const release = {
-      schemaVersion: 2,
-      app: 'proxy-zero',
-      version: '0.1.0',
-      commit,
-      dirty: false,
-      builtAt: '2026-01-01T00:00:00Z',
-      buildProvenance: 'release-build.json',
-      appBundle,
-      publicManifest: {
-        files: publicFiles,
-        manifestSha256: hashManifestFiles(publicFiles),
-      },
-      provider: 'local',
-    }
-    const payloads = new Map([
-      ['/proxy/release.json', Buffer.from(JSON.stringify(release))],
-      ['/proxy/index.html', appBytes],
-      ['/proxy/release-build.json', provenanceBytes],
-    ])
-    const calls: Array<[string, string, string]> = []
-    const transport = async (url: URL, options: RequestInit) => {
-      calls.push([url.href, String(options.cache), String(options.redirect)])
-      const bytes = payloads.get(url.pathname) ?? Buffer.from('missing')
-      return new Response(bytes, {
-        status: payloads.has(url.pathname) ? 200 : 404,
-        headers: {
-          'content-type': url.pathname.endsWith('.json') ? 'application/json' : 'text/html',
-        },
-      })
-    }
+    const fixture = buildReleaseFixture()
+    const { calls, transport } = createTransport(fixture.payloads)
 
     const result = await verifyPublicRelease({
       publicUrl: 'https://example.test/proxy///',
       expectedCommit: commit.toUpperCase(),
+      expectedReleaseSha256: fixture.releaseSha256,
       fetchImpl: transport,
     })
     expect(result.url).toBe('https://example.test/proxy')
+    expect(result.releaseJsonSha256).toBe(fixture.releaseSha256)
     expect(calls.every(([, cache, redirect]) => cache === 'no-store' && redirect === 'error')).toBe(true)
 
     const tooLargeJson = Buffer.alloc(MAX_RELEASE_JSON_BYTES + 1, 0x20)
     await expectRejected(() => verifyPublicRelease({
       publicUrl: 'https://example.test/proxy',
       expectedCommit: commit,
-      fetchImpl: async () => new Response(tooLargeJson, {
+      expectedReleaseSha256: '0'.repeat(64),
+      fetchImpl: async () => new Response(new Uint8Array(tooLargeJson), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
     }))
+  })
+
+  it('fails closed when the expected release.json sha is missing or invalid', async () => {
+    const fixture = buildReleaseFixture()
+    const calls: TransportCall[] = []
+    const { transport } = createTransport(fixture.payloads, calls)
+
+    await expectRejectedWith(() => verifyPublicRelease({
+      publicUrl: 'https://example.test/proxy',
+      expectedCommit: commit,
+      fetchImpl: transport,
+    }), 'PROXY_ZERO_EXPECTED_RELEASE_SHA256 is required.')
+    await expectRejectedWith(() => verifyPublicRelease({
+      publicUrl: 'https://example.test/proxy',
+      expectedCommit: commit,
+      expectedReleaseSha256: 'f'.repeat(63),
+      fetchImpl: transport,
+    }), 'PROXY_ZERO_EXPECTED_RELEASE_SHA256 must be a lowercase 64-character SHA-256 hex digest.')
+    await expectRejectedWith(() => verifyPublicRelease({
+      publicUrl: 'https://example.test/proxy',
+      expectedCommit: commit,
+      expectedReleaseSha256: 'F'.repeat(64),
+      fetchImpl: transport,
+    }), 'PROXY_ZERO_EXPECTED_RELEASE_SHA256 must be a lowercase 64-character SHA-256 hex digest.')
+    expect(calls).toHaveLength(0)
+  })
+
+  it('rejects a self-consistent forged release before trusting its manifest', async () => {
+    const fixture = buildReleaseFixture()
+    const approvedReleaseSha256 = sha256(Buffer.from('previous approved release.json bytes'))
+    expect(approvedReleaseSha256).not.toBe(fixture.releaseSha256)
+    const { calls, transport } = createTransport(fixture.payloads)
+
+    await expectRejectedWith(() => verifyPublicRelease({
+      publicUrl: 'https://example.test/proxy',
+      expectedCommit: commit,
+      expectedReleaseSha256: approvedReleaseSha256,
+      fetchImpl: transport,
+    }), 'release.json sha256 does not match PROXY_ZERO_EXPECTED_RELEASE_SHA256.')
+    expect(calls.map(([href]) => new URL(href).pathname)).toEqual(['/proxy/release.json'])
+  })
+
+  it('passes the expected release.json sha through the CLI environment wrapper', async () => {
+    const fixture = buildReleaseFixture()
+    const { transport } = createTransport(fixture.payloads)
+
+    const result = await verifyPublicReleaseFromEnv({
+      PROXY_ZERO_PUBLIC_URL: 'https://example.test/proxy',
+      PROXY_ZERO_EXPECTED_COMMIT: commit,
+      PROXY_ZERO_EXPECTED_RELEASE_SHA256: fixture.releaseSha256,
+    }, transport)
+    expect(result.releaseJsonSha256).toBe(fixture.releaseSha256)
   })
 })
