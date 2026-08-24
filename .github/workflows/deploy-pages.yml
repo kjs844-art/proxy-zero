@@ -1,0 +1,81 @@
+name: Deploy PROXY ZERO to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Build jobs only need source access. Pages deployment permissions are scoped
+# to the deploy job below; every unspecified token permission is none.
+permissions:
+  contents: read
+
+# Keep each ref's build-to-deploy chain ordered without blocking a manual
+# build from a different ref behind an active main deployment.
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run unit and integration tests
+        run: npm run test:run
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run production browser smoke tests
+        run: npm run qa:e2e
+
+      - name: Build and bind the final release bundle
+        run: npm run release:build
+
+      - name: Stamp release commit metadata
+        run: npm run release:metadata
+
+      - name: Enforce final asset budgets
+        run: npm run qa:size
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./dist
+
+  deploy:
+    # A manually dispatched run may select another ref for build review, but
+    # only main is allowed to publish the production site.
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,8 @@
+# GitHub Pages remains the primary host. This fallback verifies the static
+# Vite bundle without depending on a GitHub Actions run or browser downloads.
+[build]
+  command = "npm run typecheck && npm run test:run && npm run release:build && npm run release:metadata && npm run qa:size"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
