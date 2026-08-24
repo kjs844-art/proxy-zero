@@ -92,6 +92,28 @@ describe('combatReducer', () => {
     expect(current.actors.elite.activeAttack?.hitRecords.han?.count).toBe(1)
   })
 
+  it('matches large and split sweeps when wake immunity expires during the active interval', () => {
+    const initial = state(
+      actor({ id: 'elite', team: 'enemies', position: { x: 0, y: 0, z: 0 } }),
+      actor({
+        id: 'han',
+        position: { x: 150, y: 0, z: 0 },
+        mode: 'getting-up',
+        wakeInvulnerabilityRemainingMs: 100,
+      }),
+    )
+    initial.playerId = 'han'
+
+    const large = combatReducer(initial, [attack('elite', 'elite-lane-charge')], 221)
+    let split = combatReducer(initial, [attack('elite', 'elite-lane-charge')], 100)
+    split = combatReducer(split, [], 121)
+
+    expect(large.actors.han.hp).toBe(80)
+    expect(split.actors.han.hp).toBe(80)
+    expect(large.actors.elite.activeAttack?.hitRecords.han?.count).toBe(1)
+    expect(split.actors.elite.activeAttack?.hitRecords.han?.count).toBe(1)
+  })
+
   it('applies one reducer-owned environmental impact atomically', () => {
     const falling = state(actor({
       hp: 30,
