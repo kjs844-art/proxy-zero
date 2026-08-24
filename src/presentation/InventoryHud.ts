@@ -4,12 +4,11 @@ import { ITEM_ORDER } from '../content/items'
 import type { ItemInventory } from '../domain/items/itemReducer'
 import type { ItemId } from '../domain/items/types'
 
-const SAFE_MARGIN = 8
-const SLOT_WIDTH = 80
-const SLOT_HEIGHT = 38
-const SLOT_GAP = 6
-const SLOT_Y = 48
-const SLOT_START_X = 640 - SAFE_MARGIN - SLOT_WIDTH * 2 - SLOT_GAP
+const SLOT_WIDTH = 72
+const SLOT_HEIGHT = 32
+const SLOT_GAP = 8
+const SLOT_Y = 10
+const SLOT_START_X = 478
 const SELECTED_STROKE = 0x67e8f9
 const UNSELECTED_STROKE = 0x334155
 
@@ -28,13 +27,14 @@ export interface InventoryHudSnapshot {
     itemId: ItemId
     count: 0 | 1
     selected: boolean
+    label: string
     bounds: { x: number; y: number; width: number; height: number }
   }>
 }
 
 const itemLabel: Readonly<Record<ItemId, string>> = {
-  emp: 'EMP',
-  'repair-kit': 'REPAIR',
+  emp: 'Q EMP',
+  'repair-kit': 'E REPAIR',
 }
 
 /** Always-visible, presentation-only two-slot inventory HUD. */
@@ -53,20 +53,20 @@ export class InventoryHud {
           SLOT_WIDTH,
           SLOT_HEIGHT,
           0x071018,
-          0.88,
+          0.94,
         )
-        .setDepth(10_000)
+        .setDepth(10_001)
         .setScrollFactor(0)
       const label = scene.add
         .text(x + SLOT_WIDTH / 2, SLOT_Y + SLOT_HEIGHT / 2, '', {
           align: 'center',
           color: '#e8fbff',
           fontFamily: 'monospace',
-          fontSize: '11px',
+          fontSize: '10px',
           fontStyle: 'bold',
         })
         .setOrigin(0.5)
-        .setDepth(10_001)
+        .setDepth(10_002)
         .setScrollFactor(0)
       return {
         itemId,
@@ -101,6 +101,7 @@ export class InventoryHud {
         itemId: slot.itemId,
         count: slot.count,
         selected: slot.selected,
+        label: `${itemLabel[slot.itemId]}  ×${slot.count}`,
         bounds: { ...slot.bounds },
       })),
     }

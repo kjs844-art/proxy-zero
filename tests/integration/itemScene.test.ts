@@ -56,8 +56,8 @@ describe('Task 10 item scene presentation', () => {
     expect(hud.snapshot()).toMatchObject({
       ownedObjectCount: 4,
       slots: [
-        { itemId: 'emp', count: 1, selected: false },
-        { itemId: 'repair-kit', count: 1, selected: true },
+        { itemId: 'emp', count: 1, selected: false, label: 'Q EMP  ×1' },
+        { itemId: 'repair-kit', count: 1, selected: true, label: 'E REPAIR  ×1' },
       ],
     })
 

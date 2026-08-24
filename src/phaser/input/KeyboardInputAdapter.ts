@@ -53,6 +53,11 @@ export class KeyboardInputAdapter {
     }
   }
 
+  /** Focus/visibility owner hook; clears held movement and queued raw edges. */
+  clear(): void {
+    this.resetInput()
+  }
+
   /** Clears input state and removes every listener owned by this adapter. */
   dispose(): void {
     this.listenerTarget.removeEventListener('keydown', this.onKeyDown)

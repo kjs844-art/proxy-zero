@@ -22,6 +22,7 @@ import {
   combatReducer,
   type CombatActor,
   type CombatCommand,
+  type CombatEvent,
   type CombatState,
 } from '../../domain/combat/combatReducer'
 import { resolveCombo, type AcceptedAttackInput } from '../../domain/combat/comboResolver'
@@ -93,6 +94,14 @@ import {
 } from '../../domain/waves/waveDirector'
 import { HudController } from '../../presentation/HudController'
 import { InventoryHud } from '../../presentation/InventoryHud'
+import { AudioBus, type AudioBackend } from '../../presentation/AudioBus'
+import {
+  CombatVfx,
+  planPresentationBatch,
+  type ActorPresentationPoint,
+  type HazardWarningId,
+} from '../../presentation/CombatVfx'
+import { PerformanceGovernor } from '../../presentation/PerformanceGovernor'
 import { CheckpointStore, type StorageLike } from '../../runtime/CheckpointStore'
 import { FixedStepRunner } from '../../runtime/FixedStepRunner'
 import { SeededRandom } from '../../runtime/SeededRandom'
@@ -263,6 +272,16 @@ export class CombatScene extends Phaser.Scene {
   private readonly actorViews = new Map<string, ActorView>()
   private hud: HudController | null = null
   private inventoryHud: InventoryHud | null = null
+  private combatVfx: CombatVfx | null = null
+  private audioBus: AudioBus | null = null
+  private readonly performanceGovernor = new PerformanceGovernor()
+  private presentationBatchId = 0
+  private pendingItemPresentationEffects: ItemEffect[] = []
+  private presentationPaused = false
+  private discardNextRenderDelta = false
+  private windowFocused = true
+  private canvasFocused = true
+  private documentVisible = true
   private itemRuntime: ItemRuntimeState = createItemRuntimeState()
   private authoredItemPickups: ItemPickupSnapshot[] = []
   private readonly itemTargetClasses = new Map<string, EmpTargetClass>()
@@ -271,7 +290,6 @@ export class CombatScene extends Phaser.Scene {
   private finished = false
   private checkpointStore = new CheckpointStore()
   private zoneCheckpoint: RunCheckpoint | null = null
-  private lifeText: Phaser.GameObjects.Text | null = null
   private gameOverText: Phaser.GameObjects.Text | null = null
   private zoneClearText: Phaser.GameObjects.Text | null = null
   private zoneRenderer: ZoneRenderer | null = null
@@ -298,6 +316,8 @@ export class CombatScene extends Phaser.Scene {
   private pendingCombatResult: 'enemy-defeated' | 'debug-clear' = 'enemy-defeated'
   private sceneCreated = false
   private playerItemUseStartedAtMs: number | null = null
+  private focusEventTarget: EventTarget | null = null
+  private visibilityEventTarget: EventTarget | null = null
 
   constructor(private readonly services: GameServices) {
     super({ key: SCENE_KEYS.Combat })
@@ -335,6 +355,14 @@ export class CombatScene extends Phaser.Scene {
     this.sceneCreated = true
     this.acceptedAttackHistory = []
     this.playerItemUseStartedAtMs = null
+    this.presentationBatchId = 0
+    this.pendingItemPresentationEffects = []
+    this.presentationPaused = false
+    this.discardNextRenderDelta = false
+    this.windowFocused = true
+    this.canvasFocused = true
+    this.documentVisible = true
+    this.performanceGovernor.resetSampling()
     this.initializeZoneRuntime()
 
     this.zoneRenderer = new ZoneRenderer(this, this.currentZone.arena)
@@ -345,16 +373,12 @@ export class CombatScene extends Phaser.Scene {
       character.id,
       new ActorView(this, this.state.actors[character.id], character.id),
     )
-    this.hud = new HudController(this, character.id)
-    this.inventoryHud = new InventoryHud(this, this.itemRuntime.inventory)
-    this.lifeText = this.add
-      .text(524, 18, 'LIFE ×2', {
-        color: '#f8fafc',
-        fontFamily: 'monospace',
-        fontSize: '16px',
-        fontStyle: 'bold',
-      })
-      .setDepth(200)
+    this.hud = new HudController(this, character.id, this.itemRuntime.inventory)
+    this.inventoryHud = this.hud.inventoryHud
+    this.combatVfx = new CombatVfx(this)
+    const soundBackend = (this as unknown as { sound?: AudioBackend }).sound
+    this.audioBus = new AudioBus(soundBackend)
+    this.audioBus.startCombatLoop()
     this.gameOverText = this.add
       .text(320, 108, '', {
         align: 'center',
@@ -391,6 +415,16 @@ export class CombatScene extends Phaser.Scene {
       () => this.state.elapsedMs,
     )
     canvas.addEventListener('pointerdown', this.focusCanvas)
+    canvas.addEventListener('blur', this.onCanvasBlur)
+    canvas.addEventListener('focus', this.onCanvasFocus)
+    this.focusEventTarget = canvas.ownerDocument.defaultView
+    this.focusEventTarget?.addEventListener('blur', this.onWindowBlur)
+    this.focusEventTarget?.addEventListener('focus', this.onWindowFocus)
+    this.visibilityEventTarget = canvas.ownerDocument
+    this.documentVisible = !(
+      canvas.ownerDocument.hidden || canvas.ownerDocument.visibilityState === 'hidden'
+    )
+    this.visibilityEventTarget.addEventListener('visibilitychange', this.onVisibilityChange)
     this.input.keyboard?.on('keydown', this.onDebugKeyDown)
     this.runner = new FixedStepRunner(this.stepDomain)
 
@@ -401,7 +435,20 @@ export class CombatScene extends Phaser.Scene {
   }
 
   update(_time: number, deltaMs: number): void {
-    this.runner?.advance(deltaMs)
+    if (this.presentationPaused) {
+      if (!this.finished) this.syncPresentation()
+      return
+    }
+    if (this.discardNextRenderDelta) {
+      this.discardNextRenderDelta = false
+      if (!this.finished) this.syncPresentation()
+      return
+    }
+    const renderDeltaMs = finiteDelta(deltaMs)
+    this.performanceGovernor.sample(renderDeltaMs)
+    this.runner?.advance(renderDeltaMs)
+    this.combatVfx?.update(renderDeltaMs)
+    this.hud?.advance(renderDeltaMs)
     if (!this.finished) this.syncPresentation()
   }
 
@@ -425,6 +472,9 @@ export class CombatScene extends Phaser.Scene {
       fixedStepMs,
     )
     const activeDeltaMs = fixedStepMs - frozenMs
+    const trainPhaseAtStart = getTrainHazardPhase(this.trainHazardState)
+    const puddlePhaseAtStart = getPuddlePhase(this.tunnelHazardState)
+    const tunnelTrainPhaseAtStart = getTunnelTrainPhase(this.tunnelHazardState)
     let fallEffect: PlayerFellEffect | null = null
     let tunnelEffects: readonly TunnelHazardEffect[] = []
     if (activeDeltaMs > 0) {
@@ -568,6 +618,12 @@ export class CombatScene extends Phaser.Scene {
       this.recordAcceptedAttack(this.actionQueue.accept(bufferedAction))
     }
 
+    this.consumePresentationBatch(this.collectHazardWarningEdges(
+      trainPhaseAtStart,
+      puddlePhaseAtStart,
+      tunnelTrainPhaseAtStart,
+    ))
+
     if (this.playerWasDefeated()) {
       this.handlePlayerDefeat()
       if (this.runState.status === 'game-over') return
@@ -650,6 +706,15 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private applyItemPresentationEffects(effects: readonly ItemEffect[]): void {
+    this.pendingItemPresentationEffects.push(...effects.map((effect): ItemEffect => {
+      if (effect.type === 'emp-applied') {
+        return { ...effect, targets: effect.targets.map((target) => ({ ...target })) }
+      }
+      if (effect.type === 'emp-expired') {
+        return { ...effect, targetIds: [...effect.targetIds] }
+      }
+      return { ...effect }
+    }))
     if (effects.some((effect) =>
       effect.type === 'pickup-acquired' ||
       effect.type === 'repair-requested' ||
@@ -663,6 +728,74 @@ export class CombatScene extends Phaser.Scene {
       } else if (effect.type === 'emp-expired') {
         for (const targetId of effect.targetIds) this.resetEmpActorPresentation(targetId)
       }
+    }
+  }
+
+  private collectHazardWarningEdges(
+    trainBefore: ReturnType<typeof getTrainHazardPhase>,
+    puddleBefore: ReturnType<typeof getPuddlePhase>,
+    tunnelTrainBefore: ReturnType<typeof getTunnelTrainPhase>,
+  ): HazardWarningId[] {
+    const warnings: HazardWarningId[] = []
+    if (
+      this.currentZone.id === 'service-train' &&
+      trainBefore !== 'warning' &&
+      getTrainHazardPhase(this.trainHazardState) === 'warning'
+    ) {
+      warnings.push('train-gap')
+    }
+    if (this.currentZone.id === 'flooded-tunnel') {
+      if (puddleBefore !== 'warning' && getPuddlePhase(this.tunnelHazardState) === 'warning') {
+        warnings.push('electric-puddle')
+      }
+      if (
+        tunnelTrainBefore !== 'warning' &&
+        getTunnelTrainPhase(this.tunnelHazardState) === 'warning'
+      ) {
+        warnings.push('tunnel-train')
+      }
+    }
+    return warnings
+  }
+
+  private captureActorPresentationPoints(): Readonly<Record<string, ActorPresentationPoint>> {
+    const entries = Object.values(this.state.actors).map((actor) => [
+      actor.id,
+      Object.freeze({
+        x: Math.round(actor.position.x),
+        y: Math.round(actor.position.y - actor.position.z - Math.max(34, actor.body.height * 0.9)),
+        facing: actor.facing,
+      }),
+    ] as const)
+    return Object.freeze(Object.fromEntries(entries))
+  }
+
+  /** Final reducer-event consumer, called before player respawn or enemy view deletion. */
+  private consumePresentationBatch(warningIds: readonly HazardWarningId[]): void {
+    const events = this.state.events.map((event) => Object.freeze({ ...event })) as CombatEvent[]
+    const itemEffects = this.pendingItemPresentationEffects.splice(0)
+    if (events.length === 0 && itemEffects.length === 0 && warningIds.length === 0) return
+    const plan = planPresentationBatch({
+      events,
+      itemEffects,
+      warningIds,
+      points: this.captureActorPresentationPoints(),
+      playerId: this.state.playerId,
+      lowEffect: this.performanceGovernor.mode === 'low-effect' || this.prefersReducedMotion(),
+    })
+    this.presentationBatchId += 1
+    this.combatVfx?.consume(this.presentationBatchId, plan)
+    this.audioBus?.consumeBatch(this.presentationBatchId, plan.cues)
+    this.hud?.registerConfirmedHits(plan.confirmedHitCount)
+  }
+
+  private prefersReducedMotion(): boolean {
+    try {
+      return this.focusedCanvas?.ownerDocument.defaultView?.matchMedia?.(
+        '(prefers-reduced-motion: reduce)',
+      ).matches === true
+    } catch {
+      return false
     }
   }
 
@@ -684,10 +817,11 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private replaceInventoryHud(): void {
-    this.inventoryHud?.dispose()
-    this.inventoryHud = this.sceneCreated
-      ? new InventoryHud(this, this.itemRuntime.inventory)
+    this.hud?.dispose()
+    this.hud = this.sceneCreated
+      ? new HudController(this, this.character.id, this.itemRuntime.inventory)
       : null
+    this.inventoryHud = this.hud?.inventoryHud ?? null
   }
 
   private empStatusCommands(): CombatCommand[] {
@@ -1415,9 +1549,17 @@ export class CombatScene extends Phaser.Scene {
       })
     }
     const player = this.state.actors[this.state.playerId]
-    if (player) this.hud?.update(player)
-    this.inventoryHud?.update(this.itemRuntime.inventory)
-    this.lifeText?.setText(`LIFE ×${this.runState.lives}`)
+    if (player) {
+      this.hud?.update({
+        characterId: this.character.id,
+        hp: player.hp,
+        maxHp: player.maxHp,
+        meter: player.meter,
+        lives: this.runState.lives,
+        inventory: this.itemRuntime.inventory,
+        encounter: this.encounterHudSnapshot(),
+      })
+    }
     if (this.runState.status !== 'game-over') {
       this.gameOverText?.setVisible(false)
       return
@@ -1426,6 +1568,27 @@ export class CombatScene extends Phaser.Scene {
       ? 'GAME OVER\nENTER · CONTINUE'
       : 'GAME OVER\nCONTINUE EXHAUSTED'
     this.gameOverText?.setText(prompt).setVisible(true)
+  }
+
+  private encounterHudSnapshot(): { label: string; hp: number; maxHp: number } | null {
+    const bossId = [...this.bossBrains.keys()].sort()[0]
+    const eliteId = [...this.eliteBrains.keys()].sort()[0]
+    const actorId = bossId ?? eliteId
+    if (!actorId) return null
+    const actor = this.state.actors[actorId]
+    if (!actor || actor.mode === 'defeated') return null
+    return {
+      label: bossId ? 'SILO DREDGER' : 'RAIL WARDEN',
+      hp: actor.hp,
+      maxHp: actor.maxHp,
+    }
+  }
+
+  private resetTransientPresentation(): void {
+    this.pendingItemPresentationEffects = []
+    this.combatVfx?.resetTransient()
+    this.audioBus?.resetTransient()
+    this.hud?.resetTransient()
   }
 
   private telegraphFor(actorId: string): ActorTelegraphSnapshot | null {
@@ -1467,6 +1630,7 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private respawnPlayerInCurrentWave(): void {
+    this.hud?.resetCombo()
     this.clearEmpTimers()
     const player = this.state.actors[this.state.playerId]
     player.hp = player.maxHp
@@ -1522,6 +1686,7 @@ export class CombatScene extends Phaser.Scene {
     const character = characters.find((entry) => entry.id === this.runState.characterId)
     if (!character) return
     this.character = character
+    this.resetTransientPresentation()
     this.clearEnemyResources()
     this.currentZone = getPlayableStageOneZone(this.runState.zoneId as PlayableStageOneZoneId)
     this.authoredItemPickups = this.cloneAuthoredPickups(this.currentZone.pickups)
@@ -1633,6 +1798,7 @@ export class CombatScene extends Phaser.Scene {
 
   /** The single scene-owned zone-entry checkpoint and runtime handoff location. */
   private handleZoneEntered(entry: Readonly<ZoneEntry>): void {
+    this.resetTransientPresentation()
     this.zoneCheckpoint = immutableCheckpoint({
       schemaVersion: CHECKPOINT_SCHEMA_VERSION,
       characterId: this.runState.characterId,
@@ -1699,6 +1865,7 @@ export class CombatScene extends Phaser.Scene {
 
   private debugClearCurrentZone(): void {
     if (this.zonePhase === 'zone-clear' || this.zonePhase === 'zone-handoff') return
+    this.resetTransientPresentation()
     this.clearEnemyResources()
     this.clearEmpTimers()
     this.pendingCombatResult = 'debug-clear'
@@ -1712,6 +1879,71 @@ export class CombatScene extends Phaser.Scene {
 
   private readonly focusCanvas = (): void => {
     this.focusedCanvas?.focus({ preventScroll: true })
+    this.windowFocused = true
+    this.canvasFocused = true
+    this.reconcilePresentationPause()
+  }
+
+  private readonly onCanvasBlur = (): void => {
+    this.canvasFocused = false
+    this.reconcilePresentationPause()
+  }
+
+  private readonly onCanvasFocus = (): void => {
+    this.canvasFocused = true
+    this.reconcilePresentationPause()
+  }
+
+  private readonly onWindowBlur = (): void => {
+    this.windowFocused = false
+    this.reconcilePresentationPause()
+  }
+
+  private readonly onWindowFocus = (): void => {
+    this.windowFocused = true
+    if (this.focusedCanvas?.ownerDocument.activeElement === this.focusedCanvas) {
+      this.canvasFocused = true
+    }
+    this.reconcilePresentationPause()
+  }
+
+  private readonly onVisibilityChange = (): void => {
+    const documentTarget = this.visibilityEventTarget as (EventTarget & {
+      visibilityState?: string
+      hidden?: boolean
+    }) | null
+    this.documentVisible = !(
+      documentTarget?.hidden === true || documentTarget?.visibilityState === 'hidden'
+    )
+    this.reconcilePresentationPause()
+  }
+
+  private reconcilePresentationPause(): void {
+    if (!this.windowFocused || !this.canvasFocused || !this.documentVisible) {
+      this.pausePresentation()
+    } else {
+      this.resumePresentation()
+    }
+  }
+
+  private pausePresentation(): void {
+    if (this.presentationPaused) return
+    this.presentationPaused = true
+    this.runner?.pause()
+    this.inputAdapter?.clear()
+    this.actionQueue.clear()
+    this.audioBus?.pause()
+    this.performanceGovernor.resetSampling()
+    this.discardNextRenderDelta = true
+  }
+
+  private resumePresentation(): void {
+    if (!this.presentationPaused) return
+    this.presentationPaused = false
+    this.runner?.resume()
+    void this.audioBus?.resume()
+    this.performanceGovernor.resetSampling()
+    this.discardNextRenderDelta = true
   }
 
   private readonly onDebugKeyDown = (event: KeyboardEvent): void => {
@@ -1726,7 +1958,14 @@ export class CombatScene extends Phaser.Scene {
     this.inputAdapter = null
     this.actionQueue.clear()
     this.focusedCanvas?.removeEventListener('pointerdown', this.focusCanvas)
+    this.focusedCanvas?.removeEventListener('blur', this.onCanvasBlur)
+    this.focusedCanvas?.removeEventListener('focus', this.onCanvasFocus)
+    this.focusEventTarget?.removeEventListener('blur', this.onWindowBlur)
+    this.focusEventTarget?.removeEventListener('focus', this.onWindowFocus)
+    this.visibilityEventTarget?.removeEventListener('visibilitychange', this.onVisibilityChange)
     this.focusedCanvas = null
+    this.focusEventTarget = null
+    this.visibilityEventTarget = null
     this.input.keyboard?.off('keydown', this.onDebugKeyDown)
     for (const view of this.actorViews.values()) view.dispose()
     this.actorViews.clear()
@@ -1749,9 +1988,11 @@ export class CombatScene extends Phaser.Scene {
     this.tunnelBackdrop = null
     this.hud?.dispose()
     this.hud = null
-    this.inventoryHud?.dispose()
     this.inventoryHud = null
-    this.lifeText = null
+    this.combatVfx?.dispose()
+    this.combatVfx = null
+    this.audioBus?.dispose()
+    this.audioBus = null
     this.gameOverText = null
     this.zoneClearText = null
     this.zoneCheckpoint = null
@@ -1762,6 +2003,12 @@ export class CombatScene extends Phaser.Scene {
     this.pendingCombatResult = 'enemy-defeated'
     this.acceptedAttackHistory = []
     this.playerItemUseStartedAtMs = null
+    this.pendingItemPresentationEffects = []
+    this.presentationPaused = false
+    this.discardNextRenderDelta = false
+    this.windowFocused = true
+    this.canvasFocused = true
+    this.documentVisible = true
     this.sceneCreated = false
   }
 }

@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "cues": [
+    {
+      "id": "attack-light",
+      "path": "attack-light.wav",
+      "seed": 8209,
+      "sampleRate": 22050,
+      "channels": 1,
+      "duration": 0.12,
+      "bytes": 5336,
+      "sha256": "58beca3ef77610be706a7921243bfc856ae4f14afb4880a175b854b01857b16f",
+      "source": "procedural-pcm16"
+    },
+    {
+      "id": "attack-heavy",
+      "path": "attack-heavy.wav",
+      "seed": 8210,
+      "sampleRate": 22050,
+      "channels": 1,
+      "duration": 0.17,
+      "bytes": 7542,
+      "sha256": "a69441075eb024998a19f7a3cc093492e554c923d721867d3e9a52a1bb2ab95c",
+      "source": "procedural-pcm16"
+    },
+    {
+      "id": "attack-finisher",
+      "path": "attack-finisher.wav",
+      "seed": 8211,
+      "sampleRate": 22050,
+      "channels": 1,
+      "duration": 0.24,
+      "bytes": 10628,
+      "sha256": "a43e0ca3050082724a056e27054dd8c6dabc9f03c639c93897287170abee69f6",
+      "source": "procedural-pcm16"
+    },
+    {
+      "id": "hit-light",
+      "path": "hit-light.wav",
+      "seed": 8225,
+      "sampleRate": 22050,
+      "channels": 1,
+      "duration": 0.1,
+      "bytes": 4454,
+      "sha256": "bf464e741faa58ecc1d97cd4f24f67464b22f4db05aab2f469c1e1648d4d22c9",
+      "source": "procedural-pcm16"
+    },
+    {
+      "id": "hit-heavy",
+      "path": "hit-heavy.wav",
+      "seed": 8226,
+      "sampleRate": 22050,
+      "channels": 1,
+      "duration": 0.16,
+      "bytes": 7100,
+      "sha256": "c7a0b063112020d5cf4dce7a7d89d42dbb92a68f15fc2540463afe9a44804867",
+      "source": "procedural-pcm16"
+    },
+    {
+      "id": "hit-finisher",
+      "path": "hit-finisher.wav",
+      "seed": 8227,
+      "sampleRate": 22050,
+      "channels": 1,
+      "duration": 0.24,
+      "bytes": 10628,
+      "sha256": "8d3df7abce0e1cb9ad8cf6675e5910431f4fb12f504bcdbdde1e0b163cadc57f",
+      "source": "procedural-pcm16"
+    },
+    {
+      "id": "knockdown",
+      "path": "knockdown.wav",
+      "seed": 8241,
+      "sampleRate": 22050,
+      "channels": 1,
+      "duration": 0.28,
+      "bytes": 12392,
+      "sha256": "e7b5940d4067400e1d44cbcbd8e43e28c077e42f1858c7dd54ba63d256d85955",
+      "source": "procedural-pcm16"
+    },
+    {
+      "id": "defeat",
+      "path": "defeat.wav",
+      "seed": 8242,
+      "sampleRate": 22050,
+      "channels": 1,
+      "duration": 0.48,
+      "bytes": 21212,
+      "sha256": "468936bab7b6da815d236082a1751a14ba009bf3dda8fc6224253274675fc75d",
+      "source": "procedural-pcm16"
+    },
+    {
+      "id": "pickup",
+      "path": "pickup.wav",
+      "seed": 8257,
+      "sampleRate": 22050,
+      "channels": 1,
+      "duration": 0.24,
+      "bytes": 10628,
+      "sha256": "2445280b4bf8a7e52d08bf0de42fbedf47f57dc21629afb2262184bf6e47d097",
+      "source": "procedural-pcm16"
+    },
+    {
+      "id": "repair",
+      "path": "repair.wav",
+      "seed": 8258,
+      "sampleRate": 22050,
+      "channels": 1,
+      "duration": 0.42,
+      "bytes": 18566,
+      "sha256": "1d2cfab798d6b0947021c81b8a74d30294a2254508393ee08e96eac97cb90ae3",
+      "source": "procedural-pcm16"
+    },
+    {
+      "id": "emp",
+      "path": "emp.wav",
+      "seed": 8259,
+      "sampleRate": 22050,
+      "channels": 1,
+      "duration": 0.46,
+      "bytes": 20330,
+      "sha256": "85179211874f67cf60bc1830877cdd0eb3d1ab085a63cb6250c41f9e8211e585",
+      "source": "procedural-pcm16"
+    },
+    {
+      "id": "hazard-warning",
+      "path": "hazard-warning.wav",
+      "seed": 8273,
+      "sampleRate": 22050,
+      "channels": 1,
+      "duration": 0.52,
+      "bytes": 22976,
+      "sha256": "260340e01d5384edc453a97cd880092a8865fe4848cd479326d4f8e929a13501",
+      "source": "procedural-pcm16"
+    },
+    {
+      "id": "hazard-impact",
+      "path": "hazard-impact.wav",
+      "seed": 8274,
+      "sampleRate": 22050,
+      "channels": 1,
+      "duration": 0.3,
+      "bytes": 13274,
+      "sha256": "bd9ea45178ebbb366939956c7c04173e9ca22a006b8793aff95503e56bb491a1",
+      "source": "procedural-pcm16"
+    },
+    {
+      "id": "combat-loop",
+      "path": "combat-loop.wav",
+      "seed": 8289,
+      "sampleRate": 22050,
+      "channels": 1,
+      "duration": 4,
+      "bytes": 176444,
+      "sha256": "9954b1ec94cd58bd7debcf5e3a34585c545100427917cee822de476787090e3c",
+      "source": "procedural-pcm16"
+    }
+  ]
+}

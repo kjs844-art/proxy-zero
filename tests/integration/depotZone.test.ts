@@ -115,6 +115,8 @@ import { ZoneRenderer } from '../../src/phaser/world/ZoneRenderer'
 import { TrainBackdrop } from '../../src/phaser/world/TrainBackdrop'
 import { CombatScene } from '../../src/phaser/scenes/CombatScene'
 import { InventoryHud } from '../../src/presentation/InventoryHud'
+import type { CombatVfx } from '../../src/presentation/CombatVfx'
+import type { HudController } from '../../src/presentation/HudController'
 
 const content = {
   getVariant: getEnemyVariant,
@@ -571,6 +573,9 @@ type CombatSceneHarness = {
   zoneClearText: { visible: boolean } | null
   inputAdapter: { dispose(): void; readFrame(): InputFrame } | null
   inventoryHud: InventoryHud | null
+  hud: HudController | null
+  combatVfx: CombatVfx | null
+  presentationBatchId: number
   itemRuntime: ItemRuntimeState
   authoredItemPickups: Array<{
     id: string
@@ -591,7 +596,11 @@ type CombatSceneHarness = {
     }
   }
   create(): void
+  update(time: number, deltaMs: number): void
   stepDomain(): void
+  consumePresentationBatch(warningIds: readonly []): void
+  handlePlayerDefeat(): void
+  handleZoneEntered(entry: { zoneId: 'service-train'; zoneStartWaveId: string }): void
   recordEnemyDefeats(enemyIds: readonly string[]): void
   resolvePlayerFacingAssist(command: Readonly<CombatCommand>): -1 | 1 | null
   applyEnemyIntent(enemyId: string, intent: Readonly<EnemyIntent>): Partial<CombatCommand>
@@ -1335,5 +1344,129 @@ describe('CombatScene N-9 Depot orchestration', () => {
     expect(scene.enemyBrains.size).toBe(0)
     expect(scene.enemyRngs.size).toBe(0)
     expect(scene.input.keyboard?.off).toHaveBeenCalledWith('keydown', expect.any(Function))
+  })
+})
+
+describe('Task 14 CombatScene presentation ownership', () => {
+  it('pauses domain and presentation on focus loss and discards the first resumed delta', () => {
+    const { scene } = createLiveScene()
+    scene.update(0, fixedStepMs)
+    const beforeBlurMs = scene.state.elapsedMs
+    const canvas = (scene as unknown as { game: { canvas: EventTarget } }).game.canvas
+
+    canvas.dispatchEvent(new Event('blur'))
+    scene.update(0, 1_000)
+    expect(scene.state.elapsedMs).toBe(beforeBlurMs)
+
+    canvas.dispatchEvent(new Event('focus'))
+    scene.update(0, 1_000)
+    expect(scene.state.elapsedMs).toBe(beforeBlurMs)
+    scene.update(0, fixedStepMs)
+    expect(scene.state.elapsedMs).toBeGreaterThan(beforeBlurMs)
+  })
+
+  it('does not resume on visibility restoration while the canvas remains blurred', () => {
+    const { scene } = createLiveScene()
+    scene.update(0, fixedStepMs)
+    const beforeBlurMs = scene.state.elapsedMs
+    const canvas = (scene as unknown as {
+      game: {
+        canvas: EventTarget & {
+          ownerDocument: EventTarget & { hidden?: boolean; visibilityState?: string }
+        }
+      }
+    }).game.canvas
+    const documentTarget = canvas.ownerDocument
+
+    canvas.dispatchEvent(new Event('blur'))
+    documentTarget.hidden = true
+    documentTarget.visibilityState = 'hidden'
+    documentTarget.dispatchEvent(new Event('visibilitychange'))
+    documentTarget.hidden = false
+    documentTarget.visibilityState = 'visible'
+    documentTarget.dispatchEvent(new Event('visibilitychange'))
+    scene.update(0, 1_000)
+    scene.update(0, fixedStepMs)
+    expect(scene.state.elapsedMs).toBe(beforeBlurMs)
+
+    canvas.dispatchEvent(new Event('focus'))
+    scene.update(0, 1_000)
+    expect(scene.state.elapsedMs).toBe(beforeBlurMs)
+    scene.update(0, fixedStepMs)
+    expect(scene.state.elapsedMs).toBeGreaterThan(beforeBlurMs)
+  })
+
+  it('keeps the fatal burst alive across same-wave respawn', () => {
+    const { scene } = createLiveScene()
+    const player = scene.state.actors.han
+    player.hp = 0
+    player.mode = 'defeated'
+    scene.runState = { ...scene.runState, hp: 0, lives: 2 }
+    scene.hud?.registerConfirmedHits(3)
+    scene.state.events = [{
+      type: 'actor-defeated', atMs: scene.state.elapsedMs, actorId: 'han',
+      attackerId: 'enemy', attackId: 'enemy-finisher', strength: 3,
+    }]
+
+    scene.consumePresentationBatch([])
+    const effectCount = scene.combatVfx?.snapshot().activeEffectCount ?? 0
+    expect(effectCount).toBeGreaterThan(0)
+    scene.handlePlayerDefeat()
+
+    expect(scene.runState.lives).toBe(1)
+    expect(scene.state.actors.han.mode).toBe('idle')
+    expect(scene.combatVfx?.snapshot().activeEffectCount).toBe(effectCount)
+    expect(scene.hud?.snapshot().combo).toBe(0)
+  })
+
+  it('captures a defeated actor point before the actor view and domain entry are removed', () => {
+    const { scene } = createLiveScene()
+    scene.stepDomain()
+    const enemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
+    const enemy = scene.state.actors[enemyId]
+    enemy.position = { x: 412, y: 258, z: 0 }
+    enemy.hp = 0
+    enemy.mode = 'defeated'
+    scene.state.events = [{
+      type: 'actor-defeated', atMs: scene.state.elapsedMs, actorId: enemyId,
+      attackerId: 'han', attackId: 'han-right-foot', strength: 3,
+    }]
+    const consume = vi.spyOn(scene.combatVfx as CombatVfx, 'consume')
+
+    scene.consumePresentationBatch([])
+    scene.recordEnemyDefeats([enemyId])
+
+    expect(scene.state.actors[enemyId]).toBeUndefined()
+    expect(consume).toHaveBeenCalledOnce()
+    const plan = consume.mock.calls[0][1]
+    expect(plan.effects).toContainEqual(expect.objectContaining({
+      type: 'burst',
+      point: expect.objectContaining({ x: 412 }),
+    }))
+  })
+
+  it('resets transient combo on Continue and zone entry without rewinding batch ids', () => {
+    const { scene } = createLiveScene()
+    scene.presentationBatchId = 9
+    scene.hud?.registerConfirmedHits(3)
+    scene.runState = {
+      ...scene.runState,
+      lives: 0,
+      hp: 0,
+      status: 'game-over',
+      continueAvailable: true,
+    }
+
+    scene.tryContinue()
+    expect(scene.hud?.snapshot().combo).toBe(0)
+    expect(scene.presentationBatchId).toBe(9)
+
+    scene.hud?.registerConfirmedHits(2)
+    scene.handleZoneEntered({
+      zoneId: 'service-train',
+      zoneStartWaveId: 'service-train-wave-1',
+    })
+    expect(scene.hud?.snapshot().combo).toBe(0)
+    expect(scene.presentationBatchId).toBe(9)
   })
 })

@@ -10,6 +10,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "art:sprites": "node scripts/generate-sprite-atlas.mjs",
+    "art:audio": "node scripts/generate-audio.mjs",
     "verify": "npm run typecheck && npm run test:run && npm run build",
     "qa:e2e": "node -e \"console.log('qa:e2e deferred: end-to-end checks are not implemented in Task 1.')\"",
     "qa:fps": "node -e \"console.log('qa:fps deferred: performance checks are not implemented in Task 1.')\"",

@@ -79,11 +79,9 @@ export class ActorView {
       .setFlipX(actor.facing === -1)
       .setAlpha(1)
 
-    if (actor.mode === 'hitstun') {
-      this.image.setTintFill(0xffffff)
-    } else {
-      this.image.clearTint()
-    }
+    // Hit flashes are event-timed by CombatVfx; a state-wide tint would persist
+    // for the complete hitstun window (up to ~480 ms) and wash out the sprite art.
+    this.image.clearTint()
   }
 
   dispose(): void {

@@ -6,6 +6,7 @@ import {
   SCENE_KEYS,
 } from '../../app/GameServices'
 import { ACTOR_ATLAS_KEY } from '../../content/animations'
+import { AUDIO_CUE_IDS } from '../../presentation/AudioBus'
 
 export class BootScene extends Phaser.Scene {
   constructor(private readonly services: GameServices) {
@@ -18,6 +19,9 @@ export class BootScene extends Phaser.Scene {
       './assets/sprites/actors.multiatlas.json',
       './assets/sprites/',
     )
+    for (const cueId of AUDIO_CUE_IDS) {
+      this.load.audio(cueId, `./assets/audio/${cueId}.wav`)
+    }
   }
 
   create(): void {
