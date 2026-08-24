@@ -3,8 +3,8 @@
 ## 기록 범위
 
 - 기준 제출 브랜치: `codex/firstvibe/proxy-zero-stage1-submission`
-- 기준 공개 후보: `12fb2a17fd3e617d802d9bcf849b51a380860e1b` — `test: stabilize audio manifest checkout`
-- 현재 상태: 공개 후보 `12fb2a17`의 검증 사실을 기록하는 **별도 제출 패키지 초안**입니다.
+- 기준 공개 후보: `1eac3dad88663300f5bc73e96c2aea5899f2d32f` — `fix: require pinned release metadata hash`
+- 현재 상태: 공개 후보 `1eac3dad`의 검증 사실을 기록하는 **별도 제출 패키지 초안**입니다.
 - 이 브랜치는 제출 문서와 썸네일을 기록하되 공개 게임 후보 SHA를 변경하지 않습니다.
 - `submission/thumbnail-1920x1080.png`는 검증된 원본을 유지합니다.
 - 공개 배포와 최종 검증을 완료했다는 의미가 아닙니다.
@@ -46,6 +46,7 @@
 | `b24727e` | GitHub Pages·Netlify 공개 릴리스 파이프라인 |
 | `9c66977` | Windows를 포함한 교차 플랫폼 release build 수정 |
 | `12fb2a1` | Windows·Linux clean checkout에서 오디오 manifest 줄바꿈과 WAV binary 속성 고정 |
+| `1eac3da` | 공개 `release.json` raw bytes를 외부 고정 SHA-256과 결속하는 검증 추가 |
 
 설계 문서 잠금과 수용 기준 강화도 Git에 기록되어 있습니다: `bd4ab20` (`docs: lock PROXY ZERO stage one design`), `512ea0d` (`docs: tighten stage one acceptance gates`), `87fbb92` (`docs: add proxy zero stage one implementation plan`).
 
@@ -64,18 +65,19 @@
 | 동결 빌드 동일성 | 실행 중인 오래된 로컬 preview가 현재 Git `HEAD`의 측정값으로 잘못 기록될 수 있었습니다. | 빌드 때 commit·dirty 상태를 번들에 봉인하고 runner와 verifier가 현재 clean `HEAD`와 모두 일치할 때만 공식 기록으로 받도록 수정했습니다. 기본 공개 접근에서는 QA hook이 노출되지 않는 E2E도 추가했습니다. |
 | Pages·Netlify 릴리스 | Pages E2E가 `dist`를 다시 빌드해 먼저 생성한 `release.json`을 지울 수 있었고, 수동 번들의 SHA 주장도 실제 바이트와 결속되지 않았습니다. | E2E 뒤 최종 release build → metadata → size → upload 순서로 바꾸고, 파일별 SHA-256·app bundle digest·public manifest digest를 기록해 변경된 `dist`를 거부하도록 설계했습니다. |
 | 공개 배포 보안·표현 | `dist` 링크/경로 이탈 위험과 제출 소개의 “데모” 표현이 각각 배포 안전성과 완성작 인상을 약하게 만들었습니다. | release root·하위 링크·realpath containment를 fail-closed로 검사하고, 소개문은 기능 범위를 유지한 113자 “2D 벨트스크롤 액션 게임”으로 수정했습니다. |
+| 공개 artifact 외부 결속 | 공개 서버가 자기 일관적인 악성 bundle·manifest를 함께 제공하면 기존 verifier가 공개 commit 문자열만 보고 통과할 수 있었습니다. | 배포 전에 로컬 `release.json` raw bytes SHA-256을 별도로 고정하고, 공개 verifier가 그 외부 값과 일치하기 전에는 JSON 파싱이나 후속 파일 요청을 하지 않도록 수정했습니다. 5.5 구현 뒤 Daybreak 공격 PoC 재감사에서 CLEAN을 확인했습니다. |
 
 ## 테스트·브라우저 검증·자산 QA
 
 | 영역 | 저장소에서 확인되는 사실 | 현재 상태 |
 |---|---|---|
-| 단위·통합 테스트 | 완전히 새 Windows worktree의 공개 후보 `12fb2a17`에서 `npm run verify`를 실행했습니다. | **35개 테스트 파일·275개 테스트 통과** |
+| 단위·통합 테스트 | 별도 Windows worktree의 공개 후보 `1eac3dad`에서 `npm run verify`를 실행했습니다. | **35개 테스트 파일·278개 테스트 통과** |
 | 브라우저 E2E | 공개 후보에서 실제 Chrome으로 시작·조작·포커스·저장 복구·오디오 거부·모바일 안내·QA hook 비노출을 검사했습니다. | **Playwright Chrome E2E 10개 통과** |
-| 타입·빌드·자산 게이트 | 공개 후보에서 typecheck, production build, release build, metadata SHA 봉인, asset budget을 실행했습니다. | **모두 통과**. 초기 gzip9 5,234,436 bytes, release metadata 포함 dist raw 7,078,177 bytes. app digest `1db325bf…`, public digest `49339326…`. |
+| 타입·빌드·자산 게이트 | 공개 후보에서 typecheck, production build, release build, metadata SHA 봉인, asset budget을 실행했습니다. | **모두 통과**. 초기 gzip9 5,234,433 bytes, release metadata 포함 dist raw 7,078,177 bytes. app digest `2e826daf…`, public digest `e0c24d1a…`, 외부 `release.json` digest `81c85f54…`. |
 | 캐릭터 자산 | `docs/qa/task13-asset-provenance.md`는 원본 프롬프트로 만든 actor source, 결정론적 atlas 생성, 원본성 제한, 출력 해시·바이트를 기록합니다. actor payload 합계는 5,370,445 bytes로 문서의 Task 13 6MB 목표 아래입니다. | Task 13 QA 문서에 기록됐고, 공개 후보의 전체 빌드 15MB/40MB 게이트도 통과했습니다. |
 | 제출 썸네일 | 기존 `submission/thumbnail-1920x1080.png`는 shipped player/enemy/boss atlas, 기존 gameplay concept, 현재 1280×720 전투 캡처를 참조해 built-in image generation으로 제작했고, 두 번째 정밀 편집에서 정확한 `PROXY ZERO` 제목을 추가한 **검증된 최종 PNG 자산**입니다. 크기는 1920×1080, 4,845,241 bytes이며 외부 로고와 가짜 HUD를 넣지 않았습니다. | 10MB 권장 상한 이내. 이 Task 19에서는 파일을 수정하지 않았습니다. |
 | 배포 | 계획은 GitHub Pages를 목표로 하지만 현재 기록에는 확정 공개 URL이 없습니다. | **TODO: URL·커밋·워크플로·Chrome/Edge 결과 기록** |
-| 성능·완주 시간 | `12fb2a17`의 balance observer smoke에서 build commit 일치, `dirty=false`, active time 0부터 관찰 시작을 확인했습니다. | **Smoke 통과**. HAN·MINA·JIN 클리어와 Continue 실패 런의 실제 시간·FPS는 **TODO**. |
+| 성능·완주 시간 | `1eac3dad`의 balance observer smoke에서 build commit 일치, `dirty=false`, active time 0부터 관찰 시작을 확인했습니다. | **Smoke 통과**. HAN·MINA·JIN 클리어와 Continue 실패 런의 실제 시간·FPS는 **TODO**. |
 
 ## 개인정보·과장 방지
 
@@ -90,7 +92,7 @@
 
 ## 런타임·배포 검증 TODO
 
-- [x] 공개 후보 `12fb2a17fd3e617d802d9bcf849b51a380860e1b`에서 단위·통합 테스트 실행 결과 기록
+- [x] 공개 후보 `1eac3dad88663300f5bc73e96c2aea5899f2d32f`에서 단위·통합 테스트 실행 결과 기록
 - [x] 공개 후보에서 타입 검사·프로덕션 빌드·자산 용량 게이트 결과 기록
 - [ ] Chrome과 Edge에서 공개 URL 실행 결과 기록
 - [ ] 공개 URL, Pages workflow run, 배포 커밋 기록
