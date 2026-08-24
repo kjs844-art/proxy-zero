@@ -88,7 +88,7 @@ const normalAttacks = (characterId: string): AttackDefinition[] => [
   }),
 ]
 
-export const attackCatalog: readonly AttackDefinition[] = [
+const catalogWithElites: readonly AttackDefinition[] = [
   ...normalAttacks('han'),
   defineAttack('han-cross-strike', {
     startupMs: 140,
@@ -238,4 +238,45 @@ export const attackCatalog: readonly AttackDefinition[] = [
     meterCost: 100,
     grantsSuperArmor: true,
   }),
+
+  defineAttack('elite-rail-hammer', {
+    startupMs: 0,
+    activeMs: 150,
+    recoveryMs: 550,
+    bufferMs: 180,
+    hitbox: { offsetX: 0, halfWidth: 88, halfDepth: 40 },
+    hit: {
+      strength: 2,
+      damage: 14,
+      hitstunMs: 300,
+      knockbackX: 72,
+      maxHitsPerTarget: 1,
+    },
+    meterGain: 0,
+  }),
+  defineAttack('elite-lane-charge', {
+    startupMs: 0,
+    activeMs: 220,
+    recoveryMs: 700,
+    bufferMs: 180,
+    hitbox: { offsetX: 0, halfWidth: 180, halfDepth: 28 },
+    hit: {
+      strength: 3,
+      damage: 20,
+      hitstunMs: 390,
+      knockbackX: 104,
+      maxHitsPerTarget: 1,
+    },
+    meterGain: 0,
+  }),
 ]
+
+/** Stable player catalog retained for character recipe completeness checks. */
+export const attackCatalog: readonly AttackDefinition[] = Object.freeze(
+  catalogWithElites.slice(0, -2),
+)
+
+/** Reducer catalog adds the two authored elite attacks without changing player recipes. */
+export const combatAttackCatalog: readonly AttackDefinition[] = Object.freeze([
+  ...catalogWithElites,
+])

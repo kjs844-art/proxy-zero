@@ -1,5 +1,5 @@
 import {
-  attackCatalog,
+  combatAttackCatalog,
   calculateCancelStartMs,
   type AttackDefinition,
 } from '../../content/attacks'
@@ -119,6 +119,12 @@ export type CombatEvent =
       atMs: number
       actorId: string
     }
+  | {
+      type: 'environmental-impact'
+      atMs: number
+      actorId: string
+      damage: number
+    }
 
 export interface CombatState {
   elapsedMs: number
@@ -139,12 +145,17 @@ export interface CombatCommand {
   interruptAttack?: boolean
   suppressActions?: boolean
   clearGuard?: boolean
+  environmentalImpact?: {
+    damage: number
+    recoveryPosition: Vec3
+    knockdownMs: number
+  }
 }
 
 const KNOCKDOWN_MS = 850
 const WAKE_INVULNERABILITY_MS = 450
 
-const attackById = new Map(attackCatalog.map((attack) => [attack.id, attack]))
+const attackById = new Map(combatAttackCatalog.map((attack) => [attack.id, attack]))
 
 const cloneActor = (actor: Readonly<CombatActor>): CombatActor => ({
   ...actor,
@@ -216,6 +227,7 @@ const commandsByActorId = (
       interruptAttack: prior?.interruptAttack === true || command.interruptAttack === true,
       suppressActions: prior?.suppressActions === true || command.suppressActions === true,
       clearGuard: prior?.clearGuard === true || command.clearGuard === true,
+      environmentalImpact: command.environmentalImpact ?? prior?.environmentalImpact,
     })
   }
   return merged
@@ -227,6 +239,42 @@ const applyImmediateCommand = (
   command: Readonly<CombatCommand> | undefined,
 ): void => {
   if (!command || actor.mode === 'defeated' || actor.hp <= 0) return
+
+  const impact = command.environmentalImpact
+  if (
+    impact &&
+    Number.isFinite(impact.damage) &&
+    impact.damage > 0 &&
+    Number.isFinite(impact.recoveryPosition.x) &&
+    Number.isFinite(impact.recoveryPosition.y) &&
+    Number.isFinite(impact.recoveryPosition.z) &&
+    Number.isFinite(impact.knockdownMs) &&
+    impact.knockdownMs > 0
+  ) {
+    const damage = Math.min(actor.hp, impact.damage)
+    actor.hp = Math.max(0, actor.hp - damage)
+    actor.position = { ...impact.recoveryPosition }
+    actor.velocity = { x: 0, y: 0, z: 0 }
+    actor.activeAttack = null
+    actor.hitstunRemainingMs = 0
+    actor.wakeInvulnerabilityRemainingMs = 0
+    actor.pendingKnockdown = false
+    actor.reactionSource = null
+    if (actor.hp === 0) {
+      actor.mode = 'defeated'
+      actor.knockdownRemainingMs = 0
+    } else {
+      actor.mode = 'knocked-down'
+      actor.knockdownRemainingMs = impact.knockdownMs
+    }
+    state.events.push({
+      type: 'environmental-impact',
+      atMs: state.elapsedMs,
+      actorId: actor.id,
+      damage,
+    })
+    return
+  }
 
   const requestedHeal = Number.isFinite(command.healAmount)
     ? Math.max(0, command.healAmount ?? 0)

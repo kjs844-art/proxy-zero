@@ -9,18 +9,28 @@ export const GREYBOX_TEXTURES = {
   enemy: 'greybox-enemy',
 } as const
 
+export interface ActorAppearance {
+  readonly scale?: number
+  readonly tint?: number
+}
+
 /** Disposable geometric projection of one domain actor. */
 export class ActorView {
   private readonly shadow: Phaser.GameObjects.Ellipse
   private readonly image: Phaser.GameObjects.Image
+  private readonly fixedTint: number | null
 
   constructor(
     scene: Phaser.Scene,
     actor: Readonly<CombatActor>,
     textureKey: string,
+    appearance: Readonly<ActorAppearance> = {},
   ) {
+    this.fixedTint = appearance.tint ?? null
     this.shadow = scene.add.ellipse(0, 0, actor.body.halfWidth * 2, 8, 0x071018, 0.55)
     this.image = scene.add.image(0, 0, textureKey).setOrigin(0.5, 1)
+    if (appearance.scale !== undefined) this.image.setScale(appearance.scale)
+    if (this.fixedTint !== null) this.image.setTint(this.fixedTint)
     this.update(actor)
   }
 
@@ -42,6 +52,7 @@ export class ActorView {
       this.image.setTintFill(0xffffff)
     } else {
       this.image.clearTint()
+      if (this.fixedTint !== null) this.image.setTint(this.fixedTint)
     }
   }
 

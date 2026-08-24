@@ -6,9 +6,16 @@ import {
   SCENE_KEYS,
 } from '../../app/GameServices'
 import { characters, type CharacterDefinition } from '../../content/characters'
+import { getEliteDefinition, isEliteDefinitionId } from '../../content/elites'
 import { getEnemyBaseBody, getEnemyVariant } from '../../content/enemies'
 import type { EmpTargetClass } from '../../content/items'
-import { n9DepotZone, type DepotWaveDefinition } from '../../content/stage1'
+import {
+  getPlayableStageOneZone,
+  n9DepotZone,
+  type PlayableStageOneZoneDefinition,
+  type PlayableStageOneZoneId,
+  type StageOneWaveDefinition,
+} from '../../content/stage1'
 import {
   combatReducer,
   type CombatActor,
@@ -18,6 +25,13 @@ import {
 import { resolveCombo, type AcceptedAttackInput } from '../../domain/combat/comboResolver'
 import { type BufferedAction, type InputFrame } from '../../domain/combat/inputBuffer'
 import { fixedStepMs } from '../../domain/combat/tuning'
+import {
+  createEliteBrainState,
+  interruptEliteBrain,
+  stepEliteBrain,
+  type EliteBrainState,
+  type EliteIntent,
+} from '../../domain/enemies/eliteBrain'
 import {
   createEnemyBrainState,
   stepEnemyBrain,
@@ -44,6 +58,14 @@ import {
   type RunEffect,
   type RunState,
 } from '../../domain/run/runReducer'
+import type { ZoneEntry } from '../../domain/run/types'
+import {
+  createTrainHazardState,
+  getTrainHazardPhase,
+  stepTrainHazard,
+  type PlayerFellEffect,
+  type TrainHazardState,
+} from '../../domain/world/trainHazard'
 import {
   advanceWaveDirector,
   createZoneWaveRuntime,
@@ -60,12 +82,35 @@ import { SeededRandom } from '../../runtime/SeededRandom'
 import { ActorView, GREYBOX_TEXTURES } from '../actors/ActorView'
 import { KeyboardInputAdapter } from '../input/KeyboardInputAdapter'
 import { HazardView } from '../world/HazardView'
+import { TrainBackdrop } from '../world/TrainBackdrop'
 import { ZoneRenderer } from '../world/ZoneRenderer'
 
-type ZonePhase = 'active' | 'inter-wave' | 'zone-clear'
+type ZonePhase = 'active' | 'inter-wave' | 'zone-clear' | 'zone-handoff'
 
-const PLAYER_START = { x: 250, y: 248, z: 0 } as const
-const enemyContent = { getVariant: getEnemyVariant, getBaseBody: getEnemyBaseBody }
+const getWaveVariant = (id: string): EnemyVariantDefinition => {
+  if (!isEliteDefinitionId(id)) return getEnemyVariant(id)
+  const elite = getEliteDefinition(id)
+  return {
+    id: elite.id,
+    baseBodyId: elite.id,
+    moveSpeed: elite.moveSpeed,
+    chaseDistance: 360,
+    guardDurationMs: 0,
+    intentWeights: { attack: 1, guard: 0 },
+    attacks: elite.patterns.map((pattern) => ({
+      ...pattern,
+      range: { ...pattern.range },
+      weight: 1,
+    })),
+  }
+}
+const getWaveBaseBody = (id: string) => {
+  if (!isEliteDefinitionId(id)) return getEnemyBaseBody(id)
+  const elite = getEliteDefinition(id)
+  const heavyBody = getEnemyBaseBody(elite.baseBodyId)
+  return { ...heavyBody, id: elite.id, maxHp: elite.maxHp, radius: elite.radius }
+}
+const enemyContent = { getVariant: getWaveVariant, getBaseBody: getWaveBaseBody }
 
 const makeActor = (overrides: Partial<CombatActor>): CombatActor => ({
   id: 'actor',
@@ -93,11 +138,14 @@ const makeActor = (overrides: Partial<CombatActor>): CombatActor => ({
   ...overrides,
 })
 
-const createCombatState = (character: CharacterDefinition): CombatState => {
+const createCombatState = (
+  character: CharacterDefinition,
+  playerStart = n9DepotZone.playerStart,
+): CombatState => {
   const player = makeActor({
     id: character.id,
     team: 'heroes',
-    position: { ...PLAYER_START },
+    position: { ...playerStart },
     hp: character.maxHp,
     maxHp: character.maxHp,
     damageScale: character.damageScale,
@@ -144,18 +192,21 @@ const axisToward = (from: number, to: number): -1 | 0 | 1 =>
 const finiteDelta = (deltaMs: number): number =>
   Number.isFinite(deltaMs) ? Math.max(0, deltaMs) : 0
 
-const distanceToArena = (point: Readonly<EnemyPoint>): number => {
+const distanceToArena = (
+  point: Readonly<EnemyPoint>,
+  zone: Readonly<PlayableStageOneZoneDefinition>,
+): number => {
   const deltaX =
-    point.x < n9DepotZone.arena.minX
-      ? n9DepotZone.arena.minX - point.x
-      : point.x > n9DepotZone.arena.maxX
-        ? point.x - n9DepotZone.arena.maxX
+    point.x < zone.arena.minX
+      ? zone.arena.minX - point.x
+      : point.x > zone.arena.maxX
+        ? point.x - zone.arena.maxX
         : 0
   const deltaY =
-    point.y < n9DepotZone.arena.minY
-      ? n9DepotZone.arena.minY - point.y
-      : point.y > n9DepotZone.arena.maxY
-        ? point.y - n9DepotZone.arena.maxY
+    point.y < zone.arena.minY
+      ? zone.arena.minY - point.y
+      : point.y > zone.arena.maxY
+        ? point.y - zone.arena.maxY
         : 0
   return Math.hypot(deltaX, deltaY)
 }
@@ -182,19 +233,23 @@ export class CombatScene extends Phaser.Scene {
   private gameOverText: Phaser.GameObjects.Text | null = null
   private zoneClearText: Phaser.GameObjects.Text | null = null
   private zoneRenderer: ZoneRenderer | null = null
+  private trainBackdrop: TrainBackdrop | null = null
   private hazardView: HazardView | null = null
 
+  private currentZone: PlayableStageOneZoneDefinition = n9DepotZone
   private waveIndex = 0
-  private waveRuntime: ZoneWaveRuntime = this.createWaveRuntime(0)
+  private waveRuntime!: ZoneWaveRuntime
   private zonePhase: ZonePhase = 'active'
   private interWaveRemainingMs = 0
   private transitionRemainingMs = 0
   private readonly pendingDefeatedEnemyIds = new Set<string>()
   private readonly enemyBrains = new Map<string, EnemyBrainState>()
+  private readonly eliteBrains = new Map<string, EliteBrainState>()
   private readonly enemyRngs = new Map<string, SeededRandom>()
   private readonly enemyVariantIds = new Map<string, string>()
   private readonly returningEnemyIds = new Set<string>()
   private readonly lastRecoveryPositions = new Map<string, EnemyPoint>()
+  private trainHazardState: TrainHazardState = createTrainHazardState()
   private sceneCreated = false
 
   constructor(private readonly services: GameServices) {
@@ -207,14 +262,15 @@ export class CombatScene extends Phaser.Scene {
     if (!character) throw new Error('Combat requires a confirmed character.')
 
     this.character = character
-    this.state = createCombatState(character)
+    this.currentZone = n9DepotZone
+    this.state = createCombatState(character, this.currentZone.playerStart)
     this.runState = createRunState({
       characterId: character.id,
       zoneId: n9DepotZone.id,
       waveId: n9DepotZone.waves[0].id,
       maxHp: character.maxHp,
     })
-    this.authoredItemPickups = []
+    this.authoredItemPickups = this.cloneAuthoredPickups(this.currentZone.pickups)
     this.itemRuntime = createItemRuntimeState({
       inventory: createEmptyItemInventory(),
       pickups: this.authoredItemPickups,
@@ -233,7 +289,8 @@ export class CombatScene extends Phaser.Scene {
     this.acceptedAttackHistory = []
     this.initializeZoneRuntime()
 
-    this.zoneRenderer = new ZoneRenderer(this, n9DepotZone.arena)
+    this.zoneRenderer = new ZoneRenderer(this, this.currentZone.arena)
+    this.trainBackdrop = null
     this.hazardView = new HazardView(this)
     this.actorViews.set(
       character.id,
@@ -302,7 +359,7 @@ export class CombatScene extends Phaser.Scene {
   private readonly stepDomain = (): void => {
     if (this.finished) return
     if (this.services.consumeDebugClear()) {
-      this.finishCombat('debug-clear')
+      this.debugClearCurrentZone()
       return
     }
     if (!this.sceneCreated) {
@@ -314,12 +371,18 @@ export class CombatScene extends Phaser.Scene {
       this.actionQueue.clear()
       return
     }
+    if (this.zonePhase === 'zone-handoff') {
+      this.inputAdapter?.readFrame()
+      this.actionQueue.clear()
+      return
+    }
 
     const frozenMs = Math.min(
       Math.max(0, this.state.hitstopRemainingMs),
       fixedStepMs,
     )
     const activeDeltaMs = fixedStepMs - frozenMs
+    let fallEffect: PlayerFellEffect | null = null
     if (activeDeltaMs > 0) {
       const timerResult = itemReducer(this.itemRuntime, {
         type: 'advance-time',
@@ -336,13 +399,30 @@ export class CombatScene extends Phaser.Scene {
         this.runState.respawnInvulnerabilityRemainingMs
 
       const phaseAtStart = this.zonePhase
-      if (phaseAtStart === 'active') this.advanceWaveRuntime(activeDeltaMs)
-      else this.advanceZoneClock(activeDeltaMs)
+      if (phaseAtStart === 'active') {
+        this.advanceWaveRuntime(activeDeltaMs)
+        if (this.currentZone.id === 'service-train' && this.zonePhase === 'active') {
+          const player = this.state.actors[this.state.playerId]
+          const hazard = stepTrainHazard(this.trainHazardState, {
+            activeDeltaMs,
+            player: {
+              x: player.position.x,
+              y: player.position.y,
+              grounded: player.position.z === 0,
+            },
+          })
+          this.trainHazardState = hazard.state
+          player.position.x += hazard.carryDeltaX
+          fallEffect = hazard.effects[0] ?? null
+        }
+      } else {
+        this.advanceZoneClock(activeDeltaMs)
+      }
     }
 
     const frame = this.inputAdapter?.readFrame() ?? emptyInputFrame()
     const player = this.state.actors[this.state.playerId]
-    const itemHealAmount = this.processItemEdges(frame, player)
+    const itemHealAmount = this.processItemEdges(frame, player, fallEffect !== null)
     const bufferedAction =
       activeDeltaMs > 0
         ? this.actionQueue.nextAction(this.state.elapsedMs)
@@ -355,18 +435,33 @@ export class CombatScene extends Phaser.Scene {
       jump: bufferedAction?.edge.type === 'jump',
       ...(attackId ? { attackId } : {}),
       ...(itemHealAmount > 0 ? { healAmount: itemHealAmount } : {}),
+      ...(fallEffect
+        ? {
+            environmentalImpact: {
+              damage: fallEffect.damage,
+              recoveryPosition: { ...fallEffect.recoveryPosition },
+              knockdownMs: fallEffect.knockdownMs,
+            },
+          }
+        : {}),
     }
-    const enemyCommands =
+    const normalEnemyCommands =
       activeDeltaMs > 0 && this.zonePhase === 'active'
         ? this.buildEnemyCommands(activeDeltaMs)
         : []
+    const eliteCommands =
+      activeDeltaMs > 0 && this.zonePhase === 'active'
+        ? this.buildEliteCommands(activeDeltaMs)
+        : []
     const commands = this.mergeCombatCommands(
       [playerCommand],
-      enemyCommands,
+      normalEnemyCommands,
+      eliteCommands,
       this.empStatusCommands(),
     )
 
     this.state = this.reduceCombatWithFacingAssist(commands)
+    this.acceptEliteAttackStarts()
     if (this.zonePhase === 'active') this.clampLivingActors()
     this.runState = runReducer(this.runState, {
       type: 'player-hp-changed',
@@ -389,11 +484,18 @@ export class CombatScene extends Phaser.Scene {
     this.recordEnemyDefeats(defeatedEnemyIds)
     this.hazardView?.update(activeDeltaMs)
     this.zoneRenderer?.update(fixedStepMs)
+    this.trainBackdrop?.update(
+      activeDeltaMs,
+      getTrainHazardPhase(this.trainHazardState),
+      this.trainHazardState.platformCenterX,
+      this.itemRuntime.pickups,
+    )
   }
 
   private processItemEdges(
     frame: Readonly<InputFrame>,
     player: Readonly<CombatActor>,
+    discardUse = false,
   ): number {
     let requestedHeal = 0
     for (const edge of frame.edges) {
@@ -401,7 +503,7 @@ export class CombatScene extends Phaser.Scene {
         this.itemRuntime = itemReducer(this.itemRuntime, { type: 'cycle-item' }).state
         continue
       }
-      if (edge.type !== 'interact-use' || !this.canInteractUse(player)) continue
+      if (edge.type !== 'interact-use' || discardUse || !this.canInteractUse(player)) continue
 
       const result = itemReducer(this.itemRuntime, {
         type: 'interact-use',
@@ -456,6 +558,8 @@ export class CombatScene extends Phaser.Scene {
     if (this.enemyBrains.has(actorId)) {
       this.enemyBrains.set(actorId, createEnemyBrainState('chase'))
     }
+    const eliteBrain = this.eliteBrains.get(actorId)
+    if (eliteBrain) this.eliteBrains.set(actorId, interruptEliteBrain(eliteBrain))
     this.hazardView?.clearEnemy(actorId)
   }
 
@@ -505,6 +609,7 @@ export class CombatScene extends Phaser.Scene {
           suppressActions:
             prior?.suppressActions === true || command.suppressActions === true,
           clearGuard: prior?.clearGuard === true || command.clearGuard === true,
+          environmentalImpact: command.environmentalImpact ?? prior?.environmentalImpact,
         })
       }
     }
@@ -569,6 +674,10 @@ export class CombatScene extends Phaser.Scene {
 
   private stepUnmountedAdapter(): void {
     if (this.runState.status === 'game-over') return
+    if (this.zonePhase !== 'active') {
+      this.advanceZoneClock(fixedStepMs)
+      return
+    }
     this.runState = runReducer(this.runState, {
       type: 'advance-time',
       deltaMs: fixedStepMs,
@@ -584,10 +693,6 @@ export class CombatScene extends Phaser.Scene {
       this.handlePlayerDefeat()
       if (this.runState.status === 'game-over') return
     }
-    const defeatedEnemy = Object.values(this.state.actors).find(
-      (actor) => actor.id !== this.state.playerId && actor.mode === 'defeated',
-    )
-    if (defeatedEnemy) this.finishCombat('enemy-defeated')
   }
 
   private advanceWaveRuntime(deltaMs: number): void {
@@ -595,12 +700,12 @@ export class CombatScene extends Phaser.Scene {
       deltaMs,
       defeatedEnemyIds: [...this.pendingDefeatedEnemyIds],
       activeEnemies: this.activeEnemyObservations(),
-      arena: n9DepotZone.arena,
+      arena: this.currentZone.arena,
       playerPosition: {
         x: this.state.actors[this.state.playerId].position.x,
         y: this.state.actors[this.state.playerId].position.y,
       },
-      playerSafeSeparation: n9DepotZone.playerSafeSeparation,
+      playerSafeSeparation: this.currentZone.playerSafeSeparation,
     })
     this.pendingDefeatedEnemyIds.clear()
     this.waveRuntime = { ...this.waveRuntime, wave: result.state }
@@ -614,7 +719,7 @@ export class CombatScene extends Phaser.Scene {
       if (!actor || actor.mode === 'defeated') continue
       const prior = this.lastRecoveryPositions.get(enemyId)
       const position = { x: actor.position.x, y: actor.position.y }
-      if (isInsideArena(position, n9DepotZone.arena)) {
+      if (isInsideArena(position, this.currentZone.arena)) {
         this.returningEnemyIds.delete(enemyId)
       }
       observations.push({
@@ -622,7 +727,9 @@ export class CombatScene extends Phaser.Scene {
         position,
         down: actor.mode === 'knocked-down' || actor.mode === 'getting-up',
         madeRecoveryProgress:
-          prior !== undefined && distanceToArena(position) < distanceToArena(prior),
+          prior !== undefined &&
+          distanceToArena(position, this.currentZone) <
+            distanceToArena(prior, this.currentZone),
       })
       this.lastRecoveryPositions.set(enemyId, position)
     }
@@ -653,8 +760,11 @@ export class CombatScene extends Phaser.Scene {
     const order = this.currentWave().orders.find((entry) => entry.id === orderId)
     const runtime = this.waveRuntime.enemiesById[enemyId]
     if (!order || !runtime || runtime.enemyVariantId !== enemyVariantId) return
-    const variant = getEnemyVariant(enemyVariantId)
-    const body = getEnemyBaseBody(runtime.baseBodyId)
+    const eliteDefinition = isEliteDefinitionId(enemyVariantId)
+      ? getEliteDefinition(enemyVariantId)
+      : null
+    const variant = getWaveVariant(enemyVariantId)
+    const body = getWaveBaseBody(runtime.baseBodyId)
     const player = this.state.actors[this.state.playerId]
     const actor = makeActor({
       id: enemyId,
@@ -668,16 +778,25 @@ export class CombatScene extends Phaser.Scene {
       },
       hp: runtime.hp,
       maxHp: runtime.maxHp,
-      damageScale: n9DepotZone.enemyDamageScale,
+      damageScale: eliteDefinition
+        ? this.currentZone.eliteDamageScale
+        : this.currentZone.enemyDamageScale,
       moveSpeed: variant.moveSpeed,
     })
     this.state.actors[enemyId] = actor
-    this.enemyBrains.set(enemyId, { ...runtime.brain })
-    this.enemyRngs.set(enemyId, new SeededRandom(runtime.seed))
+    if (eliteDefinition) {
+      this.eliteBrains.set(enemyId, createEliteBrainState())
+    } else {
+      this.enemyBrains.set(enemyId, { ...runtime.brain })
+      this.enemyRngs.set(enemyId, new SeededRandom(runtime.seed))
+    }
     this.enemyVariantIds.set(enemyId, enemyVariantId)
-    this.itemTargetClasses.set(enemyId, 'normal')
+    this.itemTargetClasses.set(enemyId, eliteDefinition?.targetClass ?? 'normal')
     this.lastRecoveryPositions.set(enemyId, { ...order.position })
-    this.actorViews.set(enemyId, new ActorView(this, actor, GREYBOX_TEXTURES.enemy))
+    this.actorViews.set(
+      enemyId,
+      new ActorView(this, actor, GREYBOX_TEXTURES.enemy, eliteDefinition?.appearance),
+    )
     this.services.recordEnemySpawn(enemyId, this.state.elapsedMs)
   }
 
@@ -712,8 +831,8 @@ export class CombatScene extends Phaser.Scene {
           ...this.applyEnemyIntent(enemyId, {
             type: 'move',
             target: {
-              x: (n9DepotZone.arena.minX + n9DepotZone.arena.maxX) / 2,
-              y: (n9DepotZone.arena.minY + n9DepotZone.arena.maxY) / 2,
+              x: (this.currentZone.arena.minX + this.currentZone.arena.maxX) / 2,
+              y: (this.currentZone.arena.minY + this.currentZone.arena.maxY) / 2,
             },
             speed: variant.moveSpeed,
           }),
@@ -741,6 +860,110 @@ export class CombatScene extends Phaser.Scene {
     return commands
   }
 
+  private buildEliteCommands(deltaMs = fixedStepMs): CombatCommand[] {
+    const commands: CombatCommand[] = []
+    const player = this.state.actors[this.state.playerId]
+    for (const enemyId of [...this.eliteBrains.keys()].sort()) {
+      const actor = this.state.actors[enemyId]
+      const brain = this.eliteBrains.get(enemyId)
+      const variantId = this.enemyVariantIds.get(enemyId)
+      if (!actor || !brain || !variantId || !isEliteDefinitionId(variantId)) continue
+      if (actor.mode === 'defeated') continue
+      if ((this.itemRuntime.empRemainingMsByTargetId[enemyId] ?? 0) > 0) continue
+      const definition = getEliteDefinition(variantId)
+      actor.facing = player.position.x < actor.position.x ? -1 : 1
+      let command: CombatCommand = { actorId: enemyId, moveX: 0, moveY: 0 }
+
+      if (
+        actor.mode === 'hitstun' ||
+        actor.mode === 'knocked-down' ||
+        actor.mode === 'getting-up'
+      ) {
+        this.eliteBrains.set(enemyId, interruptEliteBrain(brain))
+        this.hazardView?.clearEnemy(enemyId)
+        commands.push(command)
+        continue
+      }
+
+      if (this.returningEnemyIds.has(enemyId)) {
+        command = {
+          ...command,
+          moveX: axisToward(
+            actor.position.x,
+            (this.currentZone.arena.minX + this.currentZone.arena.maxX) / 2,
+          ),
+          moveY: axisToward(
+            actor.position.y,
+            (this.currentZone.arena.minY + this.currentZone.arena.maxY) / 2,
+          ),
+        }
+      } else {
+        const result = stepEliteBrain({
+          state: brain,
+          definition,
+          position: actor.position,
+          playerPosition: player.position,
+          activeDeltaMs: deltaMs,
+          actorActiveAttackId: actor.activeAttack?.attackId ?? null,
+          acceptedAttackId: null,
+          empRemainingMs: 0,
+        })
+        this.eliteBrains.set(enemyId, result.state)
+        for (const intent of result.intents) {
+          command = { ...command, ...this.applyEliteIntent(enemyId, intent) }
+        }
+      }
+      commands.push(command)
+    }
+    return commands
+  }
+
+  private applyEliteIntent(
+    enemyId: string,
+    intent: Readonly<EliteIntent>,
+  ): Partial<CombatCommand> {
+    const actor = this.state.actors[enemyId]
+    if (!actor) return {}
+    if (intent.type === 'move') {
+      return {
+        moveX: axisToward(actor.position.x, intent.target.x),
+        moveY: axisToward(actor.position.y, intent.target.y),
+      }
+    }
+    if (intent.type === 'telegraph') {
+      this.hazardView?.showTelegraph(
+        enemyId,
+        { x: actor.position.x, y: actor.position.y },
+        intent.range,
+        intent.durationMs,
+      )
+      return {}
+    }
+    this.hazardView?.clearEnemy(enemyId)
+    return { attackId: intent.attackId }
+  }
+
+  private acceptEliteAttackStarts(): void {
+    for (const event of this.state.events) {
+      if (event.type !== 'attack-started') continue
+      const brain = this.eliteBrains.get(event.actorId)
+      const actor = this.state.actors[event.actorId]
+      const variantId = this.enemyVariantIds.get(event.actorId)
+      if (!brain || !actor || !variantId || !isEliteDefinitionId(variantId)) continue
+      const result = stepEliteBrain({
+        state: brain,
+        definition: getEliteDefinition(variantId),
+        position: actor.position,
+        playerPosition: this.state.actors[this.state.playerId].position,
+        activeDeltaMs: 0,
+        actorActiveAttackId: actor.activeAttack?.attackId ?? null,
+        acceptedAttackId: event.attackId,
+        empRemainingMs: 0,
+      })
+      this.eliteBrains.set(event.actorId, result.state)
+    }
+  }
+
   private applyEnemyIntent(
     enemyId: string,
     intent: Readonly<EnemyIntent>,
@@ -763,7 +986,7 @@ export class CombatScene extends Phaser.Scene {
       return {}
     }
     if (intent.type === 'attack') {
-      const attackId = n9DepotZone.enemyPatternAttackIds[intent.attackId]
+      const attackId = this.currentZone.enemyPatternAttackIds[intent.attackId]
       return attackId ? { attackId } : {}
     }
     actor.wakeInvulnerabilityRemainingMs = intent.durationMs
@@ -812,6 +1035,7 @@ export class CombatScene extends Phaser.Scene {
       this.actorViews.get(enemyId)?.dispose()
       this.actorViews.delete(enemyId)
       this.enemyBrains.delete(enemyId)
+      this.eliteBrains.delete(enemyId)
       this.enemyRngs.delete(enemyId)
       this.enemyVariantIds.delete(enemyId)
       this.itemTargetClasses.delete(enemyId)
@@ -826,14 +1050,14 @@ export class CombatScene extends Phaser.Scene {
     if (this.zonePhase !== 'active' || waveId !== this.currentWave().id) return
     this.zoneRenderer?.setLocked(false)
     this.hazardView?.reset()
-    if (this.waveIndex < n9DepotZone.waves.length - 1) {
+    if (this.waveIndex < this.currentZone.waves.length - 1) {
       this.zonePhase = 'inter-wave'
-      this.interWaveRemainingMs = n9DepotZone.interWaveDelayMs
+      this.interWaveRemainingMs = this.currentZone.interWaveDelayMs
       return
     }
     this.clearEmpTimers()
     this.zonePhase = 'zone-clear'
-    this.transitionRemainingMs = n9DepotZone.transitionDurationMs
+    this.transitionRemainingMs = this.currentZone.transitionDurationMs
     this.zoneClearText?.setVisible(true)
   }
 
@@ -844,13 +1068,14 @@ export class CombatScene extends Phaser.Scene {
       if (this.interWaveRemainingMs === 0) this.startNextWave()
       return
     }
+    if (this.zonePhase !== 'zone-clear') return
     this.transitionRemainingMs = Math.max(0, this.transitionRemainingMs - elapsed)
-    if (this.transitionRemainingMs === 0) this.finishCombat('enemy-defeated')
+    if (this.transitionRemainingMs === 0) this.enterNextZone()
   }
 
   private startNextWave(): void {
     const nextIndex = this.waveIndex + 1
-    if (nextIndex >= n9DepotZone.waves.length) return
+    if (nextIndex >= this.currentZone.waves.length) return
     this.waveIndex = nextIndex
     this.waveRuntime = this.createWaveRuntime(nextIndex)
     this.runState = { ...this.runState, currentWaveId: this.currentWave().id }
@@ -868,12 +1093,12 @@ export class CombatScene extends Phaser.Scene {
     for (const actor of Object.values(this.state.actors)) {
       if (actor.mode === 'defeated') continue
       actor.position.x = Math.min(
-        n9DepotZone.arena.maxX,
-        Math.max(n9DepotZone.arena.minX, actor.position.x),
+        this.currentZone.arena.maxX,
+        Math.max(this.currentZone.arena.minX, actor.position.x),
       )
       actor.position.y = Math.min(
-        n9DepotZone.arena.maxY,
-        Math.max(n9DepotZone.arena.minY, actor.position.y),
+        this.currentZone.arena.maxY,
+        Math.max(this.currentZone.arena.minY, actor.position.y),
       )
     }
   }
@@ -961,8 +1186,13 @@ export class CombatScene extends Phaser.Scene {
 
   private applyRunEffects(effects: readonly RunEffect[]): void {
     for (const effect of effects) {
-      if (effect.type === 'same-wave-respawn') this.respawnPlayerInCurrentWave()
-      else this.rebuildZoneFromCheckpoint(effect.inventory)
+      if (effect.type === 'same-wave-respawn') {
+        this.respawnPlayerInCurrentWave()
+      } else if (effect.type === 'rebuild-zone') {
+        this.rebuildZoneFromCheckpoint(effect.inventory)
+      } else {
+        this.handleZoneEntered(effect.entry)
+      }
     }
   }
 
@@ -970,7 +1200,7 @@ export class CombatScene extends Phaser.Scene {
     this.clearEmpTimers()
     const player = this.state.actors[this.state.playerId]
     player.hp = player.maxHp
-    player.position = { ...PLAYER_START }
+    player.position = { ...this.currentZone.playerStart }
     player.velocity = { x: 0, y: 0, z: 0 }
     player.mode = 'idle'
     player.activeAttack = null
@@ -1022,11 +1252,13 @@ export class CombatScene extends Phaser.Scene {
     if (!character) return
     this.character = character
     this.clearEnemyResources()
+    this.currentZone = getPlayableStageOneZone(this.runState.zoneId as PlayableStageOneZoneId)
+    this.authoredItemPickups = this.cloneAuthoredPickups(this.currentZone.pickups)
     this.itemRuntime = createItemRuntimeState({
       inventory,
       pickups: this.authoredItemPickups,
     })
-    this.state = createCombatState(character)
+    this.state = createCombatState(character, this.currentZone.playerStart)
     if (!this.sceneCreated) {
       this.state.actors['greybox-enemy'] = makeActor({
         id: 'greybox-enemy',
@@ -1040,7 +1272,9 @@ export class CombatScene extends Phaser.Scene {
     this.actionQueue.clear()
     this.acceptedAttackHistory = []
     this.finished = false
+    this.trainHazardState = createTrainHazardState()
     this.zoneRenderer?.reset()
+    this.trainBackdrop?.reset(this.itemRuntime.pickups)
     this.hazardView?.reset()
     this.zoneClearText?.setVisible(false)
     this.replaceInventoryHud()
@@ -1055,6 +1289,7 @@ export class CombatScene extends Phaser.Scene {
     this.transitionRemainingMs = 0
     this.pendingDefeatedEnemyIds.clear()
     this.enemyBrains.clear()
+    this.eliteBrains.clear()
     this.enemyRngs.clear()
     this.enemyVariantIds.clear()
     this.itemTargetClasses.clear()
@@ -1063,12 +1298,12 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private createWaveRuntime(index: number): ZoneWaveRuntime {
-    const wave = n9DepotZone.waves[index]
+    const wave = this.currentZone.waves[index]
     return createZoneWaveRuntime(wave, wave.seed, enemyContent)
   }
 
-  private currentWave(): DepotWaveDefinition {
-    return n9DepotZone.waves[this.waveIndex]
+  private currentWave(): StageOneWaveDefinition {
+    return this.currentZone.waves[this.waveIndex]
   }
 
   private clearEnemyResources(): void {
@@ -1077,7 +1312,13 @@ export class CombatScene extends Phaser.Scene {
       view.dispose()
       this.actorViews.delete(actorId)
     }
+    if (this.state) {
+      for (const actorId of Object.keys(this.state.actors)) {
+        if (actorId !== this.state.playerId) delete this.state.actors[actorId]
+      }
+    }
     this.enemyBrains.clear()
+    this.eliteBrains.clear()
     this.enemyRngs.clear()
     this.enemyVariantIds.clear()
     this.itemTargetClasses.clear()
@@ -1087,6 +1328,99 @@ export class CombatScene extends Phaser.Scene {
     this.hazardView?.reset()
   }
 
+  private cloneAuthoredPickups(
+    pickups: readonly Readonly<ItemPickupSnapshot>[],
+  ): ItemPickupSnapshot[] {
+    return pickups.map((pickup) => ({
+      ...pickup,
+      position: { ...pickup.position },
+    }))
+  }
+
+  private enterNextZone(): void {
+    if (this.zonePhase !== 'zone-clear') return
+    const result = runReducer(this.runState, {
+      type: 'enter-zone',
+      entry: this.currentZone.nextZoneEntry,
+    })
+    this.runState = result.state
+    this.applyRunEffects(result.effects)
+  }
+
+  /** The single scene-owned zone-entry checkpoint and runtime handoff location. */
+  private handleZoneEntered(entry: Readonly<ZoneEntry>): void {
+    this.zoneCheckpoint = immutableCheckpoint({
+      schemaVersion: CHECKPOINT_SCHEMA_VERSION,
+      characterId: this.runState.characterId,
+      zoneId: entry.zoneId,
+      zoneStartWaveId: entry.zoneStartWaveId,
+      inventory: cloneItemInventory(this.itemRuntime.inventory),
+    })
+    this.checkpointStore.save(this.zoneCheckpoint)
+    this.clearEmpTimers()
+    this.clearEnemyResources()
+    this.actionQueue.clear()
+    this.acceptedAttackHistory = []
+
+    if (entry.zoneId === 'flooded-tunnel') {
+      this.zonePhase = 'zone-handoff'
+      this.interWaveRemainingMs = 0
+      this.transitionRemainingMs = 0
+      this.zoneClearText
+        ?.setText('FLOODED TUNNEL\nZONE 3 HANDOFF')
+        .setVisible(true)
+      return
+    }
+
+    this.currentZone = getPlayableStageOneZone(entry.zoneId)
+    this.authoredItemPickups = this.cloneAuthoredPickups(this.currentZone.pickups)
+    this.itemRuntime = createItemRuntimeState({
+      inventory: this.itemRuntime.inventory,
+      pickups: this.authoredItemPickups,
+    })
+    const player = this.state.actors[this.state.playerId]
+    player.position = { ...this.currentZone.playerStart }
+    player.velocity = { x: 0, y: 0, z: 0 }
+    player.mode = 'idle'
+    player.activeAttack = null
+    player.hitstunRemainingMs = 0
+    player.knockdownRemainingMs = 0
+    player.wakeInvulnerabilityRemainingMs =
+      this.runState.respawnInvulnerabilityRemainingMs
+    player.pendingKnockdown = false
+    player.reactionSource = null
+    this.state.hitstopRemainingMs = 0
+    this.state.combo = {
+      hitCount: 0,
+      lastHitAtMs: null,
+      lastAttackerId: null,
+      lastTargetId: null,
+    }
+    this.trainHazardState = createTrainHazardState()
+    this.initializeZoneRuntime()
+    this.zoneRenderer?.dispose()
+    this.zoneRenderer = null
+    this.trainBackdrop?.dispose()
+    this.trainBackdrop = new TrainBackdrop(this, this.itemRuntime.pickups)
+    this.hazardView?.reset()
+    this.zoneClearText
+      ?.setText('SERVICE TRAIN\nZONE 2')
+      .setVisible(false)
+    this.syncPresentation()
+  }
+
+  private debugClearCurrentZone(): void {
+    if (this.zonePhase === 'zone-clear' || this.zonePhase === 'zone-handoff') return
+    this.clearEnemyResources()
+    this.clearEmpTimers()
+    this.zonePhase = 'zone-clear'
+    this.interWaveRemainingMs = 0
+    this.transitionRemainingMs = this.currentZone.transitionDurationMs
+    this.zoneRenderer?.setLocked(false)
+    this.hazardView?.reset()
+    this.zoneClearText?.setVisible(true)
+  }
+
   private readonly focusCanvas = (): void => {
     this.focusedCanvas?.focus({ preventScroll: true })
   }
@@ -1094,14 +1428,6 @@ export class CombatScene extends Phaser.Scene {
   private readonly onDebugKeyDown = (event: KeyboardEvent): void => {
     if (event.code === 'Backquote') this.services.requestDebugClear()
     if (event.code === 'Enter' && this.runState.status === 'game-over') this.tryContinue()
-  }
-
-  private finishCombat(result: 'enemy-defeated' | 'debug-clear'): void {
-    if (this.finished) return
-    this.finished = true
-    this.clearEmpTimers()
-    this.services.completeCombat(result)
-    this.scene.start(SCENE_KEYS.Results)
   }
 
   private dispose(): void {
@@ -1116,6 +1442,7 @@ export class CombatScene extends Phaser.Scene {
     for (const view of this.actorViews.values()) view.dispose()
     this.actorViews.clear()
     this.enemyBrains.clear()
+    this.eliteBrains.clear()
     this.enemyRngs.clear()
     this.enemyVariantIds.clear()
     this.itemTargetClasses.clear()
@@ -1126,6 +1453,8 @@ export class CombatScene extends Phaser.Scene {
     this.hazardView = null
     this.zoneRenderer?.dispose()
     this.zoneRenderer = null
+    this.trainBackdrop?.dispose()
+    this.trainBackdrop = null
     this.hud?.dispose()
     this.hud = null
     this.inventoryHud?.dispose()
@@ -1136,6 +1465,7 @@ export class CombatScene extends Phaser.Scene {
     this.zoneCheckpoint = null
     this.itemRuntime = createItemRuntimeState()
     this.authoredItemPickups = []
+    this.trainHazardState = createTrainHazardState()
     this.acceptedAttackHistory = []
     this.sceneCreated = false
   }

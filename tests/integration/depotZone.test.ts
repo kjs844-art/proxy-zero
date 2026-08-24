@@ -111,6 +111,7 @@ import {
 } from '../../src/domain/waves/waveDirector'
 import { HazardView } from '../../src/phaser/world/HazardView'
 import { ZoneRenderer } from '../../src/phaser/world/ZoneRenderer'
+import { TrainBackdrop } from '../../src/phaser/world/TrainBackdrop'
 import { CombatScene } from '../../src/phaser/scenes/CombatScene'
 import { InventoryHud } from '../../src/presentation/InventoryHud'
 
@@ -553,7 +554,7 @@ type CombatSceneHarness = {
   runState: RunState
   waveRuntime: ZoneWaveRuntime
   waveIndex: number
-  zonePhase: 'active' | 'inter-wave' | 'zone-clear'
+  zonePhase: 'active' | 'inter-wave' | 'zone-clear' | 'zone-handoff'
   interWaveRemainingMs: number
   transitionRemainingMs: number
   pendingDefeatedEnemyIds: Set<string>
@@ -565,6 +566,7 @@ type CombatSceneHarness = {
   actorViews: Map<string, DisposableView>
   hazardView: HazardView | null
   zoneRenderer: ZoneRenderer | null
+  trainBackdrop: TrainBackdrop | null
   zoneClearText: { visible: boolean } | null
   inputAdapter: { dispose(): void; readFrame(): InputFrame } | null
   inventoryHud: InventoryHud | null
@@ -864,7 +866,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
     )
   })
 
-  it('arrives ready, spawns the first enemy, unlocks only between waves, and finishes after the card', () => {
+  it('arrives ready, clears three waves, and enters service-train after the card', () => {
     const { scene, services } = createLiveScene()
     expect(services.combatInputReadyWithin(n9DepotZone.inputReadyWithinMs)).toBe(true)
     expect(scene.zonePhase).toBe('active')
@@ -909,8 +911,17 @@ describe('CombatScene N-9 Depot orchestration', () => {
     for (let step = 0; step < stepsBeforeExpiry; step += 1) scene.stepDomain()
     expect(services.result).toBeNull()
     scene.stepDomain()
-    expect(services.result).toBe('enemy-defeated')
-    expect(scene.scene.start).toHaveBeenCalledWith(SCENE_KEYS.Results)
+    expect(scene.runState).toMatchObject({
+      zoneId: 'service-train',
+      zoneStartWaveId: 'service-train-wave-1',
+      currentWaveId: 'service-train-wave-1',
+    })
+    expect(scene.zonePhase).toBe('active')
+    expect(scene.waveIndex).toBe(0)
+    expect(scene.zoneRenderer).toBeNull()
+    expect(scene.trainBackdrop).toBeInstanceOf(TrainBackdrop)
+    expect(services.result).toBeNull()
+    expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
   })
 
   it('clamps living actors while locked and releases the combat clamp between waves', () => {

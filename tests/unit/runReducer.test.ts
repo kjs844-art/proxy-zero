@@ -29,6 +29,26 @@ const checkpoint = (): RunCheckpoint => ({
 })
 
 describe('runReducer', () => {
+  it('enters a zone atomically while preserving run continuity fields', () => {
+    const current = createRun({
+      currentWaveId: 'n9-depot-wave-3', lives: 1, hp: 37, score: 8_400,
+      continueUsed: true, rankCap: 'C',
+    })
+    const result = runReducer(current, {
+      type: 'enter-zone',
+      entry: { zoneId: 'service-train', zoneStartWaveId: 'service-train-wave-1' },
+    })
+    expect(result.state).toEqual({
+      ...current,
+      zoneId: 'service-train',
+      zoneStartWaveId: 'service-train-wave-1',
+      currentWaveId: 'service-train-wave-1',
+    })
+    expect(result.effects).toEqual([{
+      type: 'zone-entered',
+      entry: { zoneId: 'service-train', zoneStartWaveId: 'service-train-wave-1' },
+    }])
+  })
   it('starts a fresh run with LIFE x2 and no downgrade', () => {
     const state = createRun()
 

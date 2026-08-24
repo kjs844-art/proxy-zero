@@ -50,6 +50,77 @@ const attack = (actorId: string, attackId: string): CombatCommand => ({
 })
 
 describe('combatReducer', () => {
+  it('lets each elite lane sweep hit the player at most once', () => {
+    let current = state(
+      actor({ id: 'elite', team: 'enemies', position: { x: 0, y: 0, z: 0 } }),
+      actor({ id: 'han', position: { x: 150, y: 0, z: 0 } }),
+    )
+    current.playerId = 'han'
+    current = combatReducer(current, [attack('elite', 'elite-lane-charge')], 0)
+    expect(current.actors.han.hp).toBe(80)
+    expect(current.actors.elite.activeAttack?.hitRecords.han?.count).toBe(1)
+
+    current = combatReducer(current, [], 110)
+    current = combatReducer(current, [], 1)
+    expect(current.actors.han.hp).toBe(80)
+    expect(current.actors.elite.activeAttack?.hitRecords.han?.count).toBe(1)
+  })
+
+  it('applies one reducer-owned environmental impact atomically', () => {
+    const falling = state(actor({
+      hp: 30,
+      mode: 'attacking',
+      activeAttack: {
+        attackId: 'han-right-hand', elapsedMs: 100, phase: 'active',
+        hitRecords: { stale: { count: 1, lastHitAtMs: 0 } },
+      },
+      wakeInvulnerabilityRemainingMs: 500,
+      reactionSource: { attackerId: 'stale', attackId: 'stale', strength: 3 },
+    }))
+    const impacted = combatReducer(falling, [{
+      actorId: 'han', moveX: 1, moveY: 1,
+      environmentalImpact: {
+        damage: 18,
+        recoveryPosition: { x: 576, y: 236, z: 0 },
+        knockdownMs: 850,
+      },
+    }], 0)
+    expect(impacted.actors.han).toMatchObject({
+      hp: 12,
+      position: { x: 576, y: 236, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      mode: 'knocked-down',
+      activeAttack: null,
+      knockdownRemainingMs: 850,
+      wakeInvulnerabilityRemainingMs: 0,
+      pendingKnockdown: false,
+      reactionSource: null,
+    })
+    expect(impacted.events).toContainEqual({
+      type: 'environmental-impact', atMs: 0, actorId: 'han', damage: 18,
+    })
+  })
+
+  it('lets environmental damage own defeat and ignores invalid repeat impact', () => {
+    const defeated = combatReducer(state(actor({ hp: 10 })), [{
+      actorId: 'han', moveX: 0, moveY: 0,
+      environmentalImpact: {
+        damage: 18,
+        recoveryPosition: { x: 300, y: 236, z: 0 },
+        knockdownMs: 850,
+      },
+    }], 0)
+    expect(defeated.actors.han).toMatchObject({ hp: 0, mode: 'defeated' })
+    const ignored = combatReducer(defeated, [{
+      actorId: 'han', moveX: 0, moveY: 0,
+      environmentalImpact: {
+        damage: Number.NaN,
+        recoveryPosition: { x: Number.NaN, y: 0, z: 0 },
+        knockdownMs: Number.POSITIVE_INFINITY,
+      },
+    }], 0)
+    expect(ignored.actors.han).toEqual(defeated.actors.han)
+  })
   it('moves on world X/Y, jumps on Z, and clamps a landing', () => {
     const initial = state(actor())
     const jumped = combatReducer(

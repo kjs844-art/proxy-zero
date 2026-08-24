@@ -1,6 +1,6 @@
 import type { CharacterId } from '../shared/types'
 import type { ItemInventory } from '../items/itemReducer'
-import type { ZoneId } from './types'
+import type { ZoneEntry, ZoneId } from './types'
 
 export const CHECKPOINT_SCHEMA_VERSION = 2 as const
 export const RESPAWN_INVULNERABILITY_MS = 1_200
@@ -43,10 +43,12 @@ export type RunCommand =
   | { type: 'player-defeated' }
   | { type: 'player-hp-changed'; hp: number }
   | { type: 'advance-time'; deltaMs: number }
+  | { type: 'enter-zone'; entry: ZoneEntry }
   | { type: 'continue-from-checkpoint'; checkpoint: Readonly<RunCheckpoint> }
 
 export type RunEffect =
   | { type: 'same-wave-respawn'; waveId: string }
+  | { type: 'zone-entered'; entry: ZoneEntry }
   | {
       type: 'rebuild-zone'
       zoneId: ZoneId
@@ -107,6 +109,18 @@ export const runReducer = (
     const hp = Number.isFinite(command.hp) ? command.hp : state.hp
     state.hp = Math.min(state.maxHp, Math.max(0, hp))
     return { state, effects: [] }
+  }
+
+  if (command.type === 'enter-zone') {
+    if (state.status !== 'playing') return { state, effects: [] }
+    const entry = {
+      zoneId: command.entry.zoneId,
+      zoneStartWaveId: command.entry.zoneStartWaveId,
+    }
+    state.zoneId = entry.zoneId
+    state.zoneStartWaveId = entry.zoneStartWaveId
+    state.currentWaveId = entry.zoneStartWaveId
+    return { state, effects: [{ type: 'zone-entered', entry }] }
   }
 
   if (command.type === 'player-defeated') {
