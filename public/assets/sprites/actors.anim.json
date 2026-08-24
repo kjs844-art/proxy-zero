@@ -1,0 +1,1326 @@
+{
+  "schemaVersion": 1,
+  "atlasKey": "actors",
+  "fps": 10,
+  "profiles": [
+    {
+      "id": "han",
+      "sheet": "players",
+      "cell": {
+        "width": 256,
+        "height": 256
+      },
+      "targetHeight": 120,
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      },
+      "shadow": {
+        "width": 42,
+        "height": 10
+      },
+      "clips": [
+        {
+          "id": "idle",
+          "state": "idle",
+          "loop": true,
+          "frames": [
+            "han/idle/00",
+            "han/idle/01"
+          ]
+        },
+        {
+          "id": "walk",
+          "state": "walk",
+          "loop": true,
+          "frames": [
+            "han/walk/00",
+            "han/walk/01",
+            "han/walk/02",
+            "han/walk/03"
+          ]
+        },
+        {
+          "id": "airborne",
+          "state": "airborne",
+          "loop": false,
+          "frames": [
+            "han/airborne/00"
+          ]
+        },
+        {
+          "id": "hitstun",
+          "state": "hitstun",
+          "loop": false,
+          "frames": [
+            "han/hitstun/00"
+          ]
+        },
+        {
+          "id": "knocked-down",
+          "state": "knocked-down",
+          "loop": false,
+          "frames": [
+            "han/knocked-down/00"
+          ]
+        },
+        {
+          "id": "getting-up",
+          "state": "getting-up",
+          "loop": false,
+          "frames": [
+            "han/getting-up/00",
+            "han/getting-up/01"
+          ]
+        },
+        {
+          "id": "pickup-use",
+          "state": "pickup-use",
+          "loop": false,
+          "frames": [
+            "han/pickup-use/00",
+            "han/pickup-use/01"
+          ]
+        },
+        {
+          "id": "defeated",
+          "state": "defeated",
+          "loop": false,
+          "frames": [
+            "han/defeated/00"
+          ]
+        },
+        {
+          "id": "han-right-hand",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "han/attack/han-right-hand/00",
+            "han/attack/han-right-hand/01",
+            "han/attack/han-right-hand/02"
+          ],
+          "authoredAttackId": "han-right-hand",
+          "domainAttackId": "han-right-hand"
+        },
+        {
+          "id": "han-left-hand",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "han/attack/han-left-hand/00",
+            "han/attack/han-left-hand/01",
+            "han/attack/han-left-hand/02"
+          ],
+          "authoredAttackId": "han-left-hand",
+          "domainAttackId": "han-left-hand"
+        },
+        {
+          "id": "han-right-foot",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "han/attack/han-right-foot/00",
+            "han/attack/han-right-foot/01",
+            "han/attack/han-right-foot/02"
+          ],
+          "authoredAttackId": "han-right-foot",
+          "domainAttackId": "han-right-foot"
+        },
+        {
+          "id": "han-left-foot",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "han/attack/han-left-foot/00",
+            "han/attack/han-left-foot/01",
+            "han/attack/han-left-foot/02"
+          ],
+          "authoredAttackId": "han-left-foot",
+          "domainAttackId": "han-left-foot"
+        },
+        {
+          "id": "han-cross-strike",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "han/attack/han-cross-strike/00",
+            "han/attack/han-cross-strike/01",
+            "han/attack/han-cross-strike/02"
+          ],
+          "authoredAttackId": "han-cross-strike",
+          "domainAttackId": "han-cross-strike"
+        },
+        {
+          "id": "han-rising-kick",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "han/attack/han-rising-kick/00",
+            "han/attack/han-rising-kick/01",
+            "han/attack/han-rising-kick/02"
+          ],
+          "authoredAttackId": "han-rising-kick",
+          "domainAttackId": "han-rising-kick"
+        },
+        {
+          "id": "han-jump-kick",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "han/attack/han-jump-kick/00",
+            "han/attack/han-jump-kick/01",
+            "han/attack/han-jump-kick/02"
+          ],
+          "authoredAttackId": "han-jump-kick",
+          "domainAttackId": "han-jump-kick"
+        },
+        {
+          "id": "han-iron-tempest",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "han/attack/han-iron-tempest/00",
+            "han/attack/han-iron-tempest/01",
+            "han/attack/han-iron-tempest/02"
+          ],
+          "authoredAttackId": "han-iron-tempest",
+          "domainAttackId": "han-iron-tempest"
+        }
+      ]
+    },
+    {
+      "id": "mina",
+      "sheet": "players",
+      "cell": {
+        "width": 256,
+        "height": 256
+      },
+      "targetHeight": 114,
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      },
+      "shadow": {
+        "width": 42,
+        "height": 10
+      },
+      "clips": [
+        {
+          "id": "idle",
+          "state": "idle",
+          "loop": true,
+          "frames": [
+            "mina/idle/00",
+            "mina/idle/01"
+          ]
+        },
+        {
+          "id": "walk",
+          "state": "walk",
+          "loop": true,
+          "frames": [
+            "mina/walk/00",
+            "mina/walk/01",
+            "mina/walk/02",
+            "mina/walk/03"
+          ]
+        },
+        {
+          "id": "airborne",
+          "state": "airborne",
+          "loop": false,
+          "frames": [
+            "mina/airborne/00"
+          ]
+        },
+        {
+          "id": "hitstun",
+          "state": "hitstun",
+          "loop": false,
+          "frames": [
+            "mina/hitstun/00"
+          ]
+        },
+        {
+          "id": "knocked-down",
+          "state": "knocked-down",
+          "loop": false,
+          "frames": [
+            "mina/knocked-down/00"
+          ]
+        },
+        {
+          "id": "getting-up",
+          "state": "getting-up",
+          "loop": false,
+          "frames": [
+            "mina/getting-up/00",
+            "mina/getting-up/01"
+          ]
+        },
+        {
+          "id": "pickup-use",
+          "state": "pickup-use",
+          "loop": false,
+          "frames": [
+            "mina/pickup-use/00",
+            "mina/pickup-use/01"
+          ]
+        },
+        {
+          "id": "defeated",
+          "state": "defeated",
+          "loop": false,
+          "frames": [
+            "mina/defeated/00"
+          ]
+        },
+        {
+          "id": "mina-right-hand",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "mina/attack/mina-right-hand/00",
+            "mina/attack/mina-right-hand/01",
+            "mina/attack/mina-right-hand/02"
+          ],
+          "authoredAttackId": "mina-right-hand",
+          "domainAttackId": "mina-right-hand"
+        },
+        {
+          "id": "mina-left-hand",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "mina/attack/mina-left-hand/00",
+            "mina/attack/mina-left-hand/01",
+            "mina/attack/mina-left-hand/02"
+          ],
+          "authoredAttackId": "mina-left-hand",
+          "domainAttackId": "mina-left-hand"
+        },
+        {
+          "id": "mina-right-foot",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "mina/attack/mina-right-foot/00",
+            "mina/attack/mina-right-foot/01",
+            "mina/attack/mina-right-foot/02"
+          ],
+          "authoredAttackId": "mina-right-foot",
+          "domainAttackId": "mina-right-foot"
+        },
+        {
+          "id": "mina-left-foot",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "mina/attack/mina-left-foot/00",
+            "mina/attack/mina-left-foot/01",
+            "mina/attack/mina-left-foot/02"
+          ],
+          "authoredAttackId": "mina-left-foot",
+          "domainAttackId": "mina-left-foot"
+        },
+        {
+          "id": "mina-flash-step",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "mina/attack/mina-flash-step/00",
+            "mina/attack/mina-flash-step/01",
+            "mina/attack/mina-flash-step/02"
+          ],
+          "authoredAttackId": "mina-flash-step",
+          "domainAttackId": "mina-flash-step"
+        },
+        {
+          "id": "mina-sky-needle",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "mina/attack/mina-sky-needle/00",
+            "mina/attack/mina-sky-needle/01",
+            "mina/attack/mina-sky-needle/02"
+          ],
+          "authoredAttackId": "mina-sky-needle",
+          "domainAttackId": "mina-sky-needle"
+        },
+        {
+          "id": "mina-jump-heel",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "mina/attack/mina-jump-heel/00",
+            "mina/attack/mina-jump-heel/01",
+            "mina/attack/mina-jump-heel/02"
+          ],
+          "authoredAttackId": "mina-jump-heel",
+          "domainAttackId": "mina-jump-heel"
+        },
+        {
+          "id": "mina-prism-rush",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "mina/attack/mina-prism-rush/00",
+            "mina/attack/mina-prism-rush/01",
+            "mina/attack/mina-prism-rush/02"
+          ],
+          "authoredAttackId": "mina-prism-rush",
+          "domainAttackId": "mina-prism-rush"
+        }
+      ]
+    },
+    {
+      "id": "jin",
+      "sheet": "players",
+      "cell": {
+        "width": 256,
+        "height": 256
+      },
+      "targetHeight": 124,
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      },
+      "shadow": {
+        "width": 42,
+        "height": 10
+      },
+      "clips": [
+        {
+          "id": "idle",
+          "state": "idle",
+          "loop": true,
+          "frames": [
+            "jin/idle/00",
+            "jin/idle/01"
+          ]
+        },
+        {
+          "id": "walk",
+          "state": "walk",
+          "loop": true,
+          "frames": [
+            "jin/walk/00",
+            "jin/walk/01",
+            "jin/walk/02",
+            "jin/walk/03"
+          ]
+        },
+        {
+          "id": "airborne",
+          "state": "airborne",
+          "loop": false,
+          "frames": [
+            "jin/airborne/00"
+          ]
+        },
+        {
+          "id": "hitstun",
+          "state": "hitstun",
+          "loop": false,
+          "frames": [
+            "jin/hitstun/00"
+          ]
+        },
+        {
+          "id": "knocked-down",
+          "state": "knocked-down",
+          "loop": false,
+          "frames": [
+            "jin/knocked-down/00"
+          ]
+        },
+        {
+          "id": "getting-up",
+          "state": "getting-up",
+          "loop": false,
+          "frames": [
+            "jin/getting-up/00",
+            "jin/getting-up/01"
+          ]
+        },
+        {
+          "id": "pickup-use",
+          "state": "pickup-use",
+          "loop": false,
+          "frames": [
+            "jin/pickup-use/00",
+            "jin/pickup-use/01"
+          ]
+        },
+        {
+          "id": "defeated",
+          "state": "defeated",
+          "loop": false,
+          "frames": [
+            "jin/defeated/00"
+          ]
+        },
+        {
+          "id": "jin-right-hand",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "jin/attack/jin-right-hand/00",
+            "jin/attack/jin-right-hand/01",
+            "jin/attack/jin-right-hand/02"
+          ],
+          "authoredAttackId": "jin-right-hand",
+          "domainAttackId": "jin-right-hand"
+        },
+        {
+          "id": "jin-left-hand",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "jin/attack/jin-left-hand/00",
+            "jin/attack/jin-left-hand/01",
+            "jin/attack/jin-left-hand/02"
+          ],
+          "authoredAttackId": "jin-left-hand",
+          "domainAttackId": "jin-left-hand"
+        },
+        {
+          "id": "jin-right-foot",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "jin/attack/jin-right-foot/00",
+            "jin/attack/jin-right-foot/01",
+            "jin/attack/jin-right-foot/02"
+          ],
+          "authoredAttackId": "jin-right-foot",
+          "domainAttackId": "jin-right-foot"
+        },
+        {
+          "id": "jin-left-foot",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "jin/attack/jin-left-foot/00",
+            "jin/attack/jin-left-foot/01",
+            "jin/attack/jin-left-foot/02"
+          ],
+          "authoredAttackId": "jin-left-foot",
+          "domainAttackId": "jin-left-foot"
+        },
+        {
+          "id": "jin-anchor-blow",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "jin/attack/jin-anchor-blow/00",
+            "jin/attack/jin-anchor-blow/01",
+            "jin/attack/jin-anchor-blow/02"
+          ],
+          "authoredAttackId": "jin-anchor-blow",
+          "domainAttackId": "jin-anchor-blow"
+        },
+        {
+          "id": "jin-fault-line",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "jin/attack/jin-fault-line/00",
+            "jin/attack/jin-fault-line/01",
+            "jin/attack/jin-fault-line/02"
+          ],
+          "authoredAttackId": "jin-fault-line",
+          "domainAttackId": "jin-fault-line"
+        },
+        {
+          "id": "jin-jump-crush",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "jin/attack/jin-jump-crush/00",
+            "jin/attack/jin-jump-crush/01",
+            "jin/attack/jin-jump-crush/02"
+          ],
+          "authoredAttackId": "jin-jump-crush",
+          "domainAttackId": "jin-jump-crush"
+        },
+        {
+          "id": "jin-zero-breaker",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "jin/attack/jin-zero-breaker/00",
+            "jin/attack/jin-zero-breaker/01",
+            "jin/attack/jin-zero-breaker/02"
+          ],
+          "authoredAttackId": "jin-zero-breaker",
+          "domainAttackId": "jin-zero-breaker"
+        }
+      ]
+    },
+    {
+      "id": "scout-striker",
+      "sheet": "enemies",
+      "cell": {
+        "width": 256,
+        "height": 256
+      },
+      "targetHeight": 104,
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      },
+      "shadow": {
+        "width": 50,
+        "height": 10
+      },
+      "clips": [
+        {
+          "id": "idle",
+          "state": "idle",
+          "loop": true,
+          "frames": [
+            "scout-striker/idle/00",
+            "scout-striker/idle/01"
+          ]
+        },
+        {
+          "id": "walk",
+          "state": "walk",
+          "loop": true,
+          "frames": [
+            "scout-striker/walk/00",
+            "scout-striker/walk/01",
+            "scout-striker/walk/02",
+            "scout-striker/walk/03"
+          ]
+        },
+        {
+          "id": "airborne",
+          "state": "airborne",
+          "loop": false,
+          "frames": [
+            "scout-striker/airborne/00"
+          ]
+        },
+        {
+          "id": "hitstun",
+          "state": "hitstun",
+          "loop": false,
+          "frames": [
+            "scout-striker/hitstun/00"
+          ]
+        },
+        {
+          "id": "knocked-down",
+          "state": "knocked-down",
+          "loop": false,
+          "frames": [
+            "scout-striker/knocked-down/00"
+          ]
+        },
+        {
+          "id": "getting-up",
+          "state": "getting-up",
+          "loop": false,
+          "frames": [
+            "scout-striker/getting-up/00",
+            "scout-striker/getting-up/01"
+          ]
+        },
+        {
+          "id": "pickup-use",
+          "state": "pickup-use",
+          "loop": false,
+          "frames": [
+            "scout-striker/pickup-use/00",
+            "scout-striker/pickup-use/01"
+          ]
+        },
+        {
+          "id": "defeated",
+          "state": "defeated",
+          "loop": false,
+          "frames": [
+            "scout-striker/defeated/00"
+          ]
+        },
+        {
+          "id": "scout-striker-jab",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "scout-striker/attack/scout-striker-jab/00",
+            "scout-striker/attack/scout-striker-jab/01",
+            "scout-striker/attack/scout-striker-jab/02"
+          ],
+          "authoredAttackId": "scout-striker-jab",
+          "domainAttackId": "han-right-hand"
+        },
+        {
+          "id": "scout-striker-jab",
+          "state": "telegraph",
+          "loop": false,
+          "frames": [
+            "scout-striker/telegraph/scout-striker-jab/00",
+            "scout-striker/telegraph/scout-striker-jab/01"
+          ],
+          "authoredAttackId": "scout-striker-jab",
+          "domainAttackId": "han-right-hand"
+        },
+        {
+          "id": "scout-striker-sweep",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "scout-striker/attack/scout-striker-sweep/00",
+            "scout-striker/attack/scout-striker-sweep/01",
+            "scout-striker/attack/scout-striker-sweep/02"
+          ],
+          "authoredAttackId": "scout-striker-sweep",
+          "domainAttackId": "han-left-foot"
+        },
+        {
+          "id": "scout-striker-sweep",
+          "state": "telegraph",
+          "loop": false,
+          "frames": [
+            "scout-striker/telegraph/scout-striker-sweep/00",
+            "scout-striker/telegraph/scout-striker-sweep/01"
+          ],
+          "authoredAttackId": "scout-striker-sweep",
+          "domainAttackId": "han-left-foot"
+        }
+      ]
+    },
+    {
+      "id": "scout-patrol",
+      "sheet": "enemies",
+      "cell": {
+        "width": 256,
+        "height": 256
+      },
+      "targetHeight": 100,
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      },
+      "shadow": {
+        "width": 50,
+        "height": 10
+      },
+      "clips": [
+        {
+          "id": "idle",
+          "state": "idle",
+          "loop": true,
+          "frames": [
+            "scout-patrol/idle/00",
+            "scout-patrol/idle/01"
+          ]
+        },
+        {
+          "id": "walk",
+          "state": "walk",
+          "loop": true,
+          "frames": [
+            "scout-patrol/walk/00",
+            "scout-patrol/walk/01",
+            "scout-patrol/walk/02",
+            "scout-patrol/walk/03"
+          ]
+        },
+        {
+          "id": "airborne",
+          "state": "airborne",
+          "loop": false,
+          "frames": [
+            "scout-patrol/airborne/00"
+          ]
+        },
+        {
+          "id": "hitstun",
+          "state": "hitstun",
+          "loop": false,
+          "frames": [
+            "scout-patrol/hitstun/00"
+          ]
+        },
+        {
+          "id": "knocked-down",
+          "state": "knocked-down",
+          "loop": false,
+          "frames": [
+            "scout-patrol/knocked-down/00"
+          ]
+        },
+        {
+          "id": "getting-up",
+          "state": "getting-up",
+          "loop": false,
+          "frames": [
+            "scout-patrol/getting-up/00",
+            "scout-patrol/getting-up/01"
+          ]
+        },
+        {
+          "id": "pickup-use",
+          "state": "pickup-use",
+          "loop": false,
+          "frames": [
+            "scout-patrol/pickup-use/00",
+            "scout-patrol/pickup-use/01"
+          ]
+        },
+        {
+          "id": "defeated",
+          "state": "defeated",
+          "loop": false,
+          "frames": [
+            "scout-patrol/defeated/00"
+          ]
+        },
+        {
+          "id": "scout-patrol-kick",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "scout-patrol/attack/scout-patrol-kick/00",
+            "scout-patrol/attack/scout-patrol-kick/01",
+            "scout-patrol/attack/scout-patrol-kick/02"
+          ],
+          "authoredAttackId": "scout-patrol-kick",
+          "domainAttackId": "han-right-foot"
+        },
+        {
+          "id": "scout-patrol-kick",
+          "state": "telegraph",
+          "loop": false,
+          "frames": [
+            "scout-patrol/telegraph/scout-patrol-kick/00",
+            "scout-patrol/telegraph/scout-patrol-kick/01"
+          ],
+          "authoredAttackId": "scout-patrol-kick",
+          "domainAttackId": "han-right-foot"
+        }
+      ]
+    },
+    {
+      "id": "bulwark-sentinel",
+      "sheet": "enemies",
+      "cell": {
+        "width": 256,
+        "height": 256
+      },
+      "targetHeight": 128,
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      },
+      "shadow": {
+        "width": 50,
+        "height": 10
+      },
+      "clips": [
+        {
+          "id": "idle",
+          "state": "idle",
+          "loop": true,
+          "frames": [
+            "bulwark-sentinel/idle/00",
+            "bulwark-sentinel/idle/01"
+          ]
+        },
+        {
+          "id": "walk",
+          "state": "walk",
+          "loop": true,
+          "frames": [
+            "bulwark-sentinel/walk/00",
+            "bulwark-sentinel/walk/01",
+            "bulwark-sentinel/walk/02",
+            "bulwark-sentinel/walk/03"
+          ]
+        },
+        {
+          "id": "airborne",
+          "state": "airborne",
+          "loop": false,
+          "frames": [
+            "bulwark-sentinel/airborne/00"
+          ]
+        },
+        {
+          "id": "hitstun",
+          "state": "hitstun",
+          "loop": false,
+          "frames": [
+            "bulwark-sentinel/hitstun/00"
+          ]
+        },
+        {
+          "id": "knocked-down",
+          "state": "knocked-down",
+          "loop": false,
+          "frames": [
+            "bulwark-sentinel/knocked-down/00"
+          ]
+        },
+        {
+          "id": "getting-up",
+          "state": "getting-up",
+          "loop": false,
+          "frames": [
+            "bulwark-sentinel/getting-up/00",
+            "bulwark-sentinel/getting-up/01"
+          ]
+        },
+        {
+          "id": "pickup-use",
+          "state": "pickup-use",
+          "loop": false,
+          "frames": [
+            "bulwark-sentinel/pickup-use/00",
+            "bulwark-sentinel/pickup-use/01"
+          ]
+        },
+        {
+          "id": "defeated",
+          "state": "defeated",
+          "loop": false,
+          "frames": [
+            "bulwark-sentinel/defeated/00"
+          ]
+        },
+        {
+          "id": "bulwark-sentinel-slam",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "bulwark-sentinel/attack/bulwark-sentinel-slam/00",
+            "bulwark-sentinel/attack/bulwark-sentinel-slam/01",
+            "bulwark-sentinel/attack/bulwark-sentinel-slam/02"
+          ],
+          "authoredAttackId": "bulwark-sentinel-slam",
+          "domainAttackId": "jin-anchor-blow"
+        },
+        {
+          "id": "bulwark-sentinel-slam",
+          "state": "telegraph",
+          "loop": false,
+          "frames": [
+            "bulwark-sentinel/telegraph/bulwark-sentinel-slam/00",
+            "bulwark-sentinel/telegraph/bulwark-sentinel-slam/01"
+          ],
+          "authoredAttackId": "bulwark-sentinel-slam",
+          "domainAttackId": "jin-anchor-blow"
+        }
+      ]
+    },
+    {
+      "id": "bulwark-enforcer",
+      "sheet": "enemies",
+      "cell": {
+        "width": 256,
+        "height": 256
+      },
+      "targetHeight": 124,
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      },
+      "shadow": {
+        "width": 50,
+        "height": 10
+      },
+      "clips": [
+        {
+          "id": "idle",
+          "state": "idle",
+          "loop": true,
+          "frames": [
+            "bulwark-enforcer/idle/00",
+            "bulwark-enforcer/idle/01"
+          ]
+        },
+        {
+          "id": "walk",
+          "state": "walk",
+          "loop": true,
+          "frames": [
+            "bulwark-enforcer/walk/00",
+            "bulwark-enforcer/walk/01",
+            "bulwark-enforcer/walk/02",
+            "bulwark-enforcer/walk/03"
+          ]
+        },
+        {
+          "id": "airborne",
+          "state": "airborne",
+          "loop": false,
+          "frames": [
+            "bulwark-enforcer/airborne/00"
+          ]
+        },
+        {
+          "id": "hitstun",
+          "state": "hitstun",
+          "loop": false,
+          "frames": [
+            "bulwark-enforcer/hitstun/00"
+          ]
+        },
+        {
+          "id": "knocked-down",
+          "state": "knocked-down",
+          "loop": false,
+          "frames": [
+            "bulwark-enforcer/knocked-down/00"
+          ]
+        },
+        {
+          "id": "getting-up",
+          "state": "getting-up",
+          "loop": false,
+          "frames": [
+            "bulwark-enforcer/getting-up/00",
+            "bulwark-enforcer/getting-up/01"
+          ]
+        },
+        {
+          "id": "pickup-use",
+          "state": "pickup-use",
+          "loop": false,
+          "frames": [
+            "bulwark-enforcer/pickup-use/00",
+            "bulwark-enforcer/pickup-use/01"
+          ]
+        },
+        {
+          "id": "defeated",
+          "state": "defeated",
+          "loop": false,
+          "frames": [
+            "bulwark-enforcer/defeated/00"
+          ]
+        },
+        {
+          "id": "bulwark-enforcer-punch",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "bulwark-enforcer/attack/bulwark-enforcer-punch/00",
+            "bulwark-enforcer/attack/bulwark-enforcer-punch/01",
+            "bulwark-enforcer/attack/bulwark-enforcer-punch/02"
+          ],
+          "authoredAttackId": "bulwark-enforcer-punch",
+          "domainAttackId": "han-left-hand"
+        },
+        {
+          "id": "bulwark-enforcer-punch",
+          "state": "telegraph",
+          "loop": false,
+          "frames": [
+            "bulwark-enforcer/telegraph/bulwark-enforcer-punch/00",
+            "bulwark-enforcer/telegraph/bulwark-enforcer-punch/01"
+          ],
+          "authoredAttackId": "bulwark-enforcer-punch",
+          "domainAttackId": "han-left-hand"
+        },
+        {
+          "id": "bulwark-enforcer-charge",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "bulwark-enforcer/attack/bulwark-enforcer-charge/00",
+            "bulwark-enforcer/attack/bulwark-enforcer-charge/01",
+            "bulwark-enforcer/attack/bulwark-enforcer-charge/02"
+          ],
+          "authoredAttackId": "bulwark-enforcer-charge",
+          "domainAttackId": "han-rising-kick"
+        },
+        {
+          "id": "bulwark-enforcer-charge",
+          "state": "telegraph",
+          "loop": false,
+          "frames": [
+            "bulwark-enforcer/telegraph/bulwark-enforcer-charge/00",
+            "bulwark-enforcer/telegraph/bulwark-enforcer-charge/01"
+          ],
+          "authoredAttackId": "bulwark-enforcer-charge",
+          "domainAttackId": "han-rising-kick"
+        }
+      ]
+    },
+    {
+      "id": "elite-bulwark-frame",
+      "sheet": "enemies",
+      "cell": {
+        "width": 256,
+        "height": 256
+      },
+      "targetHeight": 136,
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      },
+      "shadow": {
+        "width": 50,
+        "height": 10
+      },
+      "clips": [
+        {
+          "id": "idle",
+          "state": "idle",
+          "loop": true,
+          "frames": [
+            "elite-bulwark-frame/idle/00",
+            "elite-bulwark-frame/idle/01"
+          ]
+        },
+        {
+          "id": "walk",
+          "state": "walk",
+          "loop": true,
+          "frames": [
+            "elite-bulwark-frame/walk/00",
+            "elite-bulwark-frame/walk/01",
+            "elite-bulwark-frame/walk/02",
+            "elite-bulwark-frame/walk/03"
+          ]
+        },
+        {
+          "id": "airborne",
+          "state": "airborne",
+          "loop": false,
+          "frames": [
+            "elite-bulwark-frame/airborne/00"
+          ]
+        },
+        {
+          "id": "hitstun",
+          "state": "hitstun",
+          "loop": false,
+          "frames": [
+            "elite-bulwark-frame/hitstun/00"
+          ]
+        },
+        {
+          "id": "knocked-down",
+          "state": "knocked-down",
+          "loop": false,
+          "frames": [
+            "elite-bulwark-frame/knocked-down/00"
+          ]
+        },
+        {
+          "id": "getting-up",
+          "state": "getting-up",
+          "loop": false,
+          "frames": [
+            "elite-bulwark-frame/getting-up/00",
+            "elite-bulwark-frame/getting-up/01"
+          ]
+        },
+        {
+          "id": "pickup-use",
+          "state": "pickup-use",
+          "loop": false,
+          "frames": [
+            "elite-bulwark-frame/pickup-use/00",
+            "elite-bulwark-frame/pickup-use/01"
+          ]
+        },
+        {
+          "id": "defeated",
+          "state": "defeated",
+          "loop": false,
+          "frames": [
+            "elite-bulwark-frame/defeated/00"
+          ]
+        },
+        {
+          "id": "elite-rail-hammer",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "elite-bulwark-frame/attack/elite-rail-hammer/00",
+            "elite-bulwark-frame/attack/elite-rail-hammer/01",
+            "elite-bulwark-frame/attack/elite-rail-hammer/02"
+          ],
+          "authoredAttackId": "elite-rail-hammer",
+          "domainAttackId": "elite-rail-hammer"
+        },
+        {
+          "id": "elite-rail-hammer",
+          "state": "telegraph",
+          "loop": false,
+          "frames": [
+            "elite-bulwark-frame/telegraph/elite-rail-hammer/00",
+            "elite-bulwark-frame/telegraph/elite-rail-hammer/01"
+          ],
+          "authoredAttackId": "elite-rail-hammer",
+          "domainAttackId": "elite-rail-hammer"
+        },
+        {
+          "id": "elite-lane-charge",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "elite-bulwark-frame/attack/elite-lane-charge/00",
+            "elite-bulwark-frame/attack/elite-lane-charge/01",
+            "elite-bulwark-frame/attack/elite-lane-charge/02"
+          ],
+          "authoredAttackId": "elite-lane-charge",
+          "domainAttackId": "elite-lane-charge"
+        },
+        {
+          "id": "elite-lane-charge",
+          "state": "telegraph",
+          "loop": false,
+          "frames": [
+            "elite-bulwark-frame/telegraph/elite-lane-charge/00",
+            "elite-bulwark-frame/telegraph/elite-lane-charge/01"
+          ],
+          "authoredAttackId": "elite-lane-charge",
+          "domainAttackId": "elite-lane-charge"
+        }
+      ]
+    },
+    {
+      "id": "boss-silo-dredger",
+      "sheet": "boss",
+      "cell": {
+        "width": 384,
+        "height": 384
+      },
+      "targetHeight": 172,
+      "anchor": {
+        "x": 0.5,
+        "y": 1
+      },
+      "shadow": {
+        "width": 84,
+        "height": 14
+      },
+      "clips": [
+        {
+          "id": "idle",
+          "state": "idle",
+          "loop": true,
+          "frames": [
+            "boss-silo-dredger/idle/00",
+            "boss-silo-dredger/idle/01"
+          ]
+        },
+        {
+          "id": "walk",
+          "state": "walk",
+          "loop": true,
+          "frames": [
+            "boss-silo-dredger/walk/00",
+            "boss-silo-dredger/walk/01",
+            "boss-silo-dredger/walk/02",
+            "boss-silo-dredger/walk/03"
+          ]
+        },
+        {
+          "id": "airborne",
+          "state": "airborne",
+          "loop": false,
+          "frames": [
+            "boss-silo-dredger/airborne/00"
+          ]
+        },
+        {
+          "id": "hitstun",
+          "state": "hitstun",
+          "loop": false,
+          "frames": [
+            "boss-silo-dredger/hitstun/00"
+          ]
+        },
+        {
+          "id": "knocked-down",
+          "state": "knocked-down",
+          "loop": false,
+          "frames": [
+            "boss-silo-dredger/knocked-down/00"
+          ]
+        },
+        {
+          "id": "getting-up",
+          "state": "getting-up",
+          "loop": false,
+          "frames": [
+            "boss-silo-dredger/getting-up/00",
+            "boss-silo-dredger/getting-up/01"
+          ]
+        },
+        {
+          "id": "pickup-use",
+          "state": "pickup-use",
+          "loop": false,
+          "frames": [
+            "boss-silo-dredger/pickup-use/00",
+            "boss-silo-dredger/pickup-use/01"
+          ]
+        },
+        {
+          "id": "defeated",
+          "state": "defeated",
+          "loop": false,
+          "frames": [
+            "boss-silo-dredger/defeated/00"
+          ]
+        },
+        {
+          "id": "boss-dredger-slam",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "boss-silo-dredger/attack/boss-dredger-slam/00",
+            "boss-silo-dredger/attack/boss-dredger-slam/01",
+            "boss-silo-dredger/attack/boss-dredger-slam/02"
+          ],
+          "authoredAttackId": "boss-dredger-slam",
+          "domainAttackId": "boss-dredger-slam"
+        },
+        {
+          "id": "boss-dredger-slam",
+          "state": "telegraph",
+          "loop": false,
+          "frames": [
+            "boss-silo-dredger/telegraph/boss-dredger-slam/00",
+            "boss-silo-dredger/telegraph/boss-dredger-slam/01"
+          ],
+          "authoredAttackId": "boss-dredger-slam",
+          "domainAttackId": "boss-dredger-slam"
+        },
+        {
+          "id": "boss-floodline-charge",
+          "state": "attack",
+          "loop": false,
+          "frames": [
+            "boss-silo-dredger/attack/boss-floodline-charge/00",
+            "boss-silo-dredger/attack/boss-floodline-charge/01",
+            "boss-silo-dredger/attack/boss-floodline-charge/02"
+          ],
+          "authoredAttackId": "boss-floodline-charge",
+          "domainAttackId": "boss-floodline-charge"
+        },
+        {
+          "id": "boss-floodline-charge",
+          "state": "telegraph",
+          "loop": false,
+          "frames": [
+            "boss-silo-dredger/telegraph/boss-floodline-charge/00",
+            "boss-silo-dredger/telegraph/boss-floodline-charge/01"
+          ],
+          "authoredAttackId": "boss-floodline-charge",
+          "domainAttackId": "boss-floodline-charge"
+        }
+      ]
+    }
+  ]
+}

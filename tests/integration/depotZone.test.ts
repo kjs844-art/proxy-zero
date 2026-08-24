@@ -10,6 +10,7 @@ vi.mock('phaser', () => {
     setColor(_value: string): this { return this }
     setDepth(_value: number): this { return this }
     setFillStyle(_color: number, _alpha?: number): this { return this }
+    setFrame(_frame: string): this { return this }
     setFlipX(_value: boolean): this { return this }
     setInteractive(_value?: unknown): this { return this }
     setOrigin(_x: number, _y?: number): this { return this }

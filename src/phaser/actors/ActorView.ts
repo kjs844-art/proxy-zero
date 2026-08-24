@@ -1,58 +1,81 @@
 import Phaser from 'phaser'
 
+import {
+  ACTOR_ATLAS_KEY,
+  getActorVisualProfile,
+  selectActorFrame,
+  type ActorItemUseSnapshot,
+  type ActorTelegraphSnapshot,
+} from '../../content/animations'
 import type { CombatActor } from '../../domain/combat/combatReducer'
 
-export const GREYBOX_TEXTURES = {
-  han: 'greybox-han',
-  mina: 'greybox-mina',
-  jin: 'greybox-jin',
-  enemy: 'greybox-enemy',
-} as const
-
-export interface ActorAppearance {
-  readonly scale?: number
-  readonly tint?: number
+export interface ActorViewPresentation {
+  readonly domainTimeMs: number
+  readonly telegraph: Readonly<ActorTelegraphSnapshot> | null
+  readonly itemUse: Readonly<ActorItemUseSnapshot> | null
 }
 
-/** Disposable geometric projection of one domain actor. */
+const defaultPresentation: ActorViewPresentation = {
+  domainTimeMs: 0,
+  telegraph: null,
+  itemUse: null,
+}
+
+/** Disposable projection of one actor; all frame truth comes from domain snapshots. */
 export class ActorView {
   private readonly shadow: Phaser.GameObjects.Ellipse
   private readonly image: Phaser.GameObjects.Image
-  private readonly fixedTint: number | null
 
   constructor(
     scene: Phaser.Scene,
     actor: Readonly<CombatActor>,
-    textureKey: string,
-    appearance: Readonly<ActorAppearance> = {},
+    private readonly profileId: string,
   ) {
-    this.fixedTint = appearance.tint ?? null
-    this.shadow = scene.add.ellipse(0, 0, actor.body.halfWidth * 2, 8, 0x071018, 0.55)
-    this.image = scene.add.image(0, 0, textureKey).setOrigin(0.5, 1)
-    if (appearance.scale !== undefined) this.image.setScale(appearance.scale)
-    if (this.fixedTint !== null) this.image.setTint(this.fixedTint)
+    const profile = getActorVisualProfile(profileId)
+    this.shadow = scene.add.ellipse(
+      0,
+      0,
+      profile.shadow.width,
+      profile.shadow.height,
+      0x071018,
+      0.58,
+    )
+    this.image = scene.add
+      .image(0, 0, ACTOR_ATLAS_KEY, profile.clips.idle.frames[0])
+      .setOrigin(profile.anchor.x, profile.anchor.y)
     this.update(actor)
   }
 
-  update(actor: Readonly<CombatActor>): void {
-    const screenY = actor.position.y - actor.position.z
-    const depth = actor.position.y
+  update(
+    actor: Readonly<CombatActor>,
+    presentation: Readonly<ActorViewPresentation> = defaultPresentation,
+  ): void {
+    const screenX = Math.round(actor.position.x)
+    const screenY = Math.round(actor.position.y - actor.position.z)
+    const depth = Math.round(actor.position.y)
+    const frame = selectActorFrame({
+      profileId: this.profileId,
+      actor,
+      domainTimeMs: presentation.domainTimeMs,
+      telegraph: presentation.telegraph,
+      itemUse: presentation.itemUse,
+    })
 
     this.shadow
-      .setPosition(actor.position.x, actor.position.y)
+      .setPosition(screenX, Math.round(actor.position.y))
       .setDepth(depth - 1)
       .setVisible(actor.mode !== 'defeated')
     this.image
-      .setPosition(actor.position.x, screenY)
+      .setFrame(frame)
+      .setPosition(screenX, screenY)
       .setDepth(depth)
       .setFlipX(actor.facing === -1)
-      .setAlpha(actor.mode === 'defeated' ? 0.25 : 1)
+      .setAlpha(1)
 
     if (actor.mode === 'hitstun') {
       this.image.setTintFill(0xffffff)
     } else {
       this.image.clearTint()
-      if (this.fixedTint !== null) this.image.setTint(this.fixedTint)
     }
   }
 

@@ -5,6 +5,7 @@ import {
   type GameServices,
   SCENE_KEYS,
 } from '../../app/GameServices'
+import { ACTOR_ATLAS_KEY, getActorVisualProfile } from '../../content/animations'
 import type { CharacterId } from '../../content/characters'
 
 const labels: Readonly<Record<CharacterId, string>> = {
@@ -17,6 +18,7 @@ export class CharacterSelectScene extends Phaser.Scene {
   private selectedIndex = 0
   private confirming = false
   private choiceTexts: Phaser.GameObjects.Text[] = []
+  private choiceImages: Phaser.GameObjects.Image[] = []
 
   constructor(private readonly services: GameServices) {
     super({ key: SCENE_KEYS.CharacterSelect })
@@ -27,6 +29,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.selectedIndex = 0
     this.confirming = false
     this.choiceTexts = []
+    this.choiceImages = []
     this.services.selectCharacter(CHARACTER_CHOICES[this.selectedIndex])
     this.cameras.main.setBackgroundColor('#071018')
 
@@ -39,8 +42,19 @@ export class CharacterSelectScene extends Phaser.Scene {
       .setOrigin(0.5)
 
     CHARACTER_CHOICES.forEach((characterId, index) => {
+      const profile = getActorVisualProfile(characterId)
+      this.choiceImages.push(
+        this.add
+          .image(
+            160 + index * 160,
+            232,
+            ACTOR_ATLAS_KEY,
+            profile.clips.idle.frames[0],
+          )
+          .setOrigin(profile.anchor.x, profile.anchor.y),
+      )
       const text = this.add
-        .text(160 + index * 160, 174, labels[characterId], {
+        .text(160 + index * 160, 250, labels[characterId], {
           fontFamily: 'monospace',
           fontSize: '22px',
           color: '#94a3b8',
@@ -57,7 +71,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     })
 
     this.add
-      .text(320, 286, '1/2/3 OR ARROWS  •  ENTER TO FIGHT', {
+      .text(320, 316, '1/2/3 OR ARROWS  •  ENTER TO FIGHT', {
         fontFamily: 'monospace',
         fontSize: '12px',
         color: '#cbd5e1',
@@ -89,6 +103,9 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.choiceTexts.forEach((text, index) => {
       text.setColor(index === this.selectedIndex ? '#ffffff' : '#94a3b8')
       text.setBackgroundColor(index === this.selectedIndex ? '#0e7490' : '#111827')
+    })
+    this.choiceImages.forEach((image, index) => {
+      image.setAlpha(index === this.selectedIndex ? 1 : 0.5)
     })
   }
 

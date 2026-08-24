@@ -5,6 +5,7 @@ import {
   type GameServices,
   SCENE_KEYS,
 } from '../../app/GameServices'
+import type { ActorTelegraphSnapshot } from '../../content/animations'
 import { characters, type CharacterDefinition } from '../../content/characters'
 import { getBossDefinition, isBossDefinitionId } from '../../content/bosses'
 import { getEliteDefinition, isEliteDefinitionId } from '../../content/elites'
@@ -95,7 +96,7 @@ import { InventoryHud } from '../../presentation/InventoryHud'
 import { CheckpointStore, type StorageLike } from '../../runtime/CheckpointStore'
 import { FixedStepRunner } from '../../runtime/FixedStepRunner'
 import { SeededRandom } from '../../runtime/SeededRandom'
-import { ActorView, GREYBOX_TEXTURES } from '../actors/ActorView'
+import { ActorView } from '../actors/ActorView'
 import { KeyboardInputAdapter } from '../input/KeyboardInputAdapter'
 import { HazardView } from '../world/HazardView'
 import { TrainBackdrop } from '../world/TrainBackdrop'
@@ -296,6 +297,7 @@ export class CombatScene extends Phaser.Scene {
   private tunnelHazardState: TunnelHazardState = createTunnelHazardState()
   private pendingCombatResult: 'enemy-defeated' | 'debug-clear' = 'enemy-defeated'
   private sceneCreated = false
+  private playerItemUseStartedAtMs: number | null = null
 
   constructor(private readonly services: GameServices) {
     super({ key: SCENE_KEYS.Combat })
@@ -332,6 +334,7 @@ export class CombatScene extends Phaser.Scene {
     this.finished = false
     this.sceneCreated = true
     this.acceptedAttackHistory = []
+    this.playerItemUseStartedAtMs = null
     this.initializeZoneRuntime()
 
     this.zoneRenderer = new ZoneRenderer(this, this.currentZone.arena)
@@ -340,7 +343,7 @@ export class CombatScene extends Phaser.Scene {
     this.hazardView = new HazardView(this)
     this.actorViews.set(
       character.id,
-      new ActorView(this, this.state.actors[character.id], GREYBOX_TEXTURES[character.id]),
+      new ActorView(this, this.state.actors[character.id], character.id),
     )
     this.hud = new HudController(this, character.id)
     this.inventoryHud = new InventoryHud(this, this.itemRuntime.inventory)
@@ -647,6 +650,13 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private applyItemPresentationEffects(effects: readonly ItemEffect[]): void {
+    if (effects.some((effect) =>
+      effect.type === 'pickup-acquired' ||
+      effect.type === 'repair-requested' ||
+      effect.type === 'emp-applied'
+    )) {
+      this.playerItemUseStartedAtMs = this.state.elapsedMs
+    }
     for (const effect of effects) {
       if (effect.type === 'emp-applied') {
         for (const target of effect.targets) this.resetEmpActorPresentation(target.targetId)
@@ -909,12 +919,7 @@ export class CombatScene extends Phaser.Scene {
     this.lastRecoveryPositions.set(enemyId, { ...order.position })
     this.actorViews.set(
       enemyId,
-      new ActorView(
-        this,
-        actor,
-        GREYBOX_TEXTURES.enemy,
-        bossDefinition?.appearance ?? eliteDefinition?.appearance,
-      ),
+      new ActorView(this, actor, enemyVariantId),
     )
     this.services.recordEnemySpawn(enemyId, this.state.elapsedMs)
   }
@@ -1400,7 +1405,14 @@ export class CombatScene extends Phaser.Scene {
   private syncPresentation(): void {
     for (const [actorId, view] of this.actorViews) {
       const actor = this.state.actors[actorId]
-      if (actor) view.update(actor)
+      if (!actor) continue
+      view.update(actor, {
+        domainTimeMs: this.state.elapsedMs,
+        telegraph: this.telegraphFor(actorId),
+        itemUse: actorId === this.state.playerId && this.playerItemUseStartedAtMs !== null
+          ? { startedAtMs: this.playerItemUseStartedAtMs, durationMs: 400 }
+          : null,
+      })
     }
     const player = this.state.actors[this.state.playerId]
     if (player) this.hud?.update(player)
@@ -1414,6 +1426,22 @@ export class CombatScene extends Phaser.Scene {
       ? 'GAME OVER\nENTER · CONTINUE'
       : 'GAME OVER\nCONTINUE EXHAUSTED'
     this.gameOverText?.setText(prompt).setVisible(true)
+  }
+
+  private telegraphFor(actorId: string): ActorTelegraphSnapshot | null {
+    const normal = this.enemyBrains.get(actorId)
+    if (normal?.mode === 'telegraph' && normal.attackId) {
+      return { attackId: normal.attackId, elapsedMs: normal.elapsedMs }
+    }
+    const elite = this.eliteBrains.get(actorId)
+    if (elite?.mode === 'telegraph' && elite.attackId) {
+      return { attackId: elite.attackId, elapsedMs: elite.elapsedMs }
+    }
+    const boss = this.bossBrains.get(actorId)
+    if (boss?.mode === 'telegraph' && boss.attackId) {
+      return { attackId: boss.attackId, elapsedMs: boss.elapsedMs }
+    }
+    return null
   }
 
   private handlePlayerDefeat(): void {
@@ -1461,6 +1489,7 @@ export class CombatScene extends Phaser.Scene {
     }
     this.actionQueue.clear()
     this.acceptedAttackHistory = []
+    this.playerItemUseStartedAtMs = null
   }
 
   private tryContinue(): void {
@@ -1513,6 +1542,7 @@ export class CombatScene extends Phaser.Scene {
     this.initializeZoneRuntime()
     this.actionQueue.clear()
     this.acceptedAttackHistory = []
+    this.playerItemUseStartedAtMs = null
     this.finished = false
     this.trainHazardState = createTrainHazardState()
     this.tunnelHazardState = createTunnelHazardState()
@@ -1615,6 +1645,7 @@ export class CombatScene extends Phaser.Scene {
     this.clearEnemyResources()
     this.actionQueue.clear()
     this.acceptedAttackHistory = []
+    this.playerItemUseStartedAtMs = null
 
     this.currentZone = getPlayableStageOneZone(entry.zoneId)
     this.authoredItemPickups = this.cloneAuthoredPickups(this.currentZone.pickups)
@@ -1730,6 +1761,7 @@ export class CombatScene extends Phaser.Scene {
     this.tunnelHazardState = createTunnelHazardState()
     this.pendingCombatResult = 'enemy-defeated'
     this.acceptedAttackHistory = []
+    this.playerItemUseStartedAtMs = null
     this.sceneCreated = false
   }
 }
