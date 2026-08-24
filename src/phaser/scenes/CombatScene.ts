@@ -7,6 +7,7 @@ import {
 } from '../../app/GameServices'
 import { characters, type CharacterDefinition } from '../../content/characters'
 import { getEnemyBaseBody, getEnemyVariant } from '../../content/enemies'
+import type { EmpTargetClass } from '../../content/items'
 import { n9DepotZone, type DepotWaveDefinition } from '../../content/stage1'
 import {
   combatReducer,
@@ -25,6 +26,17 @@ import {
 } from '../../domain/enemies/enemyBrain'
 import type { EnemyPoint, EnemyVariantDefinition } from '../../domain/enemies/types'
 import {
+  cloneItemInventory,
+  createEmptyItemInventory,
+  createItemRuntimeState,
+  itemReducer,
+  type ItemEffect,
+  type ItemInventory,
+  type ItemPickupSnapshot,
+  type ItemRuntimeState,
+  type ItemTargetSnapshot,
+} from '../../domain/items/itemReducer'
+import {
   CHECKPOINT_SCHEMA_VERSION,
   createRunState,
   runReducer,
@@ -41,6 +53,7 @@ import {
   type ZoneWaveRuntime,
 } from '../../domain/waves/waveDirector'
 import { HudController } from '../../presentation/HudController'
+import { InventoryHud } from '../../presentation/InventoryHud'
 import { CheckpointStore, type StorageLike } from '../../runtime/CheckpointStore'
 import { FixedStepRunner } from '../../runtime/FixedStepRunner'
 import { SeededRandom } from '../../runtime/SeededRandom'
@@ -117,7 +130,13 @@ const browserStorage = (): StorageLike | null => {
 }
 
 const immutableCheckpoint = (checkpoint: RunCheckpoint): RunCheckpoint =>
-  Object.freeze({ ...checkpoint, inventory: Object.freeze({ ...checkpoint.inventory }) })
+  Object.freeze({
+    ...checkpoint,
+    inventory: Object.freeze({
+      ...checkpoint.inventory,
+      counts: Object.freeze({ ...checkpoint.inventory.counts }),
+    }),
+  })
 
 const axisToward = (from: number, to: number): -1 | 0 | 1 =>
   Math.abs(from - to) < 1 ? 0 : from < to ? 1 : -1
@@ -150,6 +169,10 @@ export class CombatScene extends Phaser.Scene {
   private runner: FixedStepRunner | null = null
   private readonly actorViews = new Map<string, ActorView>()
   private hud: HudController | null = null
+  private inventoryHud: InventoryHud | null = null
+  private itemRuntime: ItemRuntimeState = createItemRuntimeState()
+  private authoredItemPickups: ItemPickupSnapshot[] = []
+  private readonly itemTargetClasses = new Map<string, EmpTargetClass>()
   private acceptedAttackHistory: AcceptedAttackInput[] = []
   private focusedCanvas: HTMLCanvasElement | null = null
   private finished = false
@@ -190,14 +213,18 @@ export class CombatScene extends Phaser.Scene {
       zoneId: n9DepotZone.id,
       waveId: n9DepotZone.waves[0].id,
       maxHp: character.maxHp,
-      inventory: { itemId: null, count: 0, available: false },
+    })
+    this.authoredItemPickups = []
+    this.itemRuntime = createItemRuntimeState({
+      inventory: createEmptyItemInventory(),
+      pickups: this.authoredItemPickups,
     })
     this.zoneCheckpoint = immutableCheckpoint({
       schemaVersion: CHECKPOINT_SCHEMA_VERSION,
       characterId: character.id,
       zoneId: n9DepotZone.id,
       zoneStartWaveId: n9DepotZone.waves[0].id,
-      inventory: { itemId: null, count: 0, available: false },
+      inventory: cloneItemInventory(this.itemRuntime.inventory),
     })
     this.checkpointStore = new CheckpointStore(browserStorage())
     this.checkpointStore.save(this.zoneCheckpoint)
@@ -213,6 +240,7 @@ export class CombatScene extends Phaser.Scene {
       new ActorView(this, this.state.actors[character.id], GREYBOX_TEXTURES[character.id]),
     )
     this.hud = new HudController(this, character.id)
+    this.inventoryHud = new InventoryHud(this, this.itemRuntime.inventory)
     this.lifeText = this.add
       .text(524, 18, 'LIFE ×2', {
         color: '#f8fafc',
@@ -281,7 +309,11 @@ export class CombatScene extends Phaser.Scene {
       this.stepUnmountedAdapter()
       return
     }
-    if (this.runState.status === 'game-over') return
+    if (this.runState.status === 'game-over') {
+      this.inputAdapter?.readFrame()
+      this.actionQueue.clear()
+      return
+    }
 
     const frozenMs = Math.min(
       Math.max(0, this.state.hitstopRemainingMs),
@@ -289,6 +321,13 @@ export class CombatScene extends Phaser.Scene {
     )
     const activeDeltaMs = fixedStepMs - frozenMs
     if (activeDeltaMs > 0) {
+      const timerResult = itemReducer(this.itemRuntime, {
+        type: 'advance-time',
+        deltaMs: activeDeltaMs,
+      })
+      this.itemRuntime = timerResult.state
+      this.applyItemPresentationEffects(timerResult.effects)
+
       this.runState = runReducer(this.runState, {
         type: 'advance-time',
         deltaMs: activeDeltaMs,
@@ -302,11 +341,12 @@ export class CombatScene extends Phaser.Scene {
     }
 
     const frame = this.inputAdapter?.readFrame() ?? emptyInputFrame()
+    const player = this.state.actors[this.state.playerId]
+    const itemHealAmount = this.processItemEdges(frame, player)
     const bufferedAction =
       activeDeltaMs > 0
         ? this.actionQueue.nextAction(this.state.elapsedMs)
         : undefined
-    const player = this.state.actors[this.state.playerId]
     const attackId = this.resolveBufferedAttack(bufferedAction, player)
     const playerCommand: CombatCommand = {
       actorId: player.id,
@@ -314,13 +354,17 @@ export class CombatScene extends Phaser.Scene {
       moveY: frame.moveY,
       jump: bufferedAction?.edge.type === 'jump',
       ...(attackId ? { attackId } : {}),
+      ...(itemHealAmount > 0 ? { healAmount: itemHealAmount } : {}),
     }
-    const commands = [
-      playerCommand,
-      ...(activeDeltaMs > 0 && this.zonePhase === 'active'
+    const enemyCommands =
+      activeDeltaMs > 0 && this.zonePhase === 'active'
         ? this.buildEnemyCommands(activeDeltaMs)
-        : []),
-    ]
+        : []
+    const commands = this.mergeCombatCommands(
+      [playerCommand],
+      enemyCommands,
+      this.empStatusCommands(),
+    )
 
     this.state = this.reduceCombatWithFacingAssist(commands)
     if (this.zonePhase === 'active') this.clampLivingActors()
@@ -345,6 +389,126 @@ export class CombatScene extends Phaser.Scene {
     this.recordEnemyDefeats(defeatedEnemyIds)
     this.hazardView?.update(activeDeltaMs)
     this.zoneRenderer?.update(fixedStepMs)
+  }
+
+  private processItemEdges(
+    frame: Readonly<InputFrame>,
+    player: Readonly<CombatActor>,
+  ): number {
+    let requestedHeal = 0
+    for (const edge of frame.edges) {
+      if (edge.type === 'cycle-item') {
+        this.itemRuntime = itemReducer(this.itemRuntime, { type: 'cycle-item' }).state
+        continue
+      }
+      if (edge.type !== 'interact-use' || !this.canInteractUse(player)) continue
+
+      const result = itemReducer(this.itemRuntime, {
+        type: 'interact-use',
+        player: {
+          position: { x: player.position.x, y: player.position.y },
+          hp: player.hp,
+          maxHp: player.maxHp,
+          living: player.hp > 0 && player.mode !== 'defeated',
+        },
+        targets: this.itemTargets(),
+      })
+      this.itemRuntime = result.state
+      this.applyItemPresentationEffects(result.effects)
+      for (const effect of result.effects) {
+        if (effect.type === 'repair-requested') requestedHeal += effect.amount
+      }
+    }
+    return requestedHeal
+  }
+
+  private canInteractUse(player: Readonly<CombatActor>): boolean {
+    return (
+      this.zonePhase === 'active' &&
+      player.hp > 0 &&
+      (player.mode === 'idle' || player.mode === 'moving' || player.mode === 'airborne')
+    )
+  }
+
+  private itemTargets(): ItemTargetSnapshot[] {
+    const player = this.state.actors[this.state.playerId]
+    return Object.values(this.state.actors)
+      .filter((actor) => actor.id !== player.id && actor.team !== player.team)
+      .map((actor) => ({
+        id: actor.id,
+        position: { x: actor.position.x, y: actor.position.y },
+        living: actor.hp > 0 && actor.mode !== 'defeated',
+        targetClass: this.itemTargetClasses.get(actor.id) ?? 'normal',
+      }))
+  }
+
+  private applyItemPresentationEffects(effects: readonly ItemEffect[]): void {
+    for (const effect of effects) {
+      if (effect.type === 'emp-applied') {
+        for (const target of effect.targets) this.resetEmpActorPresentation(target.targetId)
+      } else if (effect.type === 'emp-expired') {
+        for (const targetId of effect.targetIds) this.resetEmpActorPresentation(targetId)
+      }
+    }
+  }
+
+  private resetEmpActorPresentation(actorId: string): void {
+    if (this.enemyBrains.has(actorId)) {
+      this.enemyBrains.set(actorId, createEnemyBrainState('chase'))
+    }
+    this.hazardView?.clearEnemy(actorId)
+  }
+
+  private clearEmpTimers(): void {
+    const affectedActorIds = Object.keys(this.itemRuntime.empRemainingMsByTargetId)
+    this.itemRuntime = itemReducer(this.itemRuntime, { type: 'clear-emp' }).state
+    for (const actorId of affectedActorIds) this.resetEmpActorPresentation(actorId)
+  }
+
+  private replaceInventoryHud(): void {
+    this.inventoryHud?.dispose()
+    this.inventoryHud = this.sceneCreated
+      ? new InventoryHud(this, this.itemRuntime.inventory)
+      : null
+  }
+
+  private empStatusCommands(): CombatCommand[] {
+    return Object.keys(this.itemRuntime.empRemainingMsByTargetId)
+      .sort()
+      .filter((actorId) => {
+        const actor = this.state.actors[actorId]
+        return actor !== undefined && actor.hp > 0 && actor.mode !== 'defeated'
+      })
+      .map((actorId) => ({
+        actorId,
+        moveX: 0,
+        moveY: 0,
+        interruptAttack: true,
+        suppressActions: true,
+        clearGuard: true,
+      }))
+  }
+
+  private mergeCombatCommands(
+    ...groups: readonly (readonly Readonly<CombatCommand>[])[]
+  ): CombatCommand[] {
+    const merged = new Map<string, CombatCommand>()
+    for (const commands of groups) {
+      for (const command of commands) {
+        const prior = merged.get(command.actorId)
+        merged.set(command.actorId, {
+          ...(prior ?? { actorId: command.actorId, moveX: 0, moveY: 0 }),
+          ...command,
+          healAmount: (prior?.healAmount ?? 0) + (command.healAmount ?? 0),
+          interruptAttack:
+            prior?.interruptAttack === true || command.interruptAttack === true,
+          suppressActions:
+            prior?.suppressActions === true || command.suppressActions === true,
+          clearGuard: prior?.clearGuard === true || command.clearGuard === true,
+        })
+      }
+    }
+    return [...merged.values()].sort((left, right) => left.actorId.localeCompare(right.actorId))
   }
 
   private resolvePlayerFacingAssist(command: Readonly<CombatCommand>): -1 | 1 | null {
@@ -511,6 +675,7 @@ export class CombatScene extends Phaser.Scene {
     this.enemyBrains.set(enemyId, { ...runtime.brain })
     this.enemyRngs.set(enemyId, new SeededRandom(runtime.seed))
     this.enemyVariantIds.set(enemyId, enemyVariantId)
+    this.itemTargetClasses.set(enemyId, 'normal')
     this.lastRecoveryPositions.set(enemyId, { ...order.position })
     this.actorViews.set(enemyId, new ActorView(this, actor, GREYBOX_TEXTURES.enemy))
     this.services.recordEnemySpawn(enemyId, this.state.elapsedMs)
@@ -525,6 +690,7 @@ export class CombatScene extends Phaser.Scene {
       const rng = this.enemyRngs.get(enemyId)
       const variantId = this.enemyVariantIds.get(enemyId)
       if (!actor || !brain || !rng || !variantId || actor.mode === 'defeated') continue
+      if ((this.itemRuntime.empRemainingMsByTargetId[enemyId] ?? 0) > 0) continue
       const variant = getEnemyVariant(variantId)
       actor.facing = player.position.x < actor.position.x ? -1 : 1
       let command: CombatCommand = { actorId: enemyId, moveX: 0, moveY: 0 }
@@ -633,7 +799,14 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private recordEnemyDefeats(enemyIds: readonly string[]): void {
-    for (const enemyId of new Set(enemyIds)) {
+    const uniqueEnemyIds = [...new Set(enemyIds)]
+    if (uniqueEnemyIds.length > 0) {
+      this.itemRuntime = itemReducer(this.itemRuntime, {
+        type: 'remove-targets',
+        targetIds: uniqueEnemyIds,
+      }).state
+    }
+    for (const enemyId of uniqueEnemyIds) {
       if (!this.waveRuntime.wave.spawnedEnemyIds.includes(enemyId)) continue
       this.pendingDefeatedEnemyIds.add(enemyId)
       this.actorViews.get(enemyId)?.dispose()
@@ -641,6 +814,7 @@ export class CombatScene extends Phaser.Scene {
       this.enemyBrains.delete(enemyId)
       this.enemyRngs.delete(enemyId)
       this.enemyVariantIds.delete(enemyId)
+      this.itemTargetClasses.delete(enemyId)
       this.returningEnemyIds.delete(enemyId)
       this.lastRecoveryPositions.delete(enemyId)
       this.hazardView?.clearEnemy(enemyId)
@@ -657,6 +831,7 @@ export class CombatScene extends Phaser.Scene {
       this.interWaveRemainingMs = n9DepotZone.interWaveDelayMs
       return
     }
+    this.clearEmpTimers()
     this.zonePhase = 'zone-clear'
     this.transitionRemainingMs = n9DepotZone.transitionDurationMs
     this.zoneClearText?.setVisible(true)
@@ -684,6 +859,7 @@ export class CombatScene extends Phaser.Scene {
     this.pendingDefeatedEnemyIds.clear()
     this.returningEnemyIds.clear()
     this.lastRecoveryPositions.clear()
+    this.clearEmpTimers()
     this.hazardView?.reset()
     this.zoneRenderer?.setLocked(true)
   }
@@ -761,6 +937,7 @@ export class CombatScene extends Phaser.Scene {
     }
     const player = this.state.actors[this.state.playerId]
     if (player) this.hud?.update(player)
+    this.inventoryHud?.update(this.itemRuntime.inventory)
     this.lifeText?.setText(`LIFE ×${this.runState.lives}`)
     if (this.runState.status !== 'game-over') {
       this.gameOverText?.setVisible(false)
@@ -785,11 +962,12 @@ export class CombatScene extends Phaser.Scene {
   private applyRunEffects(effects: readonly RunEffect[]): void {
     for (const effect of effects) {
       if (effect.type === 'same-wave-respawn') this.respawnPlayerInCurrentWave()
-      else this.rebuildZoneFromCheckpoint()
+      else this.rebuildZoneFromCheckpoint(effect.inventory)
     }
   }
 
   private respawnPlayerInCurrentWave(): void {
+    this.clearEmpTimers()
     const player = this.state.actors[this.state.playerId]
     player.hp = player.maxHp
     player.position = { ...PLAYER_START }
@@ -815,6 +993,8 @@ export class CombatScene extends Phaser.Scene {
 
   private tryContinue(): void {
     if (!this.runState.continueAvailable) return
+    this.inputAdapter?.readFrame()
+    this.actionQueue.clear()
     const storedCheckpoint = this.checkpointStore.load()
     const checkpoint = this.matchesCurrentRun(storedCheckpoint)
       ? storedCheckpoint
@@ -837,11 +1017,15 @@ export class CombatScene extends Phaser.Scene {
     )
   }
 
-  private rebuildZoneFromCheckpoint(): void {
+  private rebuildZoneFromCheckpoint(inventory: Readonly<ItemInventory>): void {
     const character = characters.find((entry) => entry.id === this.runState.characterId)
     if (!character) return
     this.character = character
     this.clearEnemyResources()
+    this.itemRuntime = createItemRuntimeState({
+      inventory,
+      pickups: this.authoredItemPickups,
+    })
     this.state = createCombatState(character)
     if (!this.sceneCreated) {
       this.state.actors['greybox-enemy'] = makeActor({
@@ -859,6 +1043,7 @@ export class CombatScene extends Phaser.Scene {
     this.zoneRenderer?.reset()
     this.hazardView?.reset()
     this.zoneClearText?.setVisible(false)
+    this.replaceInventoryHud()
     this.syncPresentation()
   }
 
@@ -872,6 +1057,7 @@ export class CombatScene extends Phaser.Scene {
     this.enemyBrains.clear()
     this.enemyRngs.clear()
     this.enemyVariantIds.clear()
+    this.itemTargetClasses.clear()
     this.returningEnemyIds.clear()
     this.lastRecoveryPositions.clear()
   }
@@ -894,6 +1080,7 @@ export class CombatScene extends Phaser.Scene {
     this.enemyBrains.clear()
     this.enemyRngs.clear()
     this.enemyVariantIds.clear()
+    this.itemTargetClasses.clear()
     this.returningEnemyIds.clear()
     this.lastRecoveryPositions.clear()
     this.pendingDefeatedEnemyIds.clear()
@@ -912,6 +1099,7 @@ export class CombatScene extends Phaser.Scene {
   private finishCombat(result: 'enemy-defeated' | 'debug-clear'): void {
     if (this.finished) return
     this.finished = true
+    this.clearEmpTimers()
     this.services.completeCombat(result)
     this.scene.start(SCENE_KEYS.Results)
   }
@@ -930,6 +1118,7 @@ export class CombatScene extends Phaser.Scene {
     this.enemyBrains.clear()
     this.enemyRngs.clear()
     this.enemyVariantIds.clear()
+    this.itemTargetClasses.clear()
     this.returningEnemyIds.clear()
     this.lastRecoveryPositions.clear()
     this.pendingDefeatedEnemyIds.clear()
@@ -939,10 +1128,14 @@ export class CombatScene extends Phaser.Scene {
     this.zoneRenderer = null
     this.hud?.dispose()
     this.hud = null
+    this.inventoryHud?.dispose()
+    this.inventoryHud = null
     this.lifeText = null
     this.gameOverText = null
     this.zoneClearText = null
     this.zoneCheckpoint = null
+    this.itemRuntime = createItemRuntimeState()
+    this.authoredItemPickups = []
     this.acceptedAttackHistory = []
     this.sceneCreated = false
   }

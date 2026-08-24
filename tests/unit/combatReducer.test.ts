@@ -156,6 +156,7 @@ describe('combatReducer', () => {
           phase: 'active',
           hitRecords: {},
         },
+        wakeInvulnerabilityRemainingMs: 500,
         mode: 'attacking',
       }),
       actor({
@@ -286,5 +287,70 @@ describe('combatReducer', () => {
     expect(initial).toEqual(before)
     expect(result).not.toBe(initial)
     expect(result.actors.han).not.toBe(initial.actors.han)
+  })
+
+  it('owns clamped item healing before full-hitstop early return', () => {
+    const frozen = state(actor({ hp: 70 }))
+    frozen.hitstopRemainingMs = 45
+
+    const result = combatReducer(
+      frozen,
+      [{ actorId: 'han', moveX: 1, moveY: 0, healAmount: 45 }],
+      16,
+    )
+
+    expect(result.actors.han.hp).toBe(100)
+    expect(result.actors.han.position.x).toBe(0)
+    expect(result.hitstopRemainingMs).toBe(29)
+    expect(result.events).toContainEqual({
+      type: 'actor-healed',
+      atMs: 0,
+      actorId: 'han',
+      amount: 30,
+    })
+  })
+
+  it('merges status commands and interrupts an active attack before hit resolution', () => {
+    const attacking = state(
+      actor({
+        id: 'enemy',
+        team: 'enemies',
+        mode: 'attacking',
+        activeAttack: {
+          attackId: 'han-right-hand',
+          elapsedMs: 100,
+          phase: 'active',
+          hitRecords: {},
+        },
+      }),
+      actor({ id: 'target', position: { x: 30, y: 0, z: 0 } }),
+    )
+
+    const result = combatReducer(
+      attacking,
+      [
+        { actorId: 'enemy', moveX: 1, moveY: 0, attackId: 'han-right-hand' },
+        {
+          actorId: 'enemy',
+          moveX: 0,
+          moveY: 0,
+          interruptAttack: true,
+          suppressActions: true,
+          clearGuard: true,
+        },
+      ],
+      16,
+    )
+
+    expect(result.actors.enemy.activeAttack).toBeNull()
+    expect(result.actors.enemy.mode).toBe('idle')
+    expect(result.actors.enemy.position.x).toBe(0)
+    expect(result.actors.enemy.wakeInvulnerabilityRemainingMs).toBe(0)
+    expect(result.actors.target.hp).toBe(100)
+    expect(result.events).toContainEqual({
+      type: 'actor-interrupted',
+      atMs: 0,
+      actorId: 'enemy',
+    })
   })
 })

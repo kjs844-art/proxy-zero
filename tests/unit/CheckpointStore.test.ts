@@ -4,14 +4,13 @@ import { CheckpointStore, type StorageLike } from '../../src/runtime/CheckpointS
 import type { RunCheckpoint } from '../../src/domain/run/runReducer'
 
 const validCheckpoint = (): RunCheckpoint => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   characterId: 'han',
   zoneId: 'n9-depot',
   zoneStartWaveId: 'n9-depot-wave-1',
   inventory: {
-    itemId: 'repair-kit',
-    count: 1,
-    available: true,
+    counts: { emp: 0, 'repair-kit': 1 },
+    selectedItemId: 'repair-kit',
   },
 })
 
@@ -55,14 +54,13 @@ describe('CheckpointStore', () => {
 
     const serialized = storage.values.get(CheckpointStore.storageKey)
     expect(JSON.parse(serialized ?? 'null')).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       characterId: 'han',
       zoneId: 'n9-depot',
       zoneStartWaveId: 'n9-depot-wave-1',
       inventory: {
-        itemId: 'repair-kit',
-        count: 1,
-        available: true,
+        counts: { emp: 0, 'repair-kit': 1 },
+        selectedItemId: 'repair-kit',
       },
     })
   })
@@ -87,15 +85,15 @@ describe('CheckpointStore', () => {
     ])
 
     if (!first) throw new Error('Expected a valid checkpoint.')
-    first.inventory.available = false
-    source.inventory.available = false
+    first.inventory.counts['repair-kit'] = 0
+    source.inventory.counts['repair-kit'] = 0
 
     expect(store.load()).toEqual(validCheckpoint())
   })
 
   it.each([
     ['malformed JSON', '{'],
-    ['wrong schema', JSON.stringify({ ...validCheckpoint(), schemaVersion: 2 })],
+    ['wrong schema', JSON.stringify({ ...validCheckpoint(), schemaVersion: 1 })],
     ['array payload', JSON.stringify([])],
     ['null payload', 'null'],
     ['invalid character', JSON.stringify({ ...validCheckpoint(), characterId: 'zero' })],
@@ -112,21 +110,37 @@ describe('CheckpointStore', () => {
       'invalid item count',
       JSON.stringify({
         ...validCheckpoint(),
-        inventory: { itemId: 'emp', count: -1, available: true },
+        inventory: {
+          counts: { emp: -1, 'repair-kit': 0 },
+          selectedItemId: 'emp',
+        },
       }),
     ],
     [
-      'invalid availability',
+      'missing count key',
       JSON.stringify({
         ...validCheckpoint(),
-        inventory: { itemId: 'emp', count: 1, available: 'yes' },
+        inventory: { counts: { emp: 1 }, selectedItemId: 'emp' },
       }),
     ],
     [
-      'unsupported item',
+      'extra count key',
       JSON.stringify({
         ...validCheckpoint(),
-        inventory: { itemId: 'nuke', count: 1, available: true },
+        inventory: {
+          counts: { emp: 1, 'repair-kit': 0, nuke: 1 },
+          selectedItemId: 'emp',
+        },
+      }),
+    ],
+    [
+      'impossible selection',
+      JSON.stringify({
+        ...validCheckpoint(),
+        inventory: {
+          counts: { emp: 0, 'repair-kit': 1 },
+          selectedItemId: 'emp',
+        },
       }),
     ],
   ])('removes %s without throwing', (_label, stored) => {

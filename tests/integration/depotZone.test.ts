@@ -93,9 +93,14 @@ import {
   type CombatState,
 } from '../../src/domain/combat/combatReducer'
 import { fixedStepMs } from '../../src/domain/combat/tuning'
+import type { InputFrame } from '../../src/domain/combat/inputBuffer'
 import { createEnemyBrainState, type EnemyIntent } from '../../src/domain/enemies/enemyBrain'
 import type { EnemyBrainState, EnemyBrainResult } from '../../src/domain/enemies/enemyBrain'
 import type { EnemyVariantDefinition } from '../../src/domain/enemies/types'
+import {
+  createItemRuntimeState,
+  type ItemRuntimeState,
+} from '../../src/domain/items/itemReducer'
 import { createRunState, type RunCheckpoint, type RunState } from '../../src/domain/run/runReducer'
 import {
   advanceWaveDirector,
@@ -107,6 +112,7 @@ import {
 import { HazardView } from '../../src/phaser/world/HazardView'
 import { ZoneRenderer } from '../../src/phaser/world/ZoneRenderer'
 import { CombatScene } from '../../src/phaser/scenes/CombatScene'
+import { InventoryHud } from '../../src/presentation/InventoryHud'
 
 const content = {
   getVariant: getEnemyVariant,
@@ -560,7 +566,17 @@ type CombatSceneHarness = {
   hazardView: HazardView | null
   zoneRenderer: ZoneRenderer | null
   zoneClearText: { visible: boolean } | null
-  inputAdapter: { dispose(): void } | null
+  inputAdapter: { dispose(): void; readFrame(): InputFrame } | null
+  inventoryHud: InventoryHud | null
+  itemRuntime: ItemRuntimeState
+  authoredItemPickups: Array<{
+    id: string
+    itemId: 'emp' | 'repair-kit'
+    position: { x: number; y: number }
+    consumed: boolean
+  }>
+  itemTargetClasses: Map<string, 'normal' | 'elite' | 'boss'>
+  zoneCheckpoint: RunCheckpoint | null
   scene: { start: ReturnType<typeof vi.fn> }
   input: { keyboard?: { off: ReturnType<typeof vi.fn> } }
   actionQueue: {
@@ -590,6 +606,16 @@ type CombatSceneHarness = {
   buildEnemyCommands(): CombatCommand[]
   tryContinue(): void
   dispose(): void
+}
+
+const captureOneFrame = (scene: CombatSceneHarness, frame: InputFrame): void => {
+  if (!scene.inputAdapter) throw new Error('Expected the live input adapter.')
+  let pending = frame
+  scene.inputAdapter.readFrame = () => {
+    const captured = pending
+    pending = { moveX: 0, moveY: 0, edges: [] }
+    return captured
+  }
 }
 
 const createLiveScene = () => {
@@ -852,7 +878,6 @@ describe('CombatScene N-9 Depot orchestration', () => {
       zoneStartWaveId: scene.runState.zoneStartWaveId,
       lives: scene.runState.lives,
       continueUsed: scene.runState.continueUsed,
-      inventory: scene.runState.inventory,
     }
 
     clearCurrentWave(scene)
@@ -1096,6 +1121,164 @@ describe('CombatScene N-9 Depot orchestration', () => {
     )
   })
 
+  it('processes captured Q then E once in order and synchronizes reducer-owned repair HP', () => {
+    const { scene } = createLiveScene()
+    scene.itemRuntime = createItemRuntimeState({
+      inventory: {
+        counts: { emp: 1, 'repair-kit': 1 },
+        selectedItemId: 'emp',
+      },
+    })
+    scene.state.actors.han.hp = 40
+    scene.runState = { ...scene.runState, hp: 40 }
+    captureOneFrame(scene, {
+      moveX: 0,
+      moveY: 0,
+      edges: [{ type: 'cycle-item' }, { type: 'interact-use' }],
+    })
+
+    scene.stepDomain()
+
+    expect(scene.itemRuntime.inventory).toEqual({
+      counts: { emp: 1, 'repair-kit': 0 },
+      selectedItemId: 'emp',
+    })
+    expect(scene.state.actors.han.hp).toBe(85)
+    expect(scene.runState.hp).toBe(85)
+  })
+
+  it('accepts a new EMP during full hitstop and starts decrementing on the next active step', () => {
+    const { scene } = createLiveScene()
+    scene.stepDomain()
+    const enemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
+    const enemy = scene.state.actors[enemyId]
+    enemy.position = { x: scene.state.actors.han.position.x + 100, y: 248, z: 0 }
+    enemy.mode = 'attacking'
+    enemy.activeAttack = {
+      attackId: 'han-right-hand',
+      elapsedMs: 100,
+      phase: 'active',
+      hitRecords: {},
+    }
+    enemy.wakeInvulnerabilityRemainingMs = 500
+    scene.applyEnemyIntent(enemyId, {
+      type: 'telegraph',
+      attackId: 'scout-patrol-kick',
+      durationMs: 300,
+      range: { x: 70, y: 26 },
+    })
+    scene.itemRuntime = createItemRuntimeState({
+      inventory: { counts: { emp: 1, 'repair-kit': 0 }, selectedItemId: 'emp' },
+    })
+    scene.state.hitstopRemainingMs = fixedStepMs
+    captureOneFrame(scene, {
+      moveX: 0,
+      moveY: 0,
+      edges: [{ type: 'interact-use' }],
+    })
+
+    scene.stepDomain()
+
+    expect(scene.itemRuntime.empRemainingMsByTargetId[enemyId]).toBe(2_000)
+    expect(scene.state.actors[enemyId].activeAttack).toBeNull()
+    expect(scene.state.actors[enemyId].wakeInvulnerabilityRemainingMs).toBe(0)
+    expect(scene.hazardView?.snapshot().telegraphCount).toBe(0)
+
+    scene.stepDomain()
+    expect(scene.itemRuntime.empRemainingMsByTargetId[enemyId]).toBeCloseTo(
+      2_000 - fixedStepMs,
+      8,
+    )
+  })
+
+  it('retains inventory and pickups on first-life respawn while clearing EMP timers', () => {
+    const { scene } = createLiveScene()
+    scene.stepDomain()
+    const enemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
+    scene.itemRuntime = createItemRuntimeState({
+      inventory: {
+        counts: { emp: 0, 'repair-kit': 1 },
+        selectedItemId: 'repair-kit',
+      },
+      pickups: [
+        {
+          id: 'test-repair',
+          itemId: 'repair-kit',
+          position: { x: 250, y: 248 },
+          consumed: true,
+        },
+      ],
+      empRemainingMsByTargetId: { [enemyId]: 1_000 },
+    })
+    scene.state.actors.han.hp = 0
+    scene.state.actors.han.mode = 'defeated'
+    scene.runState = { ...scene.runState, hp: 0, lives: 2 }
+
+    scene.stepDomain()
+
+    expect(scene.runState.lives).toBe(1)
+    expect(scene.itemRuntime.inventory).toEqual({
+      counts: { emp: 0, 'repair-kit': 1 },
+      selectedItemId: 'repair-kit',
+    })
+    expect(scene.itemRuntime.pickups[0].consumed).toBe(true)
+    expect(scene.itemRuntime.empRemainingMsByTargetId).toEqual({})
+  })
+
+  it('restores checkpoint inventory and fresh authored pickups with a replacement HUD on Continue', () => {
+    const { scene } = createLiveScene()
+    scene.authoredItemPickups = [
+      {
+        id: 'authored-emp',
+        itemId: 'emp',
+        position: { x: 250, y: 248 },
+        consumed: false,
+      },
+    ]
+    scene.itemRuntime = createItemRuntimeState({
+      inventory: {
+        counts: { emp: 0, 'repair-kit': 1 },
+        selectedItemId: 'repair-kit',
+      },
+      pickups: [{ ...scene.authoredItemPickups[0], consumed: true }],
+      empRemainingMsByTargetId: { stale: 500 },
+    })
+    scene.zoneCheckpoint = {
+      schemaVersion: 2,
+      characterId: 'han',
+      zoneId: 'n9-depot',
+      zoneStartWaveId: 'n9-depot-wave-1',
+      inventory: {
+        counts: { emp: 1, 'repair-kit': 1 },
+        selectedItemId: 'emp',
+      },
+    }
+    scene.runState = {
+      ...scene.runState,
+      lives: 0,
+      hp: 0,
+      status: 'game-over',
+      continueAvailable: true,
+    }
+    const oldHud = scene.inventoryHud
+    if (!oldHud) throw new Error('Expected the live inventory HUD.')
+    const dispose = vi.spyOn(oldHud, 'dispose')
+    captureOneFrame(scene, {
+      moveX: 0,
+      moveY: 0,
+      edges: [{ type: 'cycle-item' }, { type: 'interact-use' }],
+    })
+
+    scene.tryContinue()
+    scene.stepDomain()
+
+    expect(scene.itemRuntime.inventory).toEqual(scene.zoneCheckpoint.inventory)
+    expect(scene.itemRuntime.pickups).toEqual(scene.authoredItemPickups)
+    expect(scene.itemRuntime.empRemainingMsByTargetId).toEqual({})
+    expect(dispose).toHaveBeenCalledOnce()
+    expect(scene.inventoryHud).not.toBe(oldHud)
+  })
+
   it('symmetrically clears defeated enemy resources and every owned shutdown listener/view', () => {
     const { scene } = createLiveScene()
     scene.stepDomain()
@@ -1127,12 +1310,15 @@ describe('CombatScene N-9 Depot orchestration', () => {
     const rendererDispose = vi.spyOn(renderer as ZoneRenderer, 'dispose')
     const hazards = scene.hazardView
     const hazardDispose = vi.spyOn(hazards as HazardView, 'dispose')
+    const inventoryHud = scene.inventoryHud
+    const inventoryHudDispose = vi.spyOn(inventoryHud as InventoryHud, 'dispose')
 
     scene.dispose()
     expect(playerDispose).toHaveBeenCalledOnce()
     expect(inputDispose).toHaveBeenCalledOnce()
     expect(rendererDispose).toHaveBeenCalledOnce()
     expect(hazardDispose).toHaveBeenCalledOnce()
+    expect(inventoryHudDispose).toHaveBeenCalledOnce()
     expect(scene.actorViews.size).toBe(0)
     expect(scene.enemyBrains.size).toBe(0)
     expect(scene.enemyRngs.size).toBe(0)

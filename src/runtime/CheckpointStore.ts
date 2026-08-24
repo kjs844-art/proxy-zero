@@ -1,9 +1,9 @@
 import type { CharacterId } from '../domain/shared/types'
 import {
   CHECKPOINT_SCHEMA_VERSION,
-  type InventorySlot,
   type RunCheckpoint,
 } from '../domain/run/runReducer'
+import type { ItemInventory } from '../domain/items/itemReducer'
 import type { ItemId, ZoneId } from '../domain/run/types'
 
 export interface StorageLike {
@@ -33,25 +33,36 @@ const isZone = (value: unknown): value is ZoneId =>
 const isItem = (value: unknown): value is ItemId =>
   typeof value === 'string' && items.includes(value as ItemId)
 
-const sanitizeInventory = (value: unknown): InventorySlot | null => {
+const hasExactKeys = (value: Record<string, unknown>, expected: readonly string[]): boolean => {
+  const actual = Object.keys(value).sort()
+  const sortedExpected = [...expected].sort()
+  return (
+    actual.length === sortedExpected.length &&
+    actual.every((key, index) => key === sortedExpected[index])
+  )
+}
+
+const isCount = (value: unknown): value is 0 | 1 => value === 0 || value === 1
+
+const sanitizeInventory = (value: unknown): ItemInventory | null => {
   if (!isRecord(value)) return null
-  const { itemId, count, available } = value
-  if (
-    typeof available !== 'boolean' ||
-    typeof count !== 'number' ||
-    !Number.isInteger(count) ||
-    count < 0 ||
-    count > 1
-  ) {
+  if (!hasExactKeys(value, ['counts', 'selectedItemId'])) return null
+  if (!isRecord(value.counts) || !hasExactKeys(value.counts, ['emp', 'repair-kit'])) {
     return null
   }
-  if (itemId === null) {
-    return count === 0 && available === false
-      ? { itemId: null, count: 0, available: false }
-      : null
+  const emp = value.counts.emp
+  const repairKit = value.counts['repair-kit']
+  if (!isCount(emp) || !isCount(repairKit)) return null
+  const selectedItemId = value.selectedItemId
+  if (selectedItemId !== null && !isItem(selectedItemId)) return null
+  if (selectedItemId !== null) {
+    const selectedCount = selectedItemId === 'emp' ? emp : repairKit
+    if (selectedCount !== 1) return null
   }
-  if (!isItem(itemId) || count !== 1) return null
-  return { itemId, count, available }
+  return {
+    counts: { emp, 'repair-kit': repairKit },
+    selectedItemId,
+  }
 }
 
 const sanitizeCheckpoint = (value: unknown): RunCheckpoint | null => {
@@ -73,7 +84,7 @@ const sanitizeCheckpoint = (value: unknown): RunCheckpoint | null => {
 }
 
 export class CheckpointStore {
-  static readonly storageKey = 'proxy-zero:checkpoint:v1'
+  static readonly storageKey = 'proxy-zero:checkpoint:v2'
 
   constructor(private readonly storage?: StorageLike | null) {}
 

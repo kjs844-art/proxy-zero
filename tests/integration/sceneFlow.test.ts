@@ -102,11 +102,14 @@ type SceneHarness = {
 }
 
 const currentCheckpoint = (): RunCheckpoint => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   characterId: 'han',
   zoneId: 'n9-depot',
   zoneStartWaveId: 'n9-depot-wave-1',
-  inventory: { itemId: null, count: 0, available: false },
+  inventory: {
+    counts: { emp: 0, 'repair-kit': 0 },
+    selectedItemId: null,
+  },
 })
 
 const createCombatHarness = (
@@ -126,7 +129,6 @@ const createCombatHarness = (
       zoneId: 'n9-depot',
       waveId: 'n9-depot-wave-1',
       maxHp: 100,
-      inventory: { itemId: null, count: 0, available: false },
     }),
     ...runOverrides,
   }
@@ -261,11 +263,14 @@ describe('CombatScene run adapter', () => {
     })
     scene.checkpointStore = {
       load: () => ({
-        schemaVersion: 1,
+        schemaVersion: 2,
         characterId: 'mina',
         zoneId: 'service-train',
         zoneStartWaveId: 'service-train-wave-1',
-        inventory: { itemId: 'emp', count: 1, available: true },
+        inventory: {
+          counts: { emp: 1, 'repair-kit': 0 },
+          selectedItemId: 'emp',
+        },
       }),
     }
 

@@ -108,6 +108,17 @@ export type CombatEvent =
       attackId: string
       strength: number
     }
+  | {
+      type: 'actor-healed'
+      atMs: number
+      actorId: string
+      amount: number
+    }
+  | {
+      type: 'actor-interrupted'
+      atMs: number
+      actorId: string
+    }
 
 export interface CombatState {
   elapsedMs: number
@@ -124,6 +135,10 @@ export interface CombatCommand {
   moveY: -1 | 0 | 1
   jump?: boolean
   attackId?: string
+  healAmount?: number
+  interruptAttack?: boolean
+  suppressActions?: boolean
+  clearGuard?: boolean
 }
 
 const KNOCKDOWN_MS = 850
@@ -187,6 +202,70 @@ const isGrounded = (actor: Readonly<CombatActor>): boolean => actor.position.z =
 
 const isActionable = (actor: Readonly<CombatActor>): boolean =>
   actor.mode === 'idle' || actor.mode === 'moving' || actor.mode === 'airborne'
+
+const commandsByActorId = (
+  commands: readonly Readonly<CombatCommand>[],
+): Map<string, CombatCommand> => {
+  const merged = new Map<string, CombatCommand>()
+  for (const command of commands) {
+    const prior = merged.get(command.actorId)
+    merged.set(command.actorId, {
+      ...(prior ?? { actorId: command.actorId, moveX: 0, moveY: 0 }),
+      ...command,
+      healAmount: (prior?.healAmount ?? 0) + (command.healAmount ?? 0),
+      interruptAttack: prior?.interruptAttack === true || command.interruptAttack === true,
+      suppressActions: prior?.suppressActions === true || command.suppressActions === true,
+      clearGuard: prior?.clearGuard === true || command.clearGuard === true,
+    })
+  }
+  return merged
+}
+
+const applyImmediateCommand = (
+  state: CombatState,
+  actor: CombatActor,
+  command: Readonly<CombatCommand> | undefined,
+): void => {
+  if (!command || actor.mode === 'defeated' || actor.hp <= 0) return
+
+  const requestedHeal = Number.isFinite(command.healAmount)
+    ? Math.max(0, command.healAmount ?? 0)
+    : 0
+  if (requestedHeal > 0 && actor.hp < actor.maxHp) {
+    const oldHp = actor.hp
+    actor.hp = Math.min(actor.maxHp, actor.hp + requestedHeal)
+    state.events.push({
+      type: 'actor-healed',
+      atMs: state.elapsedMs,
+      actorId: actor.id,
+      amount: actor.hp - oldHp,
+    })
+  }
+
+  if (command.interruptAttack) {
+    const interrupted = actor.activeAttack !== null
+    actor.activeAttack = null
+    if (actor.mode === 'attacking') {
+      actor.mode = isGrounded(actor) ? 'idle' : 'airborne'
+    }
+    if (interrupted) {
+      state.events.push({
+        type: 'actor-interrupted',
+        atMs: state.elapsedMs,
+        actorId: actor.id,
+      })
+    }
+  }
+
+  if (command.clearGuard && actor.mode !== 'getting-up') {
+    actor.wakeInvulnerabilityRemainingMs = 0
+  }
+
+  if (command.suppressActions && (isActionable(actor) || actor.mode === 'attacking')) {
+    actor.velocity.x = 0
+    actor.velocity.y = 0
+  }
+}
 
 const canStartForPosition = (
   actor: Readonly<CombatActor>,
@@ -503,6 +582,11 @@ export const combatReducer = (
 ): CombatState => {
   const state = cloneState(incoming)
   const requestedDeltaMs = Number.isFinite(deltaMs) ? Math.max(0, deltaMs) : 0
+  const commandsByActor = commandsByActorId(commands)
+
+  for (const actorId of Object.keys(state.actors).sort()) {
+    applyImmediateCommand(state, state.actors[actorId], commandsByActor.get(actorId))
+  }
 
   if (state.hitstopRemainingMs > 0) {
     const frozenMs = Math.min(state.hitstopRemainingMs, requestedDeltaMs)
@@ -514,16 +598,20 @@ export const combatReducer = (
   }
 
   state.elapsedMs += deltaMs
-  const commandsByActor = new Map(commands.map((command) => [command.actorId, command]))
 
   for (const actorId of Object.keys(state.actors).sort()) {
     const actor = state.actors[actorId]
     const command = commandsByActor.get(actorId)
     const canAdvance = advanceLifecycle(state, actor, deltaMs)
     if (!canAdvance) continue
-    tryStartAttack(state, actor, command?.attackId)
+    if (!command?.suppressActions) tryStartAttack(state, actor, command?.attackId)
     advanceAttack(actor, deltaMs)
-    applyMovementAndPhysics(state, actor, command, deltaMs)
+    applyMovementAndPhysics(
+      state,
+      actor,
+      command?.suppressActions ? undefined : command,
+      deltaMs,
+    )
   }
 
   resolveActiveHits(state)

@@ -1,21 +1,16 @@
 import type { CharacterId } from '../shared/types'
-import type { ItemId, ZoneId } from './types'
+import type { ItemInventory } from '../items/itemReducer'
+import type { ZoneId } from './types'
 
-export const CHECKPOINT_SCHEMA_VERSION = 1 as const
+export const CHECKPOINT_SCHEMA_VERSION = 2 as const
 export const RESPAWN_INVULNERABILITY_MS = 1_200
-
-export interface InventorySlot {
-  itemId: ItemId | null
-  count: number
-  available: boolean
-}
 
 export interface RunCheckpoint {
   schemaVersion: typeof CHECKPOINT_SCHEMA_VERSION
   characterId: CharacterId
   zoneId: ZoneId
   zoneStartWaveId: string
-  inventory: InventorySlot
+  inventory: ItemInventory
 }
 
 export type RunStatus = 'playing' | 'game-over'
@@ -35,7 +30,6 @@ export interface RunState {
   score: number
   rankCap: RunRankCap
   status: RunStatus
-  inventory: InventorySlot
 }
 
 export interface CreateRunStateOptions {
@@ -43,7 +37,6 @@ export interface CreateRunStateOptions {
   zoneId: ZoneId
   waveId: string
   maxHp: number
-  inventory: Readonly<InventorySlot>
 }
 
 export type RunCommand =
@@ -54,23 +47,27 @@ export type RunCommand =
 
 export type RunEffect =
   | { type: 'same-wave-respawn'; waveId: string }
-  | { type: 'rebuild-zone'; zoneId: ZoneId; waveId: string }
+  | {
+      type: 'rebuild-zone'
+      zoneId: ZoneId
+      waveId: string
+      inventory: ItemInventory
+    }
 
 export interface RunReducerResult {
   state: RunState
   effects: RunEffect[]
 }
 
-const cloneInventory = (inventory: Readonly<InventorySlot>): InventorySlot => ({
-  itemId: inventory.itemId,
-  count: inventory.count,
-  available: inventory.available,
+const cloneInventory = (inventory: Readonly<ItemInventory>): ItemInventory => ({
+  counts: {
+    emp: inventory.counts.emp,
+    'repair-kit': inventory.counts['repair-kit'],
+  },
+  selectedItemId: inventory.selectedItemId,
 })
 
-const cloneState = (state: Readonly<RunState>): RunState => ({
-  ...state,
-  inventory: cloneInventory(state.inventory),
-})
+const cloneState = (state: Readonly<RunState>): RunState => ({ ...state })
 
 export const createRunState = (options: Readonly<CreateRunStateOptions>): RunState => ({
   characterId: options.characterId,
@@ -86,7 +83,6 @@ export const createRunState = (options: Readonly<CreateRunStateOptions>): RunSta
   score: 0,
   rankCap: null,
   status: 'playing',
-  inventory: cloneInventory(options.inventory),
 })
 
 const finiteDelta = (deltaMs: number): number =>
@@ -160,7 +156,6 @@ export const runReducer = (
   state.score = 0
   state.rankCap = 'C'
   state.status = 'playing'
-  state.inventory = cloneInventory(saved.inventory)
 
   return {
     state,
@@ -169,6 +164,7 @@ export const runReducer = (
         type: 'rebuild-zone',
         zoneId: saved.zoneId,
         waveId: saved.zoneStartWaveId,
+        inventory: cloneInventory(saved.inventory),
       },
     ],
   }

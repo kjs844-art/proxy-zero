@@ -7,32 +7,24 @@ import {
   type RunState,
 } from '../../src/domain/run/runReducer'
 
-const emptyInventory = () => ({
-  itemId: null,
-  count: 0,
-  available: false,
-} as const)
-
 const createRun = (overrides: Partial<RunState> = {}): RunState => ({
   ...createRunState({
     characterId: 'han',
     zoneId: 'n9-depot',
     waveId: 'n9-depot-wave-1',
     maxHp: 100,
-    inventory: emptyInventory(),
   }),
   ...overrides,
 })
 
 const checkpoint = (): RunCheckpoint => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   characterId: 'han',
   zoneId: 'n9-depot',
   zoneStartWaveId: 'n9-depot-wave-1',
   inventory: {
-    itemId: 'emp',
-    count: 1,
-    available: true,
+    counts: { emp: 1, 'repair-kit': 0 },
+    selectedItemId: 'emp',
   },
 })
 
@@ -54,12 +46,10 @@ describe('runReducer', () => {
   })
 
   it('uses one life and requests a same-wave respawn without a zone rebuild', () => {
-    const inventory = { itemId: 'repair-kit', count: 1, available: false } as const
     const before = createRun({
       hp: 0,
       score: 4_200,
       currentWaveId: 'n9-depot-wave-3',
-      inventory,
     })
 
     const result = runReducer(before, { type: 'player-defeated' })
@@ -69,7 +59,6 @@ describe('runReducer', () => {
       hp: 100,
       score: 4_200,
       currentWaveId: 'n9-depot-wave-3',
-      inventory,
       respawnInvulnerabilityRemainingMs: 1_200,
       status: 'playing',
     })
@@ -123,7 +112,6 @@ describe('runReducer', () => {
       status: 'game-over',
       continueAvailable: true,
       currentWaveId: 'n9-depot-wave-3',
-      inventory: { itemId: 'repair-kit', count: 1, available: true },
     })
 
     const result = runReducer(gameOver, {
@@ -144,18 +132,22 @@ describe('runReducer', () => {
       continueAvailable: false,
       respawnInvulnerabilityRemainingMs: 0,
       status: 'playing',
-      inventory: { itemId: 'emp', count: 1, available: true },
     })
     expect(result.effects).toEqual([
       {
         type: 'rebuild-zone',
         zoneId: 'n9-depot',
         waveId: 'n9-depot-wave-1',
+        inventory: {
+          counts: { emp: 1, 'repair-kit': 0 },
+          selectedItemId: 'emp',
+        },
       },
     ])
 
-    saved.inventory.available = false
-    expect(result.state.inventory.available).toBe(true)
+    saved.inventory.counts.emp = 0
+    const effect = result.effects.find((entry) => entry.type === 'rebuild-zone')
+    expect(effect?.inventory.counts.emp).toBe(1)
   })
 
   it('rejects a checkpoint that belongs to another run identity', () => {
