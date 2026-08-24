@@ -88,9 +88,11 @@ import {
 import { runReducer, type RunCheckpoint, type RunState } from '../../src/domain/run/runReducer'
 import {
   createTunnelHazardState,
+  TUNNEL_TRAIN_RECT,
   type TunnelHazardState,
 } from '../../src/domain/world/tunnelHazard'
 import type { ZoneWaveRuntime } from '../../src/domain/waves/waveDirector'
+import type { KeyboardInputAdapter } from '../../src/phaser/input/KeyboardInputAdapter'
 import { CombatScene } from '../../src/phaser/scenes/CombatScene'
 import { TunnelBackdrop } from '../../src/phaser/world/TunnelBackdrop'
 
@@ -178,6 +180,9 @@ type SceneHarness = {
   bossBrains: Map<string, BossBrainState>
   tunnelHazardState: TunnelHazardState
   tunnelBackdrop: TunnelBackdrop | null
+  hazardView: { snapshot(): { telegraphCount: number } } | null
+  inputAdapter: KeyboardInputAdapter | null
+  game: { canvas: HTMLCanvasElement }
   checkpointStore: {
     save(checkpoint: Readonly<RunCheckpoint>): boolean
     load(): RunCheckpoint | null
@@ -202,6 +207,16 @@ const createLiveScene = () => {
   const scene = new CombatScene(services) as unknown as SceneHarness
   scene.create()
   return { scene, services }
+}
+
+const dispatchKeyDown = (scene: SceneHarness, code: string): void => {
+  if (!scene.inputAdapter) throw new Error('Expected the live KeyboardInputAdapter.')
+  const event = new Event('keydown', { cancelable: true })
+  Object.defineProperties(event, {
+    code: { value: code },
+    repeat: { value: false },
+  })
+  scene.game.canvas.ownerDocument.dispatchEvent(event)
 }
 
 const stepUntil = (
@@ -372,25 +387,149 @@ describe('CombatScene flooded-tunnel orchestration', () => {
     expect(scene.scene.start).toHaveBeenCalledOnce()
   })
 
-  it('keeps terminal Game Over above a same-tick final-boss defeat', () => {
+  it('keeps terminal Game Over above simultaneous train defeats and Continue rebuilds without Results', () => {
     const { scene, services } = createLiveScene()
     const completeCombat = vi.spyOn(services, 'completeCombat')
     enterFloodedTunnel(scene)
     const bossId = enterBossWave(scene)
-    scene.state.actors.han.hp = 0
-    scene.state.actors.han.mode = 'defeated'
-    scene.state.actors[bossId].hp = 0
-    scene.state.actors[bossId].mode = 'defeated'
-    scene.runState = { ...scene.runState, hp: 0, lives: 1 }
+    const player = scene.state.actors.han
+    const boss = scene.state.actors[bossId]
+    player.position = { x: 300, y: 220, z: 0 }
+    player.hp = 24
+    player.mode = 'idle'
+    boss.position = { x: 400, y: 220, z: 0 }
+    boss.hp = 60
+    boss.mode = 'idle'
+    scene.runState = { ...scene.runState, hp: 24, lives: 1 }
+    scene.tunnelHazardState = {
+      elapsedMs: 12_500,
+      puddleHitPlayer: false,
+      trainHitTargetIds: [],
+    }
+
+    expect(player.position.z).toBe(0)
+    expect(boss.position.z).toBe(0)
+    expect(player.position.y).toBeGreaterThanOrEqual(TUNNEL_TRAIN_RECT.minY)
+    expect(player.position.y).toBeLessThanOrEqual(TUNNEL_TRAIN_RECT.maxY)
+    expect(boss.position.y).toBeGreaterThanOrEqual(TUNNEL_TRAIN_RECT.minY)
+    expect(boss.position.y).toBeLessThanOrEqual(TUNNEL_TRAIN_RECT.maxY)
 
     scene.stepDomain()
 
+    const environmentalDefeats = scene.state.events.filter(
+      (event) => event.type === 'actor-defeated' && event.attackerId === 'environment',
+    )
+    expect(environmentalDefeats).toHaveLength(2)
+    expect(environmentalDefeats).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        actorId: 'han', attackId: 'environmental-impact', strength: 3,
+      }),
+      expect.objectContaining({
+        actorId: bossId, attackId: 'environmental-impact', strength: 3,
+      }),
+    ]))
+    expect(scene.state.actors[bossId]).toMatchObject({ hp: 0, mode: 'defeated' })
     expect(scene.runState).toMatchObject({
       lives: 0, status: 'game-over', continueAvailable: true,
     })
     expect(scene.zonePhase).toBe('active')
     expect(completeCombat).not.toHaveBeenCalled()
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
+
+    scene.tryContinue()
+
+    expect(scene.runState).toMatchObject({
+      lives: 2,
+      continueUsed: true,
+      status: 'playing',
+      currentWaveId: 'flooded-tunnel-wave-1',
+    })
+    expect(scene.waveIndex).toBe(0)
+    expect(scene.state.actors[bossId]).toBeUndefined()
+    expect(scene.zonePhase).toBe('active')
+    expect(completeCombat).not.toHaveBeenCalled()
+    expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
+  })
+
+  it('advances the accepted boss cursor and resumes its next pattern after a live 700ms EMP edge', () => {
+    const { scene } = createLiveScene()
+    enterFloodedTunnel(scene)
+    const bossId = enterBossWave(scene)
+    const player = scene.state.actors.han
+    const boss = scene.state.actors[bossId]
+    player.position = { x: 300, y: 220, z: 0 }
+    boss.position = { x: 340, y: 220, z: 0 }
+    boss.hp = 600
+    boss.mode = 'idle'
+    scene.tunnelHazardState = createTunnelHazardState()
+    scene.runState = { ...scene.runState, respawnInvulnerabilityRemainingMs: 5_000 }
+
+    stepUntil(scene, () => scene.state.events.some((event) =>
+      event.type === 'attack-started' &&
+      event.actorId === bossId &&
+      event.attackId === 'boss-floodline-charge',
+    ))
+
+    expect(scene.state.actors[bossId].activeAttack?.attackId).toBe('boss-floodline-charge')
+    expect(scene.bossBrains.get(bossId)).toMatchObject({
+      phase: 2,
+      cursor: 'B',
+      mode: 'await-completion',
+      attackId: 'boss-floodline-charge',
+    })
+
+    dispatchKeyDown(scene, 'KeyE')
+    scene.stepDomain()
+
+    expect(scene.itemRuntime.inventory.counts.emp).toBe(0)
+    expect(scene.itemRuntime.empRemainingMsByTargetId[bossId]).toBe(700)
+    expect(scene.state.actors[bossId].activeAttack).toBeNull()
+    expect(scene.hazardView?.snapshot().telegraphCount).toBe(0)
+    expect(scene.bossBrains.get(bossId)).toMatchObject({
+      phase: 2,
+      cursor: 'B',
+      mode: 'chase',
+      attackId: null,
+      elapsedMs: 0,
+    })
+
+    const fullActiveStepsBeforeExpiry = Math.ceil(700 / fixedStepMs) - 1
+    for (let step = 0; step < fullActiveStepsBeforeExpiry; step += 1) scene.stepDomain()
+    expect(scene.itemRuntime.empRemainingMsByTargetId[bossId]).toBeGreaterThan(0)
+    expect(scene.bossBrains.get(bossId)).toMatchObject({
+      phase: 2, cursor: 'B', mode: 'chase',
+    })
+    expect(scene.hazardView?.snapshot().telegraphCount).toBe(0)
+
+    scene.stepDomain()
+
+    expect(scene.itemRuntime.empRemainingMsByTargetId[bossId]).toBeCloseTo(0, 8)
+    expect(scene.bossBrains.get(bossId)).toMatchObject({
+      phase: 2, cursor: 'B', mode: 'chase',
+    })
+    scene.stepDomain()
+
+    expect(scene.itemRuntime.empRemainingMsByTargetId[bossId]).toBeUndefined()
+    expect(scene.bossBrains.get(bossId)).toMatchObject({
+      phase: 2,
+      cursor: 'B',
+      mode: 'telegraph',
+      attackId: 'boss-dredger-slam',
+      elapsedMs: 0,
+    })
+    expect(scene.hazardView?.snapshot().telegraphCount).toBe(1)
+
+    stepUntil(scene, () => scene.state.events.some((event) =>
+      event.type === 'attack-started' &&
+      event.actorId === bossId &&
+      event.attackId === 'boss-dredger-slam',
+    ))
+    expect(scene.bossBrains.get(bossId)).toMatchObject({
+      phase: 2,
+      cursor: 'A',
+      mode: 'await-completion',
+      attackId: 'boss-dredger-slam',
+    })
   })
 })
 
