@@ -1,0 +1,5 @@
+# The generated audio manifest is byte-compared with the generator output.
+public/assets/audio/audio.manifest.json text eol=lf
+
+# PCM WAV assets must never receive text newline conversion.
+public/assets/audio/*.wav -text
