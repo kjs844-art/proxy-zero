@@ -88,7 +88,7 @@ const normalAttacks = (characterId: string): AttackDefinition[] => [
   }),
 ]
 
-const catalogWithElites: readonly AttackDefinition[] = [
+const catalogWithEnemies: readonly AttackDefinition[] = [
   ...normalAttacks('han'),
   defineAttack('han-cross-strike', {
     startupMs: 140,
@@ -269,14 +269,46 @@ const catalogWithElites: readonly AttackDefinition[] = [
     },
     meterGain: 0,
   }),
+  defineAttack('boss-dredger-slam', {
+    startupMs: 0,
+    activeMs: 160,
+    recoveryMs: 620,
+    bufferMs: 180,
+    hitbox: { offsetX: 0, halfWidth: 96, halfDepth: 46 },
+    hit: {
+      strength: 3,
+      damage: 26,
+      hitstunMs: 420,
+      knockbackX: 112,
+      maxHitsPerTarget: 1,
+    },
+    meterGain: 0,
+    grantsSuperArmor: true,
+  }),
+  defineAttack('boss-floodline-charge', {
+    startupMs: 0,
+    activeMs: 260,
+    recoveryMs: 800,
+    bufferMs: 180,
+    hitbox: { offsetX: 0, halfWidth: 190, halfDepth: 26 },
+    hit: {
+      strength: 3,
+      damage: 34,
+      hitstunMs: 480,
+      knockbackX: 132,
+      maxHitsPerTarget: 1,
+    },
+    meterGain: 0,
+    grantsSuperArmor: true,
+  }),
 ]
 
 /** Stable player catalog retained for character recipe completeness checks. */
 export const attackCatalog: readonly AttackDefinition[] = Object.freeze(
-  catalogWithElites.slice(0, -2),
+  catalogWithEnemies.slice(0, -4),
 )
 
-/** Reducer catalog adds the two authored elite attacks without changing player recipes. */
+/** Reducer catalog adds authored elite/boss attacks without changing player recipes. */
 export const combatAttackCatalog: readonly AttackDefinition[] = Object.freeze([
-  ...catalogWithElites,
+  ...catalogWithEnemies,
 ])

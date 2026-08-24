@@ -130,7 +130,7 @@ describe('combatReducer', () => {
       environmentalImpact: {
         damage: 18,
         recoveryPosition: { x: 576, y: 236, z: 0 },
-        knockdownMs: 850,
+        reaction: { type: 'knockdown', durationMs: 850 },
       },
     }], 0)
     expect(impacted.actors.han).toMatchObject({
@@ -149,25 +149,56 @@ describe('combatReducer', () => {
     })
   })
 
+  it('supports reducer-owned environmental hitstun without weakening train knockdown', () => {
+    const shocked = combatReducer(state(actor({
+      hp: 40,
+      mode: 'attacking',
+      activeAttack: {
+        attackId: 'han-right-hand', elapsedMs: 50, phase: 'startup', hitRecords: {},
+      },
+    })), [{
+      actorId: 'han', moveX: 1, moveY: -1,
+      environmentalImpact: {
+        damage: 12,
+        recoveryPosition: { x: 300, y: 240, z: 0 },
+        reaction: { type: 'hitstun', durationMs: 300 },
+      },
+    }], 0)
+    expect(shocked.actors.han).toMatchObject({
+      hp: 28,
+      position: { x: 300, y: 240, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      mode: 'hitstun',
+      hitstunRemainingMs: 300,
+      knockdownRemainingMs: 0,
+      activeAttack: null,
+    })
+  })
+
   it('lets environmental damage own defeat and ignores invalid repeat impact', () => {
     const defeated = combatReducer(state(actor({ hp: 10 })), [{
       actorId: 'han', moveX: 0, moveY: 0,
       environmentalImpact: {
         damage: 18,
         recoveryPosition: { x: 300, y: 236, z: 0 },
-        knockdownMs: 850,
+        reaction: { type: 'knockdown', durationMs: 850 },
       },
     }], 0)
     expect(defeated.actors.han).toMatchObject({ hp: 0, mode: 'defeated' })
+    expect(defeated.events.filter((event) => event.type === 'actor-defeated')).toEqual([{
+      type: 'actor-defeated', atMs: 0, actorId: 'han', attackerId: 'environment',
+      attackId: 'environmental-impact', strength: 3,
+    }])
     const ignored = combatReducer(defeated, [{
       actorId: 'han', moveX: 0, moveY: 0,
       environmentalImpact: {
         damage: Number.NaN,
         recoveryPosition: { x: Number.NaN, y: 0, z: 0 },
-        knockdownMs: Number.POSITIVE_INFINITY,
+        reaction: { type: 'knockdown', durationMs: Number.POSITIVE_INFINITY },
       },
     }], 0)
     expect(ignored.actors.han).toEqual(defeated.actors.han)
+    expect(ignored.events.filter((event) => event.type === 'actor-defeated')).toEqual([])
   })
   it('moves on world X/Y, jumps on Z, and clamps a landing', () => {
     const initial = state(actor())

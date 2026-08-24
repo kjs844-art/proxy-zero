@@ -4,7 +4,7 @@ import type { ZoneEntry } from '../domain/run/types'
 import type { Vec3 } from '../domain/shared/types'
 import type { ArenaBounds, PlayerSafeSeparation } from '../domain/waves/waveDirector'
 
-export type PlayableStageOneZoneId = 'n9-depot' | 'service-train'
+export type PlayableStageOneZoneId = 'n9-depot' | 'service-train' | 'flooded-tunnel'
 
 export interface StageOneSpawnOrder extends WaveSpawnOrder {
   readonly position: EnemyPoint
@@ -25,13 +25,14 @@ export interface PlayableStageOneZoneDefinition {
   readonly interWaveDelayMs: number
   readonly enemyDamageScale: number
   readonly eliteDamageScale: number
+  readonly bossDamageScale: number
   readonly transitionDurationMs: number
   readonly targetDurationMs: number
   readonly acceptanceDurationMs: { readonly min: number; readonly max: number }
   readonly inputReadyWithinMs: number
   readonly firstSpawnWithinMs: number
   readonly enemyPatternAttackIds: Readonly<Record<string, string>>
-  readonly nextZoneEntry: ZoneEntry
+  readonly nextZoneEntry: ZoneEntry | null
 }
 
 export type DepotSpawnOrder = StageOneSpawnOrder
@@ -73,6 +74,7 @@ export const n9DepotZone: DepotZoneDefinition = deepFreeze({
   interWaveDelayMs: 900,
   enemyDamageScale: 0.05,
   eliteDamageScale: 1,
+  bossDamageScale: 1,
   transitionDurationMs: 1_500,
   targetDurationMs: 180_000,
   acceptanceDurationMs: { min: 150_000, max: 210_000 },
@@ -127,6 +129,7 @@ export const serviceTrainZone: PlayableStageOneZoneDefinition & {
   interWaveDelayMs: 900,
   enemyDamageScale: 0.2,
   eliteDamageScale: 1,
+  bossDamageScale: 1,
   transitionDurationMs: 1_500,
   targetDurationMs: 180_000,
   acceptanceDurationMs: { min: 150_000, max: 210_000 },
@@ -161,8 +164,52 @@ export const serviceTrainZone: PlayableStageOneZoneDefinition & {
   ],
 })
 
+/** Immutable Zone 3 data. Its second and final wave is the only Stage 1 boss. */
+export const floodedTunnelZone: PlayableStageOneZoneDefinition & {
+  readonly id: 'flooded-tunnel'
+} = deepFreeze({
+  id: 'flooded-tunnel',
+  arena: { minX: 48, maxX: 592, minY: 188, maxY: 320 },
+  playerSafeSeparation: { x: 72, y: 34 },
+  playerStart: { x: 112, y: 224, z: 0 },
+  pickups: [],
+  interWaveDelayMs: 900,
+  enemyDamageScale: 0.25,
+  eliteDamageScale: 1,
+  bossDamageScale: 1,
+  transitionDurationMs: 1_500,
+  targetDurationMs: 240_000,
+  acceptanceDurationMs: { min: 210_000, max: 270_000 },
+  inputReadyWithinMs: 2_000,
+  firstSpawnWithinMs: 4_000,
+  enemyPatternAttackIds: {
+    ...normalPatternAttackIds,
+    'boss-dredger-slam': 'boss-dredger-slam',
+    'boss-floodline-charge': 'boss-floodline-charge',
+  },
+  nextZoneEntry: null,
+  waves: [
+    {
+      id: 'flooded-tunnel-wave-1', seed: 0x7d081a47,
+      orders: [
+        spawn('tunnel-striker', 'scout-striker', 0, 452, 214),
+        spawn('tunnel-patrol', 'scout-patrol', 650, 516, 286),
+        spawn('tunnel-sentinel', 'bulwark-sentinel', 1_300, 558, 248),
+      ],
+    },
+    {
+      id: 'flooded-tunnel-wave-2', seed: 0x8e192b58,
+      orders: [spawn('final-boss', 'boss-silo-dredger', 0, 500, 264)],
+    },
+  ],
+})
+
 const playableZones: Readonly<Record<PlayableStageOneZoneId, PlayableStageOneZoneDefinition>> =
-  Object.freeze({ 'n9-depot': n9DepotZone, 'service-train': serviceTrainZone })
+  Object.freeze({
+    'n9-depot': n9DepotZone,
+    'service-train': serviceTrainZone,
+    'flooded-tunnel': floodedTunnelZone,
+  })
 
 export const getPlayableStageOneZone = (
   zoneId: PlayableStageOneZoneId,

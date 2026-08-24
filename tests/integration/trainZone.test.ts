@@ -170,7 +170,7 @@ describe('service-train authored integration contracts', () => {
 type SceneHarness = {
   state: CombatState
   runState: RunState
-  currentZone: { readonly id: 'n9-depot' | 'service-train' }
+  currentZone: { readonly id: 'n9-depot' | 'service-train' | 'flooded-tunnel' }
   waveRuntime: ZoneWaveRuntime
   waveIndex: number
   zonePhase: 'active' | 'inter-wave' | 'zone-clear' | 'zone-handoff'
@@ -364,7 +364,9 @@ const measureDeterministicHanRun = (): HanTimingSample => {
   const zoneActiveMs = scene.state.elapsedMs
   const eliteActiveMs = eliteStartedAtMs === null ? 0 : zoneActiveMs - eliteStartedAtMs
   const pickupsAcquired = scene.itemRuntime.pickups.filter((pickup) => pickup.consumed).length
-  stepUntil(scene, () => scene.zonePhase === 'zone-handoff')
+  stepUntil(scene, () =>
+    scene.currentZone.id === 'flooded-tunnel' && scene.zonePhase === 'active',
+  )
   const handedOff =
     scene.runState.zoneId === 'flooded-tunnel' &&
     scene.runState.currentWaveId === 'flooded-tunnel-wave-1'
@@ -380,7 +382,7 @@ const measureDeterministicHanRun = (): HanTimingSample => {
 }
 
 describe('CombatScene service-train orchestration', () => {
-  it('saves each atomic entry once, runs mixed waves, and holds Zone 3 without Results', () => {
+  it('saves each atomic entry once, runs mixed waves, and enters active Zone 3 without Results', () => {
     const { scene, services } = createLiveScene()
     const save = vi.fn(() => true)
     scene.checkpointStore = { save, load: () => null }
@@ -403,7 +405,9 @@ describe('CombatScene service-train orchestration', () => {
     expect(scene.zonePhase).toBe('zone-clear')
     expect(services.result).toBeNull()
 
-    stepUntil(scene, () => scene.zonePhase === 'zone-handoff')
+    stepUntil(scene, () =>
+      scene.currentZone.id === 'flooded-tunnel' && scene.zonePhase === 'active',
+    )
     expect(scene.runState).toMatchObject({
       zoneId: 'flooded-tunnel',
       zoneStartWaveId: 'flooded-tunnel-wave-1',
@@ -703,7 +707,7 @@ describe('CombatScene service-train orchestration', () => {
     expect(scene.zonePhase).toBe('zone-clear')
   })
 
-  it('routes debug clear through the same card/handoff and disposes each active renderer once', () => {
+  it('routes debug clear through the same card/entry and disposes each active renderer once', () => {
     const { scene, services } = createLiveScene()
     const depotRenderer = scene.zoneRenderer
     if (!depotRenderer) throw new Error('Expected depot renderer.')
@@ -724,6 +728,7 @@ describe('CombatScene service-train orchestration', () => {
     expect(depotDispose).toHaveBeenCalledOnce()
     const train = scene.trainBackdrop
     if (!train) throw new Error('Expected train renderer.')
+    const trainDispose = vi.spyOn(train, 'dispose')
     const stableObjectCount = train.snapshot().ownedObjectCount
     for (let step = 0; step < 60; step += 1) scene.stepDomain()
     expect(train.snapshot().ownedObjectCount).toBe(stableObjectCount)
@@ -731,11 +736,13 @@ describe('CombatScene service-train orchestration', () => {
     services.requestDebugClear()
     scene.stepDomain()
     expect(scene.zonePhase).toBe('zone-clear')
-    stepUntil(scene, () => scene.zonePhase === 'zone-handoff')
+    stepUntil(scene, () =>
+      scene.currentZone.id === 'flooded-tunnel' && scene.zonePhase === 'active',
+    )
     expect(services.result).toBeNull()
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
+    expect(trainDispose).toHaveBeenCalledOnce()
 
-    const trainDispose = vi.spyOn(train, 'dispose')
     scene.dispose()
     scene.dispose()
     expect(trainDispose).toHaveBeenCalledOnce()

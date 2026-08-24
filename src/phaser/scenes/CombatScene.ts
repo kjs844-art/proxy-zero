@@ -6,6 +6,7 @@ import {
   SCENE_KEYS,
 } from '../../app/GameServices'
 import { characters, type CharacterDefinition } from '../../content/characters'
+import { getBossDefinition, isBossDefinitionId } from '../../content/bosses'
 import { getEliteDefinition, isEliteDefinitionId } from '../../content/elites'
 import { getEnemyBaseBody, getEnemyVariant } from '../../content/enemies'
 import type { EmpTargetClass } from '../../content/items'
@@ -25,6 +26,13 @@ import {
 import { resolveCombo, type AcceptedAttackInput } from '../../domain/combat/comboResolver'
 import { type BufferedAction, type InputFrame } from '../../domain/combat/inputBuffer'
 import { fixedStepMs } from '../../domain/combat/tuning'
+import {
+  createBossBrainState,
+  interruptBossBrain,
+  stepBossBrain,
+  type BossBrainState,
+  type BossIntent,
+} from '../../domain/enemies/bossBrain'
 import {
   createEliteBrainState,
   interruptEliteBrain,
@@ -60,6 +68,14 @@ import {
 } from '../../domain/run/runReducer'
 import type { ZoneEntry } from '../../domain/run/types'
 import {
+  createTunnelHazardState,
+  getPuddlePhase,
+  getTunnelTrainPhase,
+  stepTunnelHazard,
+  type TunnelHazardEffect,
+  type TunnelHazardState,
+} from '../../domain/world/tunnelHazard'
+import {
   createTrainHazardState,
   getTrainHazardPhase,
   stepTrainHazard,
@@ -83,11 +99,31 @@ import { ActorView, GREYBOX_TEXTURES } from '../actors/ActorView'
 import { KeyboardInputAdapter } from '../input/KeyboardInputAdapter'
 import { HazardView } from '../world/HazardView'
 import { TrainBackdrop } from '../world/TrainBackdrop'
+import { TunnelBackdrop } from '../world/TunnelBackdrop'
 import { ZoneRenderer } from '../world/ZoneRenderer'
 
 type ZonePhase = 'active' | 'inter-wave' | 'zone-clear' | 'zone-handoff'
 
 const getWaveVariant = (id: string): EnemyVariantDefinition => {
+  if (isBossDefinitionId(id)) {
+    const boss = getBossDefinition(id)
+    return {
+      id: boss.id,
+      baseBodyId: boss.id,
+      moveSpeed: boss.phases[0].chaseSpeed,
+      chaseDistance: 400,
+      guardDurationMs: 0,
+      intentWeights: { attack: 1, guard: 0 },
+      attacks: boss.patterns.map((pattern) => ({
+        id: pattern.id,
+        telegraphMs: boss.phases[0].telegraphMsByAttackId[pattern.id],
+        activeMs: 0,
+        recoveryMs: 0,
+        range: { ...pattern.range },
+        weight: 1,
+      })),
+    }
+  }
   if (!isEliteDefinitionId(id)) return getEnemyVariant(id)
   const elite = getEliteDefinition(id)
   return {
@@ -105,6 +141,11 @@ const getWaveVariant = (id: string): EnemyVariantDefinition => {
   }
 }
 const getWaveBaseBody = (id: string) => {
+  if (isBossDefinitionId(id)) {
+    const boss = getBossDefinition(id)
+    const heavyBody = getEnemyBaseBody(boss.baseBodyId)
+    return { ...heavyBody, id: boss.id, maxHp: boss.maxHp, radius: boss.radius }
+  }
   if (!isEliteDefinitionId(id)) return getEnemyBaseBody(id)
   const elite = getEliteDefinition(id)
   const heavyBody = getEnemyBaseBody(elite.baseBodyId)
@@ -234,6 +275,7 @@ export class CombatScene extends Phaser.Scene {
   private zoneClearText: Phaser.GameObjects.Text | null = null
   private zoneRenderer: ZoneRenderer | null = null
   private trainBackdrop: TrainBackdrop | null = null
+  private tunnelBackdrop: TunnelBackdrop | null = null
   private hazardView: HazardView | null = null
 
   private currentZone: PlayableStageOneZoneDefinition = n9DepotZone
@@ -245,11 +287,14 @@ export class CombatScene extends Phaser.Scene {
   private readonly pendingDefeatedEnemyIds = new Set<string>()
   private readonly enemyBrains = new Map<string, EnemyBrainState>()
   private readonly eliteBrains = new Map<string, EliteBrainState>()
+  private readonly bossBrains = new Map<string, BossBrainState>()
   private readonly enemyRngs = new Map<string, SeededRandom>()
   private readonly enemyVariantIds = new Map<string, string>()
   private readonly returningEnemyIds = new Set<string>()
   private readonly lastRecoveryPositions = new Map<string, EnemyPoint>()
   private trainHazardState: TrainHazardState = createTrainHazardState()
+  private tunnelHazardState: TunnelHazardState = createTunnelHazardState()
+  private pendingCombatResult: 'enemy-defeated' | 'debug-clear' = 'enemy-defeated'
   private sceneCreated = false
 
   constructor(private readonly services: GameServices) {
@@ -291,6 +336,7 @@ export class CombatScene extends Phaser.Scene {
 
     this.zoneRenderer = new ZoneRenderer(this, this.currentZone.arena)
     this.trainBackdrop = null
+    this.tunnelBackdrop = null
     this.hazardView = new HazardView(this)
     this.actorViews.set(
       character.id,
@@ -371,18 +417,13 @@ export class CombatScene extends Phaser.Scene {
       this.actionQueue.clear()
       return
     }
-    if (this.zonePhase === 'zone-handoff') {
-      this.inputAdapter?.readFrame()
-      this.actionQueue.clear()
-      return
-    }
-
     const frozenMs = Math.min(
       Math.max(0, this.state.hitstopRemainingMs),
       fixedStepMs,
     )
     const activeDeltaMs = fixedStepMs - frozenMs
     let fallEffect: PlayerFellEffect | null = null
+    let tunnelEffects: readonly TunnelHazardEffect[] = []
     if (activeDeltaMs > 0) {
       const timerResult = itemReducer(this.itemRuntime, {
         type: 'advance-time',
@@ -414,6 +455,30 @@ export class CombatScene extends Phaser.Scene {
           this.trainHazardState = hazard.state
           player.position.x += hazard.carryDeltaX
           fallEffect = hazard.effects[0] ?? null
+        } else if (this.currentZone.id === 'flooded-tunnel' && this.zonePhase === 'active') {
+          const player = this.state.actors[this.state.playerId]
+          const hazard = stepTunnelHazard(this.tunnelHazardState, {
+            activeDeltaMs,
+            player: {
+              id: player.id,
+              x: player.position.x,
+              y: player.position.y,
+              grounded: player.position.z === 0,
+            },
+            bosses: [...this.bossBrains.keys()].sort().flatMap((bossId) => {
+              const boss = this.state.actors[bossId]
+              return boss && boss.mode !== 'defeated'
+                ? [{
+                    id: boss.id,
+                    x: boss.position.x,
+                    y: boss.position.y,
+                    grounded: boss.position.z === 0,
+                  }]
+                : []
+            }),
+          })
+          this.tunnelHazardState = hazard.state
+          tunnelEffects = hazard.effects
         }
       } else {
         this.advanceZoneClock(activeDeltaMs)
@@ -422,12 +487,30 @@ export class CombatScene extends Phaser.Scene {
 
     const frame = this.inputAdapter?.readFrame() ?? emptyInputFrame()
     const player = this.state.actors[this.state.playerId]
-    const itemHealAmount = this.processItemEdges(frame, player, fallEffect !== null)
+    const playerTunnelEffect = tunnelEffects.find((effect) => effect.actorId === player.id)
+    const itemHealAmount = this.processItemEdges(
+      frame,
+      player,
+      fallEffect !== null || playerTunnelEffect !== undefined,
+    )
     const bufferedAction =
       activeDeltaMs > 0
         ? this.actionQueue.nextAction(this.state.elapsedMs)
         : undefined
     const attackId = this.resolveBufferedAttack(bufferedAction, player)
+    const playerEnvironmentalImpact: CombatCommand['environmentalImpact'] = fallEffect
+      ? {
+          damage: fallEffect.damage,
+          recoveryPosition: { ...fallEffect.recoveryPosition },
+          reaction: { type: 'knockdown', durationMs: fallEffect.knockdownMs },
+        }
+      : playerTunnelEffect
+        ? {
+            damage: playerTunnelEffect.damage,
+            recoveryPosition: { ...playerTunnelEffect.recoveryPosition },
+            reaction: { ...playerTunnelEffect.reaction },
+          }
+        : undefined
     const playerCommand: CombatCommand = {
       actorId: player.id,
       moveX: frame.moveX,
@@ -435,15 +518,7 @@ export class CombatScene extends Phaser.Scene {
       jump: bufferedAction?.edge.type === 'jump',
       ...(attackId ? { attackId } : {}),
       ...(itemHealAmount > 0 ? { healAmount: itemHealAmount } : {}),
-      ...(fallEffect
-        ? {
-            environmentalImpact: {
-              damage: fallEffect.damage,
-              recoveryPosition: { ...fallEffect.recoveryPosition },
-              knockdownMs: fallEffect.knockdownMs,
-            },
-          }
-        : {}),
+      ...(playerEnvironmentalImpact ? { environmentalImpact: playerEnvironmentalImpact } : {}),
     }
     const normalEnemyCommands =
       activeDeltaMs > 0 && this.zonePhase === 'active'
@@ -453,15 +528,34 @@ export class CombatScene extends Phaser.Scene {
       activeDeltaMs > 0 && this.zonePhase === 'active'
         ? this.buildEliteCommands(activeDeltaMs)
         : []
+    const bossCommands =
+      activeDeltaMs > 0 && this.zonePhase === 'active'
+        ? this.buildBossCommands(activeDeltaMs)
+        : []
+    const tunnelImpactCommands: CombatCommand[] = tunnelEffects
+      .filter((effect) => effect.actorId !== player.id)
+      .map((effect) => ({
+        actorId: effect.actorId,
+        moveX: 0,
+        moveY: 0,
+        environmentalImpact: {
+          damage: effect.damage,
+          recoveryPosition: { ...effect.recoveryPosition },
+          reaction: { ...effect.reaction },
+        },
+      }))
     const commands = this.mergeCombatCommands(
       [playerCommand],
       normalEnemyCommands,
       eliteCommands,
+      bossCommands,
+      tunnelImpactCommands,
       this.empStatusCommands(),
     )
 
     this.state = this.reduceCombatWithFacingAssist(commands)
     this.acceptEliteAttackStarts()
+    this.acceptBossAttackStarts()
     if (this.zonePhase === 'active') this.clampLivingActors()
     this.runState = runReducer(this.runState, {
       type: 'player-hp-changed',
@@ -492,6 +586,11 @@ export class CombatScene extends Phaser.Scene {
       getTrainHazardPhase(this.trainHazardState),
       this.trainHazardState.platformCenterX,
       this.itemRuntime.pickups,
+    )
+    this.tunnelBackdrop?.update(
+      activeDeltaMs,
+      getPuddlePhase(this.tunnelHazardState),
+      getTunnelTrainPhase(this.tunnelHazardState),
     )
   }
 
@@ -563,6 +662,8 @@ export class CombatScene extends Phaser.Scene {
     }
     const eliteBrain = this.eliteBrains.get(actorId)
     if (eliteBrain) this.eliteBrains.set(actorId, interruptEliteBrain(eliteBrain))
+    const bossBrain = this.bossBrains.get(actorId)
+    if (bossBrain) this.bossBrains.set(actorId, interruptBossBrain(bossBrain))
     this.hazardView?.clearEnemy(actorId)
   }
 
@@ -763,6 +864,9 @@ export class CombatScene extends Phaser.Scene {
     const order = this.currentWave().orders.find((entry) => entry.id === orderId)
     const runtime = this.waveRuntime.enemiesById[enemyId]
     if (!order || !runtime || runtime.enemyVariantId !== enemyVariantId) return
+    const bossDefinition = isBossDefinitionId(enemyVariantId)
+      ? getBossDefinition(enemyVariantId)
+      : null
     const eliteDefinition = isEliteDefinitionId(enemyVariantId)
       ? getEliteDefinition(enemyVariantId)
       : null
@@ -781,24 +885,36 @@ export class CombatScene extends Phaser.Scene {
       },
       hp: runtime.hp,
       maxHp: runtime.maxHp,
-      damageScale: eliteDefinition
-        ? this.currentZone.eliteDamageScale
-        : this.currentZone.enemyDamageScale,
+      damageScale: bossDefinition
+        ? this.currentZone.bossDamageScale
+        : eliteDefinition
+          ? this.currentZone.eliteDamageScale
+          : this.currentZone.enemyDamageScale,
       moveSpeed: variant.moveSpeed,
     })
     this.state.actors[enemyId] = actor
-    if (eliteDefinition) {
+    if (bossDefinition) {
+      this.bossBrains.set(enemyId, createBossBrainState())
+    } else if (eliteDefinition) {
       this.eliteBrains.set(enemyId, createEliteBrainState())
     } else {
       this.enemyBrains.set(enemyId, { ...runtime.brain })
       this.enemyRngs.set(enemyId, new SeededRandom(runtime.seed))
     }
     this.enemyVariantIds.set(enemyId, enemyVariantId)
-    this.itemTargetClasses.set(enemyId, eliteDefinition?.targetClass ?? 'normal')
+    this.itemTargetClasses.set(
+      enemyId,
+      bossDefinition?.targetClass ?? eliteDefinition?.targetClass ?? 'normal',
+    )
     this.lastRecoveryPositions.set(enemyId, { ...order.position })
     this.actorViews.set(
       enemyId,
-      new ActorView(this, actor, GREYBOX_TEXTURES.enemy, eliteDefinition?.appearance),
+      new ActorView(
+        this,
+        actor,
+        GREYBOX_TEXTURES.enemy,
+        bossDefinition?.appearance ?? eliteDefinition?.appearance,
+      ),
     )
     this.services.recordEnemySpawn(enemyId, this.state.elapsedMs)
   }
@@ -967,6 +1083,114 @@ export class CombatScene extends Phaser.Scene {
     }
   }
 
+  private buildBossCommands(deltaMs = fixedStepMs): CombatCommand[] {
+    const commands: CombatCommand[] = []
+    const player = this.state.actors[this.state.playerId]
+    for (const bossId of [...this.bossBrains.keys()].sort()) {
+      const actor = this.state.actors[bossId]
+      const brain = this.bossBrains.get(bossId)
+      const variantId = this.enemyVariantIds.get(bossId)
+      if (!actor || !brain || !variantId || !isBossDefinitionId(variantId)) continue
+      if (actor.mode === 'defeated') continue
+      if ((this.itemRuntime.empRemainingMsByTargetId[bossId] ?? 0) > 0) continue
+      const definition = getBossDefinition(variantId)
+      actor.facing = player.position.x < actor.position.x ? -1 : 1
+      let command: CombatCommand = { actorId: bossId, moveX: 0, moveY: 0 }
+
+      if (
+        actor.mode === 'hitstun' ||
+        actor.mode === 'knocked-down' ||
+        actor.mode === 'getting-up'
+      ) {
+        this.bossBrains.set(bossId, interruptBossBrain(brain))
+        this.hazardView?.clearEnemy(bossId)
+        commands.push(command)
+        continue
+      }
+
+      if (this.returningEnemyIds.has(bossId)) {
+        command = {
+          ...command,
+          moveX: axisToward(
+            actor.position.x,
+            (this.currentZone.arena.minX + this.currentZone.arena.maxX) / 2,
+          ),
+          moveY: axisToward(
+            actor.position.y,
+            (this.currentZone.arena.minY + this.currentZone.arena.maxY) / 2,
+          ),
+        }
+      } else {
+        const result = stepBossBrain({
+          state: brain,
+          definition,
+          hp: actor.hp,
+          position: actor.position,
+          playerPosition: player.position,
+          activeDeltaMs: deltaMs,
+          actorActiveAttackId: actor.activeAttack?.attackId ?? null,
+          acceptedAttackId: null,
+          empRemainingMs: 0,
+        })
+        this.bossBrains.set(bossId, result.state)
+        for (const intent of result.intents) {
+          command = { ...command, ...this.applyBossIntent(bossId, intent) }
+        }
+      }
+      commands.push(command)
+    }
+    return commands
+  }
+
+  private applyBossIntent(
+    bossId: string,
+    intent: Readonly<BossIntent>,
+  ): Partial<CombatCommand> {
+    const actor = this.state.actors[bossId]
+    if (!actor) return {}
+    if (intent.type === 'move') {
+      actor.moveSpeed = intent.speed
+      return {
+        moveX: axisToward(actor.position.x, intent.target.x),
+        moveY: axisToward(actor.position.y, intent.target.y),
+      }
+    }
+    if (intent.type === 'telegraph') {
+      this.hazardView?.showTelegraph(
+        bossId,
+        { x: actor.position.x, y: actor.position.y },
+        intent.range,
+        intent.durationMs,
+      )
+      return {}
+    }
+    actor.attackSpeedScale = intent.attackSpeedScale
+    this.hazardView?.clearEnemy(bossId)
+    return { attackId: intent.attackId }
+  }
+
+  private acceptBossAttackStarts(): void {
+    for (const event of this.state.events) {
+      if (event.type !== 'attack-started') continue
+      const brain = this.bossBrains.get(event.actorId)
+      const actor = this.state.actors[event.actorId]
+      const variantId = this.enemyVariantIds.get(event.actorId)
+      if (!brain || !actor || !variantId || !isBossDefinitionId(variantId)) continue
+      const result = stepBossBrain({
+        state: brain,
+        definition: getBossDefinition(variantId),
+        hp: actor.hp,
+        position: actor.position,
+        playerPosition: this.state.actors[this.state.playerId].position,
+        activeDeltaMs: 0,
+        actorActiveAttackId: actor.activeAttack?.attackId ?? null,
+        acceptedAttackId: event.attackId,
+        empRemainingMs: 0,
+      })
+      this.bossBrains.set(event.actorId, result.state)
+    }
+  }
+
   private applyEnemyIntent(
     enemyId: string,
     intent: Readonly<EnemyIntent>,
@@ -1039,6 +1263,7 @@ export class CombatScene extends Phaser.Scene {
       this.actorViews.delete(enemyId)
       this.enemyBrains.delete(enemyId)
       this.eliteBrains.delete(enemyId)
+      this.bossBrains.delete(enemyId)
       this.enemyRngs.delete(enemyId)
       this.enemyVariantIds.delete(enemyId)
       this.itemTargetClasses.delete(enemyId)
@@ -1059,9 +1284,16 @@ export class CombatScene extends Phaser.Scene {
       return
     }
     this.clearEmpTimers()
+    this.pendingCombatResult = 'enemy-defeated'
     this.zonePhase = 'zone-clear'
     this.transitionRemainingMs = this.currentZone.transitionDurationMs
-    this.zoneClearText?.setVisible(true)
+    this.zoneClearText
+      ?.setText(
+        this.currentZone.id === 'flooded-tunnel'
+          ? 'FLOODED TUNNEL\nMISSION CLEAR'
+          : `${this.currentZone.id === 'n9-depot' ? 'N-9 DEPOT' : 'SERVICE TRAIN'}\nZONE CLEAR`,
+      )
+      .setVisible(true)
   }
 
   private advanceZoneClock(deltaMs: number): void {
@@ -1283,8 +1515,11 @@ export class CombatScene extends Phaser.Scene {
     this.acceptedAttackHistory = []
     this.finished = false
     this.trainHazardState = createTrainHazardState()
+    this.tunnelHazardState = createTunnelHazardState()
+    this.pendingCombatResult = 'enemy-defeated'
     this.zoneRenderer?.reset()
     this.trainBackdrop?.reset(this.itemRuntime.pickups)
+    this.tunnelBackdrop?.reset()
     this.hazardView?.reset()
     this.zoneClearText?.setVisible(false)
     this.replaceInventoryHud()
@@ -1300,6 +1535,7 @@ export class CombatScene extends Phaser.Scene {
     this.pendingDefeatedEnemyIds.clear()
     this.enemyBrains.clear()
     this.eliteBrains.clear()
+    this.bossBrains.clear()
     this.enemyRngs.clear()
     this.enemyVariantIds.clear()
     this.itemTargetClasses.clear()
@@ -1329,6 +1565,7 @@ export class CombatScene extends Phaser.Scene {
     }
     this.enemyBrains.clear()
     this.eliteBrains.clear()
+    this.bossBrains.clear()
     this.enemyRngs.clear()
     this.enemyVariantIds.clear()
     this.itemTargetClasses.clear()
@@ -1349,6 +1586,13 @@ export class CombatScene extends Phaser.Scene {
 
   private enterNextZone(): void {
     if (this.zonePhase !== 'zone-clear') return
+    if (this.currentZone.nextZoneEntry === null) {
+      if (this.finished || this.runState.status === 'game-over') return
+      this.finished = true
+      this.services.completeCombat(this.pendingCombatResult)
+      this.scene.start(SCENE_KEYS.Results)
+      return
+    }
     const result = runReducer(this.runState, {
       type: 'enter-zone',
       entry: this.currentZone.nextZoneEntry,
@@ -1371,16 +1615,6 @@ export class CombatScene extends Phaser.Scene {
     this.clearEnemyResources()
     this.actionQueue.clear()
     this.acceptedAttackHistory = []
-
-    if (entry.zoneId === 'flooded-tunnel') {
-      this.zonePhase = 'zone-handoff'
-      this.interWaveRemainingMs = 0
-      this.transitionRemainingMs = 0
-      this.zoneClearText
-        ?.setText('FLOODED TUNNEL\nZONE 3 HANDOFF')
-        .setVisible(true)
-      return
-    }
 
     this.currentZone = getPlayableStageOneZone(entry.zoneId)
     this.authoredItemPickups = this.cloneAuthoredPickups(this.currentZone.pickups)
@@ -1407,14 +1641,27 @@ export class CombatScene extends Phaser.Scene {
       lastTargetId: null,
     }
     this.trainHazardState = createTrainHazardState()
+    this.tunnelHazardState = createTunnelHazardState()
+    this.pendingCombatResult = 'enemy-defeated'
     this.initializeZoneRuntime()
     this.zoneRenderer?.dispose()
     this.zoneRenderer = null
     this.trainBackdrop?.dispose()
-    this.trainBackdrop = new TrainBackdrop(this, this.itemRuntime.pickups)
+    this.trainBackdrop = null
+    this.tunnelBackdrop?.dispose()
+    this.tunnelBackdrop = null
+    if (entry.zoneId === 'service-train') {
+      this.trainBackdrop = new TrainBackdrop(this, this.itemRuntime.pickups)
+    } else if (entry.zoneId === 'flooded-tunnel') {
+      this.tunnelBackdrop = new TunnelBackdrop(this)
+    }
     this.hazardView?.reset()
     this.zoneClearText
-      ?.setText('SERVICE TRAIN\nZONE 2')
+      ?.setText(
+        entry.zoneId === 'service-train'
+          ? 'SERVICE TRAIN\nZONE 2'
+          : 'FLOODED TUNNEL\nZONE 3',
+      )
       .setVisible(false)
     this.syncPresentation()
   }
@@ -1423,6 +1670,7 @@ export class CombatScene extends Phaser.Scene {
     if (this.zonePhase === 'zone-clear' || this.zonePhase === 'zone-handoff') return
     this.clearEnemyResources()
     this.clearEmpTimers()
+    this.pendingCombatResult = 'debug-clear'
     this.zonePhase = 'zone-clear'
     this.interWaveRemainingMs = 0
     this.transitionRemainingMs = this.currentZone.transitionDurationMs
@@ -1453,6 +1701,7 @@ export class CombatScene extends Phaser.Scene {
     this.actorViews.clear()
     this.enemyBrains.clear()
     this.eliteBrains.clear()
+    this.bossBrains.clear()
     this.enemyRngs.clear()
     this.enemyVariantIds.clear()
     this.itemTargetClasses.clear()
@@ -1465,6 +1714,8 @@ export class CombatScene extends Phaser.Scene {
     this.zoneRenderer = null
     this.trainBackdrop?.dispose()
     this.trainBackdrop = null
+    this.tunnelBackdrop?.dispose()
+    this.tunnelBackdrop = null
     this.hud?.dispose()
     this.hud = null
     this.inventoryHud?.dispose()
@@ -1476,6 +1727,8 @@ export class CombatScene extends Phaser.Scene {
     this.itemRuntime = createItemRuntimeState()
     this.authoredItemPickups = []
     this.trainHazardState = createTrainHazardState()
+    this.tunnelHazardState = createTunnelHazardState()
+    this.pendingCombatResult = 'enemy-defeated'
     this.acceptedAttackHistory = []
     this.sceneCreated = false
   }

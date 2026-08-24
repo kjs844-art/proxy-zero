@@ -148,7 +148,9 @@ export interface CombatCommand {
   environmentalImpact?: {
     damage: number
     recoveryPosition: Vec3
-    knockdownMs: number
+    reaction:
+      | { type: 'hitstun'; durationMs: number }
+      | { type: 'knockdown'; durationMs: number }
   }
 }
 
@@ -248,8 +250,8 @@ const applyImmediateCommand = (
     Number.isFinite(impact.recoveryPosition.x) &&
     Number.isFinite(impact.recoveryPosition.y) &&
     Number.isFinite(impact.recoveryPosition.z) &&
-    Number.isFinite(impact.knockdownMs) &&
-    impact.knockdownMs > 0
+    Number.isFinite(impact.reaction.durationMs) &&
+    impact.reaction.durationMs > 0
   ) {
     const damage = Math.min(actor.hp, impact.damage)
     actor.hp = Math.max(0, actor.hp - damage)
@@ -263,9 +265,21 @@ const applyImmediateCommand = (
     if (actor.hp === 0) {
       actor.mode = 'defeated'
       actor.knockdownRemainingMs = 0
+      state.events.push({
+        type: 'actor-defeated',
+        atMs: state.elapsedMs,
+        actorId: actor.id,
+        attackerId: 'environment',
+        attackId: 'environmental-impact',
+        strength: 3,
+      })
+    } else if (impact.reaction.type === 'hitstun') {
+      actor.mode = 'hitstun'
+      actor.hitstunRemainingMs = impact.reaction.durationMs
+      actor.knockdownRemainingMs = 0
     } else {
       actor.mode = 'knocked-down'
-      actor.knockdownRemainingMs = impact.knockdownMs
+      actor.knockdownRemainingMs = impact.reaction.durationMs
     }
     state.events.push({
       type: 'environmental-impact',
