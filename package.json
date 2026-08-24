@@ -7,6 +7,8 @@
     "dev": "vite",
     "preview": "vite preview",
     "build": "vite build",
+    "release:build": "node scripts/build-release.mjs",
+    "release:metadata": "node scripts/write-release-metadata.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
@@ -18,7 +20,7 @@
     "qa:balance:verify": "node scripts/verify-balance-runs.cjs",
     "qa:fps": "npm run qa:balance:verify",
     "qa:size": "node scripts/check-asset-budget.mjs",
-    "qa:public": "node -e \"console.log('qa:public deferred: public-deployment checks are not implemented in Task 1.')\""
+    "qa:public": "node scripts/verify-public-release.mjs"
   },
   "dependencies": {
     "phaser": "3.90.0"
