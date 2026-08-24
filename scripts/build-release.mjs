@@ -28,8 +28,8 @@ const assertFrozenHead = () => {
 
 const commitBeforeBuild = assertFrozenHead()
 assertSafeDistRoot(root)
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-execFileSync(npmCommand, ['run', 'build'], { cwd: root, stdio: 'inherit' })
+const viteCli = resolve(root, 'node_modules', 'vite', 'bin', 'vite.js')
+execFileSync(process.execPath, [viteCli, 'build'], { cwd: root, stdio: 'inherit' })
 const commitAfterBuild = assertFrozenHead()
 if (commitBeforeBuild !== commitAfterBuild) {
   throw new Error('Git HEAD changed while building the release output.')
