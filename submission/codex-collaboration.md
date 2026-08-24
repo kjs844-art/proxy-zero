@@ -3,8 +3,8 @@
 ## 기록 범위
 
 - 기준 제출 브랜치: `codex/firstvibe/proxy-zero-stage1-submission`
-- 기준 공개 후보: `1eac3dad88663300f5bc73e96c2aea5899f2d32f` — `fix: require pinned release metadata hash`
-- 현재 상태: 공개 후보 `1eac3dad`의 검증 사실을 기록하는 **별도 제출 패키지 초안**입니다.
+- 기준 공개 후보: `e0bf9d593f98798e089f9146ea0c29cf2dfdf694` — `docs: pin Netlify prebuilt deploy command`
+- 현재 상태: 공개 후보 `e0bf9d59`의 검증 사실을 기록하는 **별도 제출 패키지 초안**입니다.
 - 이 브랜치는 제출 문서와 썸네일을 기록하되 공개 게임 후보 SHA를 변경하지 않습니다.
 - `submission/thumbnail-1920x1080.png`는 검증된 원본을 유지합니다.
 - 공개 배포와 최종 검증을 완료했다는 의미가 아닙니다.
@@ -47,6 +47,7 @@
 | `9c66977` | Windows를 포함한 교차 플랫폼 release build 수정 |
 | `12fb2a1` | Windows·Linux clean checkout에서 오디오 manifest 줄바꿈과 WAV binary 속성 고정 |
 | `1eac3da` | 공개 `release.json` raw bytes를 외부 고정 SHA-256과 결속하는 검증 추가 |
+| `e0bf9d5` | Netlify CLI 재빌드를 금지하는 `--no-build` 배포 절차 고정 |
 
 설계 문서 잠금과 수용 기준 강화도 Git에 기록되어 있습니다: `bd4ab20` (`docs: lock PROXY ZERO stage one design`), `512ea0d` (`docs: tighten stage one acceptance gates`), `87fbb92` (`docs: add proxy zero stage one implementation plan`).
 
@@ -71,13 +72,13 @@
 
 | 영역 | 저장소에서 확인되는 사실 | 현재 상태 |
 |---|---|---|
-| 단위·통합 테스트 | 별도 Windows worktree의 공개 후보 `1eac3dad`에서 `npm run verify`를 실행했습니다. | **35개 테스트 파일·278개 테스트 통과** |
+| 단위·통합 테스트 | 별도 Windows worktree의 공개 후보 `e0bf9d59`에서 `npm run verify`를 실행했습니다. | **35개 테스트 파일·278개 테스트 통과** |
 | 브라우저 E2E | 공개 후보에서 실제 Chrome으로 시작·조작·포커스·저장 복구·오디오 거부·모바일 안내·QA hook 비노출을 검사했습니다. | **Playwright Chrome E2E 10개 통과** |
-| 타입·빌드·자산 게이트 | 공개 후보에서 typecheck, production build, release build, metadata SHA 봉인, asset budget을 실행했습니다. | **모두 통과**. 초기 gzip9 5,234,433 bytes, release metadata 포함 dist raw 7,078,177 bytes. app digest `2e826daf…`, public digest `e0c24d1a…`, 외부 `release.json` digest `81c85f54…`. |
+| 타입·빌드·자산 게이트 | 공개 후보에서 typecheck, production build, release build, metadata SHA 봉인, asset budget을 실행했습니다. | **모두 통과**. 초기 gzip9 5,234,427 bytes, release metadata 포함 dist raw 7,078,177 bytes. app digest `631c1ac9…`, public digest `6c405e41…`, 외부 `release.json` digest `6903e67d…`. |
 | 캐릭터 자산 | `docs/qa/task13-asset-provenance.md`는 원본 프롬프트로 만든 actor source, 결정론적 atlas 생성, 원본성 제한, 출력 해시·바이트를 기록합니다. actor payload 합계는 5,370,445 bytes로 문서의 Task 13 6MB 목표 아래입니다. | Task 13 QA 문서에 기록됐고, 공개 후보의 전체 빌드 15MB/40MB 게이트도 통과했습니다. |
 | 제출 썸네일 | 기존 `submission/thumbnail-1920x1080.png`는 shipped player/enemy/boss atlas, 기존 gameplay concept, 현재 1280×720 전투 캡처를 참조해 built-in image generation으로 제작했고, 두 번째 정밀 편집에서 정확한 `PROXY ZERO` 제목을 추가한 **검증된 최종 PNG 자산**입니다. 크기는 1920×1080, 4,845,241 bytes이며 외부 로고와 가짜 HUD를 넣지 않았습니다. | 10MB 권장 상한 이내. 이 Task 19에서는 파일을 수정하지 않았습니다. |
 | 배포 | 계획은 GitHub Pages를 목표로 하지만 현재 기록에는 확정 공개 URL이 없습니다. | **TODO: URL·커밋·워크플로·Chrome/Edge 결과 기록** |
-| 성능·완주 시간 | `1eac3dad`의 balance observer smoke에서 build commit 일치, `dirty=false`, active time 0부터 관찰 시작을 확인했습니다. | **Smoke 통과**. HAN·MINA·JIN 클리어와 Continue 실패 런의 실제 시간·FPS는 **TODO**. |
+| 성능·완주 시간 | `e0bf9d59`의 balance observer smoke에서 build commit 일치, `dirty=false`, active time 0부터 관찰 시작을 확인했습니다. | **Smoke 통과**. HAN·MINA·JIN 클리어와 Continue 실패 런의 실제 시간·FPS는 **TODO**. |
 
 ## 개인정보·과장 방지
 
@@ -92,7 +93,7 @@
 
 ## 런타임·배포 검증 TODO
 
-- [x] 공개 후보 `1eac3dad88663300f5bc73e96c2aea5899f2d32f`에서 단위·통합 테스트 실행 결과 기록
+- [x] 공개 후보 `e0bf9d593f98798e089f9146ea0c29cf2dfdf694`에서 단위·통합 테스트 실행 결과 기록
 - [x] 공개 후보에서 타입 검사·프로덕션 빌드·자산 용량 게이트 결과 기록
 - [ ] Chrome과 Edge에서 공개 URL 실행 결과 기록
 - [ ] 공개 URL, Pages workflow run, 배포 커밋 기록
