@@ -21,6 +21,7 @@ GitHub Pages가 기본 공개 호스트입니다. Pages를 사용할 수 없는 
 | --- | --- | --- |
 | 선택한 호스트가 GitHub Pages 또는 Netlify fallback인지 | ⬜ | `host / 사유:` |
 | Netlify fallback 사용 시 로컬 `verify`와 최종 `release:build`·`release:metadata`·`qa:size` 성공 | ⬜ | `명령 / SHA / 실행 시각:` |
+| 수동 Netlify 배포 전 로컬 `release.json` SHA-256 고정 및 `--no-build` 사용 | ⬜ | `local release SHA-256 / deploy 명령:` |
 | Netlify fallback URL과 배포 후보 SHA 일치 | ⬜ | `public URL / SHA:` |
 | 공개 `release.json`의 SHA·`dirty=false`·app bundle/public manifest SHA 일치 | ⬜ | `URL / commit / app SHA / public SHA:` |
 | 수동 Netlify fallback의 `provider=local`과 실제 Netlify URL 일치 | ⬜/해당 없음 | `release.json provider / Netlify URL / 사유:` |

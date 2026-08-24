@@ -64,6 +64,13 @@ npm run qa:public
 
 GitHub Pages가 사용 불가한 경우에만 Netlify를 fallback 호스트로 사용합니다. 루트 `netlify.toml`은 Vite 정적 출력인 `dist`를 게시하고, 타입 검사·단위/통합 테스트·프로덕션 빌드·용량 검사를 게이트로 실행합니다. GitHub Actions나 Playwright 브라우저 다운로드에 의존하지 않습니다.
 
-수동 Netlify 배포는 동결 커밋에서 `npm run verify`를 통과한 뒤 `npm run release:build`, `npm run release:metadata`, `npm run qa:size`를 이 순서대로 완료한 **기존 `dist` 폴더만** 게시합니다. `release:build`는 Vite 빌드 직후 현재 clean Git SHA와 `release.json`·`release-build.json`을 제외한 앱 파일의 SHA-256 목록·manifest SHA-256을 `dist/release-build.json`에 기록합니다. metadata 단계는 현재 앱 bytes를 독립 재계산해 이 값이 현재 HEAD와 정확히 일치하지 않으면 실패합니다. 수동 배포는 Netlify 빌드 명령을 대신 실행하지 않으므로, 소스 폴더가 아니라 검증된 `dist`를 선택합니다. 한 릴리스에는 GitHub Pages 또는 Netlify 중 실제로 선택한 하나의 공개 URL만 체크리스트에 기록합니다.
+수동 Netlify 배포는 동결 커밋에서 `npm run verify`를 통과한 뒤 `npm run release:build`, `npm run release:metadata`, `npm run qa:size`를 이 순서대로 완료한 **기존 `dist` 폴더만** 게시합니다. `release:build`는 Vite 빌드 직후 현재 clean Git SHA와 `release.json`·`release-build.json`을 제외한 앱 파일의 SHA-256 목록·manifest SHA-256을 `dist/release-build.json`에 기록합니다. metadata 단계는 현재 앱 bytes를 독립 재계산해 이 값이 현재 HEAD와 정확히 일치하지 않으면 실패합니다. Netlify CLI는 기본적으로 build를 실행하므로, 검증된 bytes를 그대로 게시하려면 반드시 `--no-build`를 사용합니다. 한 릴리스에는 GitHub Pages 또는 Netlify 중 실제로 선택한 하나의 공개 URL만 체크리스트에 기록합니다.
+
+```powershell
+$env:PROXY_ZERO_EXPECTED_RELEASE_SHA256 = (Get-FileHash -LiteralPath .\dist\release.json -Algorithm SHA256).Hash.ToLowerInvariant()
+netlify deploy --dir .\dist --prod --no-build --site <SITE_ID>
+```
+
+위 SHA-256은 배포 **전에** 로컬 `dist/release.json`에서 기록하고, 공개 URL에서 다시 가져온 값으로 덮어쓰지 않습니다.
 
 두 호스트 모두 빌드 뒤 `npm run release:metadata`로 `dist/release.json`을 생성합니다. 이 파일은 동결 커밋 SHA, `dirty: false`, build provenance, 앱 bundle manifest와 구분된 **최종 공개 manifest**를 기록합니다. 최종 공개 manifest는 `release.json` 자신만 제외하고 `release-build.json`을 포함합니다. release 단계는 dist root와 하위 경로가 symlink·Windows junction/reparse point가 아니며 실제 repository root 밖으로 벗어나지 않는지 먼저 확인하고, 하나라도 맞지 않으면 빌드·삭제·metadata 기록을 중단합니다. `provider: local`은 수동 prebuilt `dist`를 **로컬에서 빌드·기록했다**는 뜻이며 호스트 판정은 아니므로, 이 경우 Netlify 호스팅 여부는 실제 공개 URL과 Netlify 배포 증거로 확인합니다.
