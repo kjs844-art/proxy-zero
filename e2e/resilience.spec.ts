@@ -74,6 +74,26 @@ const enterCombat = async (page: Page): Promise<Locator> => {
   return canvas
 }
 
+test('balance observer hook is dormant by default and available only by explicit local query', async ({ page }) => {
+  await loadTitle(page)
+  expect(await page.evaluate(() => '__PZ_BALANCE_GAME__' in window)).toBe(false)
+  expect(await page.evaluate(() => '__PZ_BALANCE_BUILD__' in window)).toBe(false)
+
+  await loadTitle(page, '/?qa=balance')
+  await expect
+    .poll(() => page.evaluate(() => Boolean(
+      Reflect.get(window, '__PZ_BALANCE_GAME__') &&
+      Reflect.get(window, '__PZ_BALANCE_BUILD__'),
+    )))
+    .toBe(true)
+
+  const build = await page.evaluate(() => Reflect.get(window, '__PZ_BALANCE_BUILD__'))
+  expect(build).toMatchObject({
+    commit: expect.stringMatching(/^[0-9a-f]{40}$/),
+    dirty: expect.any(Boolean),
+  })
+})
+
 const readLoadedJavaScript = (page: Page): Promise<string> =>
   page.evaluate(async () => {
     const resourceUrls = performance

@@ -14,7 +14,9 @@
     "art:audio": "node scripts/generate-audio.mjs",
     "verify": "npm run typecheck && npm run test:run && npm run build && npm run qa:size && npm run qa:e2e",
     "qa:e2e": "playwright test",
-    "qa:fps": "node -e \"console.log('qa:fps deferred: performance checks are not implemented in Task 1.')\"",
+    "qa:balance": "node scripts/run-balance-session.cjs",
+    "qa:balance:verify": "node scripts/verify-balance-runs.cjs",
+    "qa:fps": "npm run qa:balance:verify",
     "qa:size": "node scripts/check-asset-budget.mjs",
     "qa:public": "node -e \"console.log('qa:public deferred: public-deployment checks are not implemented in Task 1.')\""
   },

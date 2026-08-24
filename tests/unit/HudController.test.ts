@@ -64,7 +64,7 @@ describe('Task 14 unified HUD contract', () => {
     expect(source).toMatchObject({ hp: 81.2, meter: 147, lives: 2 })
   })
 
-  it('expires presentation combo at 850 ms and fades controls only after 4.5 seconds', () => {
+  it('expires presentation combo at 850 ms and keeps the first-combat controls readable for 9 seconds', () => {
     const emptyInventory = {
       counts: { emp: 0 as const, 'repair-kit': 0 as const },
       selectedItemId: null,
@@ -77,7 +77,7 @@ describe('Task 14 unified HUD contract', () => {
     expect(comboHud.snapshot().combo).toBe(0)
 
     const controlsHud = new HudController(fakeScene() as never, 'mina', emptyInventory)
-    controlsHud.advance(4_500)
+    controlsHud.advance(8_000)
     expect(controlsHud.snapshot().controlsAlpha).toBe(1)
     controlsHud.advance(500)
     expect(controlsHud.snapshot().controlsAlpha).toBe(0.5)

@@ -6,12 +6,32 @@ import {
   SCENE_KEYS,
 } from '../../app/GameServices'
 import { ACTOR_ATLAS_KEY, getActorVisualProfile } from '../../content/animations'
-import type { CharacterId } from '../../content/characters'
+import { characters, type CharacterId } from '../../content/characters'
 
 const labels: Readonly<Record<CharacterId, string>> = {
   han: 'HAN',
   mina: 'MINA',
   jin: 'JIN',
+}
+
+const characterById: Readonly<Record<CharacterId, (typeof characters)[number]>> =
+  Object.freeze(Object.fromEntries(characters.map((character) => [character.id, character])) as Record<
+    CharacterId,
+    (typeof characters)[number]
+  >)
+
+const percent = (value: number): string => `${Math.round(value * 100)}%`
+
+/** Short, data-backed role copy shown only for the currently selected fighter. */
+export const formatFighterBrief = (characterId: CharacterId): string => {
+  const character = characterById[characterId]
+  if (characterId === 'han') {
+    return `${labels[characterId]}  •  BALANCED  •  ${character.maxHp} HP  •  POWER ${percent(character.damageScale)}  •  SPEED ${percent(character.attackSpeedScale)}`
+  }
+  if (characterId === 'mina') {
+    return `${labels[characterId]}  •  RUSH  •  ${character.maxHp} HP  •  SPEED ${percent(character.attackSpeedScale)}  •  MOVE ${percent(character.moveSpeedScale)}`
+  }
+  return `${labels[characterId]}  •  POWER  •  ${character.maxHp} HP  •  DAMAGE ${percent(character.damageScale)}  •  HEAVY HITS`
 }
 
 export class CharacterSelectScene extends Phaser.Scene {
@@ -20,6 +40,7 @@ export class CharacterSelectScene extends Phaser.Scene {
   private choiceTexts: Phaser.GameObjects.Text[] = []
   private choiceImages: Phaser.GameObjects.Image[] = []
   private choiceCards: Phaser.GameObjects.Rectangle[] = []
+  private fighterBriefText: Phaser.GameObjects.Text | null = null
 
   constructor(private readonly services: GameServices) {
     super({ key: SCENE_KEYS.CharacterSelect })
@@ -79,10 +100,20 @@ export class CharacterSelectScene extends Phaser.Scene {
     })
 
     this.add
-      .text(320, 330, '1/2/3 OR ARROWS  •  ENTER TO FIGHT', {
+      .text(320, 336, '1/2/3 OR ARROWS  •  ENTER TO FIGHT', {
         fontFamily: 'monospace',
         fontSize: '12px',
         color: '#cbd5e1',
+      })
+      .setOrigin(0.5)
+
+    this.fighterBriefText = this.add
+      .text(320, 306, '', {
+        align: 'center',
+        fontFamily: 'monospace',
+        fontSize: '10px',
+        fontStyle: 'bold',
+        color: '#67e8f9',
       })
       .setOrigin(0.5)
 
@@ -120,6 +151,7 @@ export class CharacterSelectScene extends Phaser.Scene {
         .setFillStyle(index === this.selectedIndex ? 0x0b1f2b : 0x071018, index === this.selectedIndex ? 0.86 : 0.5)
         .setStrokeStyle(index === this.selectedIndex ? 2 : 1, index === this.selectedIndex ? 0x67e8f9 : 0x1f5068, 1)
     })
+    this.fighterBriefText?.setText(formatFighterBrief(CHARACTER_CHOICES[this.selectedIndex]))
   }
 
   private confirmSelection(): void {

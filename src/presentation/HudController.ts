@@ -25,6 +25,9 @@ const palette = Object.freeze({
   secondary: '#87a5b5',
 })
 
+const controlsHoldMs = 8_000
+const controlsFadeMs = 1_000
+
 export interface EncounterHudSnapshot {
   readonly label: string
   readonly hp: number
@@ -140,9 +143,9 @@ export class HudController {
     this.controlsElapsedMs += deltaMs
     this.comboElapsedMs += deltaMs
     if (this.comboElapsedMs >= 850) this.combo = 0
-    this.controlsAlpha = this.controlsElapsedMs <= 4_500
+    this.controlsAlpha = this.controlsElapsedMs <= controlsHoldMs
       ? 1
-      : Math.max(0, 1 - (this.controlsElapsedMs - 4_500) / 1_000)
+      : Math.max(0, 1 - (this.controlsElapsedMs - controlsHoldMs) / controlsFadeMs)
     this.controlsText.setAlpha(this.controlsAlpha).setVisible(this.controlsAlpha > 0)
   }
 
