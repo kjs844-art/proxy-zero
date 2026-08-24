@@ -64,10 +64,12 @@ import {
   CHECKPOINT_SCHEMA_VERSION,
   createRunState,
   runReducer,
+  type DefeatedEnemyClass,
   type RunCheckpoint,
   type RunEffect,
   type RunState,
 } from '../../domain/run/runReducer'
+import { calculateRunRank, type RunOutcome } from '../../domain/run/rankCalculator'
 import type { ZoneEntry } from '../../domain/run/types'
 import {
   createTunnelHazardState,
@@ -313,7 +315,7 @@ export class CombatScene extends Phaser.Scene {
   private readonly lastRecoveryPositions = new Map<string, EnemyPoint>()
   private trainHazardState: TrainHazardState = createTrainHazardState()
   private tunnelHazardState: TunnelHazardState = createTunnelHazardState()
-  private pendingCombatResult: 'enemy-defeated' | 'debug-clear' = 'enemy-defeated'
+  private pendingCombatResult: Exclude<RunOutcome, 'mission-failed'> = 'mission-clear'
   private sceneCreated = false
   private playerItemUseStartedAtMs: number | null = null
   private focusEventTarget: EventTarget | null = null
@@ -623,6 +625,7 @@ export class CombatScene extends Phaser.Scene {
       puddlePhaseAtStart,
       tunnelTrainPhaseAtStart,
     ))
+    this.recordRunCombatEvents()
 
     if (this.playerWasDefeated()) {
       this.handlePlayerDefeat()
@@ -1413,6 +1416,37 @@ export class CombatScene extends Phaser.Scene {
     }
   }
 
+  /** Consumes the final reducer facts once, before defeat routing can delete actor-class maps. */
+  private recordRunCombatEvents(): void {
+    let playerConfirmedHits = 0
+    let playerDamageEvents = 0
+    const defeatedEnemyIds = new Set<string>()
+
+    for (const event of this.state.events) {
+      if (event.type === 'hit-confirmed') {
+        if (event.attackerId === this.state.playerId) playerConfirmedHits += 1
+        if (event.targetId === this.state.playerId) playerDamageEvents += 1
+        continue
+      }
+      if (event.type === 'environmental-impact' && event.actorId === this.state.playerId) {
+        playerDamageEvents += 1
+        continue
+      }
+      if (event.type !== 'actor-defeated' || event.actorId === this.state.playerId) continue
+      defeatedEnemyIds.add(event.actorId)
+    }
+
+    const defeatedEnemyClasses: DefeatedEnemyClass[] = [...defeatedEnemyIds].map(
+      (enemyId) => this.itemTargetClasses.get(enemyId) ?? 'normal',
+    )
+    this.runState = runReducer(this.runState, {
+      type: 'record-combat-events',
+      playerConfirmedHits,
+      playerDamageEvents,
+      defeatedEnemyClasses,
+    }).state
+  }
+
   private beginWaveClear(waveId: string): void {
     if (this.zonePhase !== 'active' || waveId !== this.currentWave().id) return
     this.zoneRenderer?.setLocked(false)
@@ -1423,7 +1457,7 @@ export class CombatScene extends Phaser.Scene {
       return
     }
     this.clearEmpTimers()
-    this.pendingCombatResult = 'enemy-defeated'
+    this.pendingCombatResult = 'mission-clear'
     this.zonePhase = 'zone-clear'
     this.transitionRemainingMs = this.currentZone.transitionDurationMs
     this.zoneClearText
@@ -1565,8 +1599,8 @@ export class CombatScene extends Phaser.Scene {
       return
     }
     const prompt = this.runState.continueAvailable
-      ? 'GAME OVER\nENTER · CONTINUE'
-      : 'GAME OVER\nCONTINUE EXHAUSTED'
+      ? 'GAME OVER\nENTER · CONTINUE   ESC · FORFEIT'
+      : 'GAME OVER\nCONTINUE EXHAUSTED\nENTER / J / ESC / T · RESULTS'
     this.gameOverText?.setText(prompt).setVisible(true)
   }
 
@@ -1711,7 +1745,7 @@ export class CombatScene extends Phaser.Scene {
     this.finished = false
     this.trainHazardState = createTrainHazardState()
     this.tunnelHazardState = createTunnelHazardState()
-    this.pendingCombatResult = 'enemy-defeated'
+    this.pendingCombatResult = 'mission-clear'
     this.zoneRenderer?.reset()
     this.trainBackdrop?.reset(this.itemRuntime.pickups)
     this.tunnelBackdrop?.reset()
@@ -1783,9 +1817,7 @@ export class CombatScene extends Phaser.Scene {
     if (this.zonePhase !== 'zone-clear') return
     if (this.currentZone.nextZoneEntry === null) {
       if (this.finished || this.runState.status === 'game-over') return
-      this.finished = true
-      this.services.completeCombat(this.pendingCombatResult)
-      this.scene.start(SCENE_KEYS.Results)
+      this.finishRun(this.pendingCombatResult)
       return
     }
     const result = runReducer(this.runState, {
@@ -1839,7 +1871,7 @@ export class CombatScene extends Phaser.Scene {
     }
     this.trainHazardState = createTrainHazardState()
     this.tunnelHazardState = createTunnelHazardState()
-    this.pendingCombatResult = 'enemy-defeated'
+    this.pendingCombatResult = 'mission-clear'
     this.initializeZoneRuntime()
     this.zoneRenderer?.dispose()
     this.zoneRenderer = null
@@ -1865,6 +1897,7 @@ export class CombatScene extends Phaser.Scene {
 
   private debugClearCurrentZone(): void {
     if (this.zonePhase === 'zone-clear' || this.zonePhase === 'zone-handoff') return
+    this.runState = runReducer(this.runState, { type: 'mark-debug-clear-used' }).state
     this.resetTransientPresentation()
     this.clearEnemyResources()
     this.clearEmpTimers()
@@ -1947,8 +1980,57 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private readonly onDebugKeyDown = (event: KeyboardEvent): void => {
-    if (event.code === 'Backquote') this.services.requestDebugClear()
-    if (event.code === 'Enter' && this.runState.status === 'game-over') this.tryContinue()
+    if (event.repeat) return
+    if (import.meta.env.DEV && event.code === 'Backquote') {
+      event.preventDefault()
+      this.services.requestDebugClear()
+      return
+    }
+    if (this.runState.status !== 'game-over') return
+    if (this.runState.continueAvailable) {
+      if (event.code === 'Enter') {
+        event.preventDefault()
+        this.tryContinue()
+      } else if (event.code === 'Escape') {
+        event.preventDefault()
+        this.finishRun('mission-failed')
+      }
+      return
+    }
+    if (['Enter', 'Space', 'KeyJ', 'Escape', 'KeyT'].includes(event.code)) {
+      event.preventDefault()
+      this.finishRun('mission-failed')
+    }
+  }
+
+  private finishRun(requestedOutcome: RunOutcome): void {
+    if (this.finished) return
+    const outcome: RunOutcome =
+      requestedOutcome === 'mission-clear' && this.runState.debugClearUsed
+        ? 'debug-clear'
+        : requestedOutcome
+    const rank = calculateRunRank({
+      outcome,
+      activeTimeMs: this.runState.activeTimeMs,
+      score: this.runState.score,
+      maxCombo: this.runState.maxCombo,
+      hitsTaken: this.runState.hitsTaken,
+      continueUsed: this.runState.continueUsed,
+    })
+    this.finished = true
+    this.actionQueue.clear()
+    this.acceptedAttackHistory = []
+    this.services.completeRun({
+      outcome,
+      characterId: this.runState.characterId,
+      activeTimeMs: this.runState.activeTimeMs,
+      score: this.runState.score,
+      maxCombo: this.runState.maxCombo,
+      hitsTaken: this.runState.hitsTaken,
+      continueUsed: this.runState.continueUsed,
+      rank,
+    })
+    this.scene.start(SCENE_KEYS.Results)
   }
 
   private dispose(): void {
@@ -2000,7 +2082,7 @@ export class CombatScene extends Phaser.Scene {
     this.authoredItemPickups = []
     this.trainHazardState = createTrainHazardState()
     this.tunnelHazardState = createTunnelHazardState()
-    this.pendingCombatResult = 'enemy-defeated'
+    this.pendingCombatResult = 'mission-clear'
     this.acceptedAttackHistory = []
     this.playerItemUseStartedAtMs = null
     this.pendingItemPresentationEffects = []

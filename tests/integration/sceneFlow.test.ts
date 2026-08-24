@@ -233,6 +233,87 @@ describe('first playable scene flow', () => {
     expect(services.firstEnemySpawn).toEqual({ actorId: 'greybox-enemy', atMs: 3_999 })
     expect(services.enemySpawnedWithin(4_000)).toBe(true)
   })
+
+  it('stores one immutable completed run and keeps the first terminal write', () => {
+    const services = new GameServices()
+    services.enterBootScene()
+    services.enterScene('Title')
+    services.enterScene('CharacterSelect')
+    services.confirmCharacter('han', 0)
+    services.enterScene('Combat')
+
+    const firstRecord = {
+      outcome: 'mission-clear' as const,
+      characterId: 'han' as const,
+      activeTimeMs: 540_000,
+      score: 15_000,
+      maxCombo: 10,
+      hitsTaken: 4,
+      continueUsed: false,
+      rank: 'S' as const,
+    }
+    expect(services.completeRun(firstRecord)).toBe(true)
+    expect(services.completeRun({
+      ...firstRecord,
+      outcome: 'mission-failed',
+      score: 0,
+      rank: 'D',
+    })).toBe(false)
+
+    const exposedRecord = services.completedRun
+    expect(exposedRecord).toEqual(firstRecord)
+    expect(Object.isFrozen(exposedRecord)).toBe(true)
+    expect(exposedRecord).not.toBe(services.completedRun)
+  })
+
+  it('permits Results -> Combat only after retry preparation', () => {
+    const services = new GameServices()
+    services.enterBootScene()
+    services.enterScene('Title')
+    services.enterScene('CharacterSelect')
+    services.confirmCharacter('mina', 0)
+    services.enterScene('Combat')
+    services.completeRun({
+      outcome: 'mission-failed',
+      characterId: 'mina',
+      activeTimeMs: 730_000,
+      score: 0,
+      maxCombo: 2,
+      hitsTaken: 15,
+      continueUsed: true,
+      rank: 'D',
+    })
+    services.enterScene('Results')
+
+    expect(() => services.enterScene('Combat')).toThrow(/prepareImmediateRetry/)
+    expect(services.prepareImmediateRetry()).toBe('mina')
+    expect(services.completedRun).toBeNull()
+    expect(services.selectedCharacter).toBe('mina')
+    expect(services.enterScene('Combat')).toBe('Combat')
+  })
+
+  it('keeps the strict Results -> Title route', () => {
+    const services = new GameServices()
+    services.enterBootScene()
+    services.enterScene('Title')
+    services.enterScene('CharacterSelect')
+    services.confirmCharacter('jin', 0)
+    services.enterScene('Combat')
+    services.completeRun({
+      outcome: 'debug-clear',
+      characterId: 'jin',
+      activeTimeMs: 100,
+      score: 500,
+      maxCombo: 1,
+      hitsTaken: 0,
+      continueUsed: false,
+      rank: 'D',
+    })
+    services.enterScene('Results')
+
+    expect(services.enterScene('Title')).toBe('Title')
+    expect(services.completedRun).not.toBeNull()
+  })
 })
 
 describe('CombatScene run adapter', () => {

@@ -4,6 +4,9 @@ import type { ZoneEntry, ZoneId } from './types'
 
 export const CHECKPOINT_SCHEMA_VERSION = 2 as const
 export const RESPAWN_INVULNERABILITY_MS = 1_200
+export const PLAYER_COMBO_TIMEOUT_MS = 850
+
+export type DefeatedEnemyClass = 'normal' | 'elite' | 'boss'
 
 export interface RunCheckpoint {
   schemaVersion: typeof CHECKPOINT_SCHEMA_VERSION
@@ -27,7 +30,13 @@ export interface RunState {
   hp: number
   maxHp: number
   respawnInvulnerabilityRemainingMs: number
+  activeTimeMs: number
   score: number
+  currentCombo: number
+  lastPlayerHitAtMs: number | null
+  maxCombo: number
+  hitsTaken: number
+  debugClearUsed: boolean
   rankCap: RunRankCap
   status: RunStatus
 }
@@ -43,6 +52,13 @@ export type RunCommand =
   | { type: 'player-defeated' }
   | { type: 'player-hp-changed'; hp: number }
   | { type: 'advance-time'; deltaMs: number }
+  | {
+      type: 'record-combat-events'
+      playerConfirmedHits: number
+      playerDamageEvents: number
+      defeatedEnemyClasses: readonly DefeatedEnemyClass[]
+    }
+  | { type: 'mark-debug-clear-used' }
   | { type: 'enter-zone'; entry: ZoneEntry }
   | { type: 'continue-from-checkpoint'; checkpoint: Readonly<RunCheckpoint> }
 
@@ -61,6 +77,12 @@ export interface RunReducerResult {
   effects: RunEffect[]
 }
 
+const ENEMY_SCORE: Readonly<Record<DefeatedEnemyClass, number>> = {
+  normal: 500,
+  elite: 2_500,
+  boss: 5_000,
+}
+
 const cloneInventory = (inventory: Readonly<ItemInventory>): ItemInventory => ({
   counts: {
     emp: inventory.counts.emp,
@@ -70,6 +92,11 @@ const cloneInventory = (inventory: Readonly<ItemInventory>): ItemInventory => ({
 })
 
 const cloneState = (state: Readonly<RunState>): RunState => ({ ...state })
+
+const resetCurrentCombo = (state: RunState): void => {
+  state.currentCombo = 0
+  state.lastPlayerHitAtMs = null
+}
 
 export const createRunState = (options: Readonly<CreateRunStateOptions>): RunState => ({
   characterId: options.characterId,
@@ -82,13 +109,22 @@ export const createRunState = (options: Readonly<CreateRunStateOptions>): RunSta
   hp: options.maxHp,
   maxHp: options.maxHp,
   respawnInvulnerabilityRemainingMs: 0,
+  activeTimeMs: 0,
   score: 0,
+  currentCombo: 0,
+  lastPlayerHitAtMs: null,
+  maxCombo: 0,
+  hitsTaken: 0,
+  debugClearUsed: false,
   rankCap: null,
   status: 'playing',
 })
 
 const finiteDelta = (deltaMs: number): number =>
   Number.isFinite(deltaMs) ? Math.max(0, deltaMs) : 0
+
+const finiteCount = (value: number): number =>
+  Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
 
 /** Applies deterministic run-level rules using only caller-supplied commands and time. */
 export const runReducer = (
@@ -98,10 +134,46 @@ export const runReducer = (
   const state = cloneState(incoming)
 
   if (command.type === 'advance-time') {
+    if (state.status !== 'playing') return { state, effects: [] }
+    const deltaMs = finiteDelta(command.deltaMs)
+    state.activeTimeMs += deltaMs
     state.respawnInvulnerabilityRemainingMs = Math.max(
       0,
-      state.respawnInvulnerabilityRemainingMs - finiteDelta(command.deltaMs),
+      state.respawnInvulnerabilityRemainingMs - deltaMs,
     )
+    if (
+      state.currentCombo > 0 &&
+      state.lastPlayerHitAtMs !== null &&
+      state.activeTimeMs - state.lastPlayerHitAtMs >= PLAYER_COMBO_TIMEOUT_MS
+    ) {
+      resetCurrentCombo(state)
+    }
+    return { state, effects: [] }
+  }
+
+  if (command.type === 'record-combat-events') {
+    if (state.status !== 'playing') return { state, effects: [] }
+    const playerConfirmedHits = finiteCount(command.playerConfirmedHits)
+    state.score += command.defeatedEnemyClasses.reduce(
+      (total, enemyClass) => total + (ENEMY_SCORE[enemyClass] ?? 0),
+      0,
+    )
+    state.hitsTaken += finiteCount(command.playerDamageEvents)
+
+    if (playerConfirmedHits > 0) {
+      const continuesCombo =
+        state.currentCombo > 0 &&
+        state.lastPlayerHitAtMs !== null &&
+        state.activeTimeMs - state.lastPlayerHitAtMs < PLAYER_COMBO_TIMEOUT_MS
+      state.currentCombo = (continuesCombo ? state.currentCombo : 0) + playerConfirmedHits
+      state.lastPlayerHitAtMs = state.activeTimeMs
+      state.maxCombo = Math.max(state.maxCombo, state.currentCombo)
+    }
+    return { state, effects: [] }
+  }
+
+  if (command.type === 'mark-debug-clear-used') {
+    if (state.status === 'playing') state.debugClearUsed = true
     return { state, effects: [] }
   }
 
@@ -120,12 +192,14 @@ export const runReducer = (
     state.zoneId = entry.zoneId
     state.zoneStartWaveId = entry.zoneStartWaveId
     state.currentWaveId = entry.zoneStartWaveId
+    resetCurrentCombo(state)
     return { state, effects: [{ type: 'zone-entered', entry }] }
   }
 
   if (command.type === 'player-defeated') {
     if (state.status !== 'playing') return { state, effects: [] }
 
+    resetCurrentCombo(state)
     state.lives = Math.max(0, state.lives - 1)
     if (state.lives > 0) {
       state.hp = state.maxHp
@@ -168,6 +242,7 @@ export const runReducer = (
   state.hp = state.maxHp
   state.respawnInvulnerabilityRemainingMs = 0
   state.score = 0
+  resetCurrentCombo(state)
   state.rankCap = 'C'
   state.status = 'playing'
 

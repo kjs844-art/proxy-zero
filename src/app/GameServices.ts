@@ -3,6 +3,7 @@ import {
   type BufferedAction,
   InputBuffer,
 } from '../domain/combat/inputBuffer'
+import type { RunOutcome, RunRank } from '../domain/run/rankCalculator'
 
 export const SCENE_KEYS = {
   Boot: 'Boot',
@@ -28,6 +29,17 @@ export interface EnemySpawnRecord {
 }
 
 export type CombatResult = 'enemy-defeated' | 'debug-clear'
+
+export interface CompletedRunRecord {
+  readonly outcome: RunOutcome
+  readonly characterId: CharacterId
+  readonly activeTimeMs: number
+  readonly score: number
+  readonly maxCombo: number
+  readonly hitsTaken: number
+  readonly continueUsed: boolean
+  readonly rank: RunRank
+}
 
 type CapabilityHost = {
   navigator?: {
@@ -86,7 +98,7 @@ const permittedNextScenes: Readonly<Record<SceneKey, readonly SceneKey[]>> = {
   Title: ['CharacterSelect'],
   CharacterSelect: ['Combat'],
   Combat: ['Results'],
-  Results: ['Title'],
+  Results: ['Combat', 'Title'],
 }
 
 /** Read-only capability probes: no permissions, audio playback, or storage writes. */
@@ -134,6 +146,8 @@ export class GameServices {
   private inputReadyAtMs: number | null = null
   private firstEnemySpawnValue: EnemySpawnRecord | null = null
   private debugClearPending = false
+  private completedRunValue: Readonly<CompletedRunRecord> | null = null
+  private immediateRetryPrepared = false
 
   capabilities: GameCapabilities = {
     mobile: false,
@@ -155,6 +169,10 @@ export class GameServices {
     return this.selectedCharacterValue
   }
 
+  get completedRun(): CompletedRunRecord | null {
+    return this.completedRunValue ? Object.freeze({ ...this.completedRunValue }) : null
+  }
+
   get firstEnemySpawn(): EnemySpawnRecord | null {
     return this.firstEnemySpawnValue ? { ...this.firstEnemySpawnValue } : null
   }
@@ -165,6 +183,14 @@ export class GameServices {
   }
 
   enterScene(nextScene: SceneKey): SceneKey {
+    const isImmediateRetry =
+      this.currentSceneValue === SCENE_KEYS.Results && nextScene === SCENE_KEYS.Combat
+    if (isImmediateRetry && !this.immediateRetryPrepared) {
+      throw new Error(
+        'Results -> Combat requires prepareImmediateRetry() before the scene transition.',
+      )
+    }
+
     if (this.currentSceneValue === null) {
       if (nextScene !== SCENE_KEYS.Boot) {
         throw new Error(`The first scene must be ${SCENE_KEYS.Boot}.`)
@@ -175,12 +201,17 @@ export class GameServices {
 
     this.currentSceneValue = nextScene
     this.sceneHistoryValue.push(nextScene)
+    if (isImmediateRetry) this.immediateRetryPrepared = false
     if (nextScene === SCENE_KEYS.CharacterSelect) {
       this.selectedCharacterValue = null
       this.confirmedAtMs = null
       this.inputReadyAtMs = null
       this.firstEnemySpawnValue = null
       this.result = null
+      this.completedRunValue = null
+      this.immediateRetryPrepared = false
+    } else if (nextScene === SCENE_KEYS.Title) {
+      this.immediateRetryPrepared = false
     }
     return nextScene
   }
@@ -189,6 +220,7 @@ export class GameServices {
   enterBootScene(): SceneKey {
     if (this.currentSceneValue === null) return this.enterScene(SCENE_KEYS.Boot)
     this.currentSceneValue = SCENE_KEYS.Boot
+    this.immediateRetryPrepared = false
     this.sceneHistoryValue.push(SCENE_KEYS.Boot)
     return SCENE_KEYS.Boot
   }
@@ -243,6 +275,30 @@ export class GameServices {
     const requested = this.debugClearPending
     this.debugClearPending = false
     return requested
+  }
+
+  completeRun(record: Readonly<CompletedRunRecord>): boolean {
+    if (this.completedRunValue !== null) return false
+    this.completedRunValue = Object.freeze({ ...record })
+    return true
+  }
+
+  prepareImmediateRetry(): CharacterId {
+    if (this.currentSceneValue !== SCENE_KEYS.Results) {
+      throw new Error('Immediate retry can only be prepared from Results.')
+    }
+    if (this.selectedCharacterValue === null) {
+      throw new Error('Immediate retry requires a selected character.')
+    }
+    if (this.completedRunValue === null) {
+      throw new Error('Immediate retry requires a completed run.')
+    }
+
+    const characterId = this.selectedCharacterValue
+    this.completedRunValue = null
+    this.result = null
+    this.immediateRetryPrepared = true
+    return characterId
   }
 
   completeCombat(result: CombatResult): void {

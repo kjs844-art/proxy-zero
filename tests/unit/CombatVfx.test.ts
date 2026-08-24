@@ -143,4 +143,12 @@ describe('CombatVfx event planning', () => {
       activeTextCount: 3,
     })
   })
+
+  it('disposes safely after Phaser has already released the scene camera', () => {
+    const scene = fakeScene()
+    const renderer = new CombatVfx(scene as never)
+    Reflect.deleteProperty(scene.cameras, 'main')
+
+    expect(() => renderer.dispose()).not.toThrow()
+  })
 })

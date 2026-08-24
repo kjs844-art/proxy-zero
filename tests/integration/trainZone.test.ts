@@ -421,7 +421,10 @@ describe('CombatScene service-train orchestration', () => {
     }))
     const stable = structuredClone(scene.runState)
     for (let step = 0; step < 120; step += 1) scene.stepDomain()
-    expect(scene.runState).toEqual(stable)
+    const { activeTimeMs: activeTimeBefore, ...stableRun } = stable
+    const { activeTimeMs: activeTimeAfter, ...currentRun } = scene.runState
+    expect(currentRun).toEqual(stableRun)
+    expect(activeTimeAfter - activeTimeBefore).toBeCloseTo(120 * fixedStepMs, 8)
     expect(services.result).toBeNull()
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
   })

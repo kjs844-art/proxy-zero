@@ -178,6 +178,7 @@ type SceneHarness = {
   zonePhase: 'active' | 'inter-wave' | 'zone-clear' | 'zone-handoff'
   transitionRemainingMs: number
   itemRuntime: ItemRuntimeState
+  itemTargetClasses: Map<string, 'normal' | 'elite' | 'boss'>
   bossBrains: Map<string, BossBrainState>
   tunnelHazardState: TunnelHazardState
   tunnelBackdrop: TunnelBackdrop | null
@@ -195,6 +196,8 @@ type SceneHarness = {
   applyRunEffects(effects: ReturnType<typeof runReducer>['effects']): void
   recordEnemyDefeats(enemyIds: readonly string[]): void
   advanceZoneClock(deltaMs: number): void
+  debugClearCurrentZone(): void
+  onDebugKeyDown(event: KeyboardEvent): void
   tryContinue(): void
   dispose(): void
 }
@@ -219,6 +222,12 @@ const dispatchKeyDown = (scene: SceneHarness, code: string): void => {
   })
   scene.game.canvas.ownerDocument.dispatchEvent(event)
 }
+
+const keyboardEvent = (code: string, repeat = false) => ({
+  code,
+  repeat,
+  preventDefault: vi.fn(),
+}) as unknown as KeyboardEvent & { preventDefault: ReturnType<typeof vi.fn> }
 
 const stepUntil = (
   scene: SceneHarness,
@@ -281,7 +290,7 @@ describe('CombatScene flooded-tunnel orchestration', () => {
     expect(scene.tunnelBackdrop?.snapshot()).toMatchObject({
       elapsedMs: 0, puddlePhase: 'safe', trainPhase: 'idle', safeLaneVisible: true,
     })
-    expect(services.result).toBeNull()
+    expect(services.completedRun).toBeNull()
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
   })
 
@@ -347,7 +356,7 @@ describe('CombatScene flooded-tunnel orchestration', () => {
 
   it('lets the reducer-owned train kill the boss, clear its wave, and route Results once after 1500ms', () => {
     const { scene, services } = createLiveScene()
-    const completeCombat = vi.spyOn(services, 'completeCombat')
+    const completeRun = vi.spyOn(services, 'completeRun')
     enterFloodedTunnel(scene)
     const bossId = enterBossWave(scene)
     scene.state.actors.han.position = { x: 300, y: 264, z: 0 }
@@ -370,27 +379,60 @@ describe('CombatScene flooded-tunnel orchestration', () => {
       strength: 3,
     })
     expect(scene.state.actors[bossId]).toBeUndefined()
+    expect(scene.itemTargetClasses.has(bossId)).toBe(false)
+    expect(scene.runState.score).toBe(5_000)
     expect(scene.zonePhase).toBe('zone-clear')
     expect(scene.transitionRemainingMs).toBe(1_500)
-    expect(completeCombat).not.toHaveBeenCalled()
+    expect(completeRun).not.toHaveBeenCalled()
     expect(scene.scene.start).not.toHaveBeenCalled()
 
     scene.advanceZoneClock(1_499)
-    expect(completeCombat).not.toHaveBeenCalled()
+    expect(completeRun).not.toHaveBeenCalled()
     scene.advanceZoneClock(1)
-    expect(completeCombat).toHaveBeenCalledOnce()
-    expect(completeCombat).toHaveBeenCalledWith('enemy-defeated')
+    expect(completeRun).toHaveBeenCalledOnce()
+    expect(completeRun).toHaveBeenCalledWith(expect.objectContaining({
+      outcome: 'mission-clear',
+      characterId: 'han',
+      score: 5_000,
+      maxCombo: 0,
+      hitsTaken: 0,
+      continueUsed: false,
+    }))
+    expect(services.completedRun).toEqual(expect.objectContaining({
+      outcome: 'mission-clear', score: 5_000,
+    }))
     expect(scene.scene.start).toHaveBeenCalledOnce()
     expect(scene.scene.start).toHaveBeenCalledWith(SCENE_KEYS.Results)
     scene.stepDomain()
     scene.advanceZoneClock(2_000)
-    expect(completeCombat).toHaveBeenCalledOnce()
+    expect(completeRun).toHaveBeenCalledOnce()
+    expect(scene.scene.start).toHaveBeenCalledOnce()
+  })
+
+  it('marks a debug clear for the whole run and completes one D result', () => {
+    const { scene, services } = createLiveScene()
+    const completeRun = vi.spyOn(services, 'completeRun')
+    enterFloodedTunnel(scene)
+
+    scene.debugClearCurrentZone()
+    expect(scene.runState.debugClearUsed).toBe(true)
+    expect(scene.zonePhase).toBe('zone-clear')
+
+    scene.advanceZoneClock(floodedTunnelZone.transitionDurationMs)
+    expect(completeRun).toHaveBeenCalledOnce()
+    expect(services.completedRun).toEqual(expect.objectContaining({
+      outcome: 'debug-clear',
+      characterId: 'han',
+      rank: 'D',
+    }))
+    scene.advanceZoneClock(floodedTunnelZone.transitionDurationMs)
+    expect(completeRun).toHaveBeenCalledOnce()
     expect(scene.scene.start).toHaveBeenCalledOnce()
   })
 
   it('keeps terminal Game Over above simultaneous train defeats and Continue rebuilds without Results', () => {
     const { scene, services } = createLiveScene()
-    const completeCombat = vi.spyOn(services, 'completeCombat')
+    const completeRun = vi.spyOn(services, 'completeRun')
     enterFloodedTunnel(scene)
     const bossId = enterBossWave(scene)
     const player = scene.state.actors.han
@@ -431,10 +473,14 @@ describe('CombatScene flooded-tunnel orchestration', () => {
     ]))
     expect(scene.state.actors[bossId]).toMatchObject({ hp: 0, mode: 'defeated' })
     expect(scene.runState).toMatchObject({
-      lives: 0, status: 'game-over', continueAvailable: true,
+      lives: 0,
+      status: 'game-over',
+      continueAvailable: true,
+      score: 5_000,
+      hitsTaken: 1,
     })
     expect(scene.zonePhase).toBe('active')
-    expect(completeCombat).not.toHaveBeenCalled()
+    expect(completeRun).not.toHaveBeenCalled()
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
 
     scene.tryContinue()
@@ -444,13 +490,92 @@ describe('CombatScene flooded-tunnel orchestration', () => {
       continueUsed: true,
       status: 'playing',
       currentWaveId: 'flooded-tunnel-wave-1',
+      score: 0,
+      hitsTaken: 1,
     })
     expect(scene.waveIndex).toBe(0)
     expect(scene.state.actors[bossId]).toBeUndefined()
     expect(scene.zonePhase).toBe('active')
-    expect(completeCombat).not.toHaveBeenCalled()
+    expect(completeRun).not.toHaveBeenCalled()
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
   })
+
+  it('accepts only Enter for a capable Continue, while Escape forfeits and repeat is ignored', () => {
+    const continuing = createLiveScene()
+    continuing.scene.runState = {
+      ...continuing.scene.runState,
+      lives: 0,
+      hp: 0,
+      status: 'game-over',
+      continueAvailable: true,
+    }
+    for (const code of ['Space', 'KeyJ', 'KeyT']) {
+      const ignoredEvent = keyboardEvent(code)
+      continuing.scene.onDebugKeyDown(ignoredEvent)
+      expect(ignoredEvent.preventDefault).not.toHaveBeenCalled()
+    }
+    expect(continuing.scene.runState.status).toBe('game-over')
+    expect(continuing.services.completedRun).toBeNull()
+    const continueEvent = keyboardEvent('Enter')
+    continuing.scene.onDebugKeyDown(continueEvent)
+    expect(continueEvent.preventDefault).toHaveBeenCalledOnce()
+    expect(continuing.scene.runState).toMatchObject({
+      status: 'playing', continueUsed: true, continueAvailable: false,
+    })
+    expect(continuing.services.completedRun).toBeNull()
+
+    const forfeiting = createLiveScene()
+    const completeRun = vi.spyOn(forfeiting.services, 'completeRun')
+    forfeiting.scene.runState = {
+      ...forfeiting.scene.runState,
+      lives: 0,
+      hp: 0,
+      status: 'game-over',
+      continueAvailable: true,
+    }
+    const repeatEvent = keyboardEvent('Escape', true)
+    forfeiting.scene.onDebugKeyDown(repeatEvent)
+    expect(repeatEvent.preventDefault).not.toHaveBeenCalled()
+    expect(completeRun).not.toHaveBeenCalled()
+    const forfeitEvent = keyboardEvent('Escape')
+    forfeiting.scene.onDebugKeyDown(forfeitEvent)
+    forfeiting.scene.onDebugKeyDown(keyboardEvent('Escape'))
+    expect(forfeitEvent.preventDefault).toHaveBeenCalledOnce()
+    expect(completeRun).toHaveBeenCalledOnce()
+    expect(forfeiting.services.completedRun).toEqual(expect.objectContaining({
+      outcome: 'mission-failed', rank: 'D', continueUsed: false,
+    }))
+    expect(forfeiting.scene.scene.start).toHaveBeenCalledOnce()
+  })
+
+  it.each(['Enter', 'Space', 'KeyJ', 'Escape', 'KeyT'])(
+    'routes exhausted Game Over key %s to one failed result',
+    (code) => {
+      const { scene, services } = createLiveScene()
+      const completeRun = vi.spyOn(services, 'completeRun')
+      scene.runState = {
+        ...scene.runState,
+        lives: 0,
+        hp: 0,
+        status: 'game-over',
+        continueUsed: true,
+        continueAvailable: false,
+        debugClearUsed: true,
+      }
+      const terminalEvent = keyboardEvent(code)
+
+      scene.onDebugKeyDown(terminalEvent)
+      scene.onDebugKeyDown(keyboardEvent(code))
+
+      expect(terminalEvent.preventDefault).toHaveBeenCalledOnce()
+      expect(completeRun).toHaveBeenCalledOnce()
+      expect(services.completedRun).toEqual(expect.objectContaining({
+        outcome: 'mission-failed', rank: 'D', continueUsed: true,
+      }))
+      expect(scene.scene.start).toHaveBeenCalledOnce()
+      expect(scene.scene.start).toHaveBeenCalledWith(SCENE_KEYS.Results)
+    },
+  )
 
   it('advances the accepted boss cursor and resumes its next pattern after a live 700ms EMP edge', () => {
     const { scene } = createLiveScene()

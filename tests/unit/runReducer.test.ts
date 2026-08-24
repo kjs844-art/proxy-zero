@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createRunState,
   runReducer,
+  type DefeatedEnemyClass,
   type RunCheckpoint,
   type RunState,
 } from '../../src/domain/run/runReducer'
@@ -211,4 +212,248 @@ describe('runReducer', () => {
     expect(result.state.continueAvailable).toBe(false)
     expect(result.effects).toEqual([])
   })
+  it('initializes fresh ranking fields without expanding the checkpoint contract', () => {
+    expect(createRun()).toMatchObject({
+      activeTimeMs: 0,
+      currentCombo: 0,
+      lastPlayerHitAtMs: null,
+      maxCombo: 0,
+      hitsTaken: 0,
+      debugClearUsed: false,
+    })
+    expect(checkpoint()).toEqual({
+      schemaVersion: 2,
+      characterId: 'han',
+      zoneId: 'n9-depot',
+      zoneStartWaveId: 'n9-depot-wave-1',
+      inventory: {
+        counts: { emp: 1, 'repair-kit': 0 },
+        selectedItemId: 'emp',
+      },
+    })
+  })
+
+  it('advances only supplied active time and expires combo at exactly 850 ms', () => {
+    const running = createRun({
+      respawnInvulnerabilityRemainingMs: 1_200,
+      currentCombo: 2,
+      lastPlayerHitAtMs: 0,
+      maxCombo: 2,
+    })
+
+    const partial = runReducer(running, { type: 'advance-time', deltaMs: 849.5 })
+    const boundary = runReducer(partial.state, { type: 'advance-time', deltaMs: 0.5 })
+    const invalid = runReducer(boundary.state, {
+      type: 'advance-time',
+      deltaMs: Number.NaN,
+    })
+
+    expect(partial.state).toMatchObject({
+      activeTimeMs: 849.5,
+      respawnInvulnerabilityRemainingMs: 350.5,
+      currentCombo: 2,
+    })
+    expect(boundary.state).toMatchObject({
+      activeTimeMs: 850,
+      respawnInvulnerabilityRemainingMs: 350,
+      currentCombo: 0,
+      lastPlayerHitAtMs: null,
+      maxCombo: 2,
+    })
+    expect(invalid.state).toEqual(boundary.state)
+  })
+
+  it('tracks supplied player hits and damage facts without using global combat combo', () => {
+    const first = runReducer(createRun(), {
+      type: 'record-combat-events',
+      playerConfirmedHits: 2,
+      playerDamageEvents: 2,
+      defeatedEnemyClasses: [],
+    })
+    const within = runReducer(
+      runReducer(first.state, { type: 'advance-time', deltaMs: 849 }).state,
+      {
+        type: 'record-combat-events',
+        playerConfirmedHits: 3,
+        playerDamageEvents: 0,
+        defeatedEnemyClasses: [],
+      },
+    )
+    const expired = runReducer(within.state, { type: 'advance-time', deltaMs: 850 })
+
+    expect(first.state).toMatchObject({
+      currentCombo: 2,
+      lastPlayerHitAtMs: 0,
+      maxCombo: 2,
+      hitsTaken: 2,
+    })
+    expect(within.state).toMatchObject({
+      activeTimeMs: 849,
+      currentCombo: 5,
+      lastPlayerHitAtMs: 849,
+      maxCombo: 5,
+      hitsTaken: 2,
+    })
+    expect(expired.state).toMatchObject({
+      activeTimeMs: 1_699,
+      currentCombo: 0,
+      lastPlayerHitAtMs: null,
+      maxCombo: 5,
+    })
+  })
+
+  it.each([
+    ['normal', 500],
+    ['elite', 2_500],
+    ['boss', 5_000],
+  ] as const)('scores one defeated %s exactly once', (enemyClass, score) => {
+    const result = runReducer(createRun(), {
+      type: 'record-combat-events',
+      playerConfirmedHits: 0,
+      playerDamageEvents: 0,
+      defeatedEnemyClasses: [enemyClass],
+    })
+
+    expect(result.state.score).toBe(score)
+  })
+
+  it('scores the authored 15 normal, one elite, and one boss total', () => {
+    const defeatedEnemyClasses: DefeatedEnemyClass[] = [
+      ...Array.from({ length: 15 }, () => 'normal' as const),
+      'elite',
+      'boss',
+    ]
+    const result = runReducer(createRun(), {
+      type: 'record-combat-events',
+      playerConfirmedHits: 0,
+      playerDamageEvents: 0,
+      defeatedEnemyClasses,
+    })
+
+    expect(result.state.score).toBe(15_000)
+  })
+
+  it('preserves statistics but resets current combo on respawn and zone transition', () => {
+    const statistics = {
+      activeTimeMs: 42_000,
+      score: 4_200,
+      currentCombo: 7,
+      lastPlayerHitAtMs: 41_900,
+      maxCombo: 12,
+      hitsTaken: 5,
+      debugClearUsed: true,
+    }
+    const respawn = runReducer(createRun({ ...statistics, hp: 0 }), {
+      type: 'player-defeated',
+    })
+    const zone = runReducer({
+      ...respawn.state,
+      currentCombo: 3,
+      lastPlayerHitAtMs: 42_000,
+    }, {
+      type: 'enter-zone',
+      entry: { zoneId: 'service-train', zoneStartWaveId: 'service-train-wave-1' },
+    })
+
+    expect(respawn.state).toMatchObject({
+      activeTimeMs: 42_000,
+      score: 4_200,
+      currentCombo: 0,
+      lastPlayerHitAtMs: null,
+      maxCombo: 12,
+      hitsTaken: 5,
+      debugClearUsed: true,
+    })
+    expect(zone.state).toMatchObject({
+      activeTimeMs: 42_000,
+      score: 4_200,
+      currentCombo: 0,
+      lastPlayerHitAtMs: null,
+      maxCombo: 12,
+      hitsTaken: 5,
+      debugClearUsed: true,
+    })
+  })
+
+  it('marks debug clear idempotently and preserves the mark', () => {
+    const marked = runReducer(createRun(), { type: 'mark-debug-clear-used' })
+    const again = runReducer(marked.state, { type: 'mark-debug-clear-used' })
+    const advanced = runReducer(again.state, { type: 'advance-time', deltaMs: 16 })
+
+    expect(marked.state.debugClearUsed).toBe(true)
+    expect(again.state.debugClearUsed).toBe(true)
+    expect(advanced.state).toMatchObject({ debugClearUsed: true, activeTimeMs: 16 })
+  })
+
+  it('preserves same-tick boss score before terminal player defeat', () => {
+    const recorded = runReducer(createRun({ lives: 1, hp: 0 }), {
+      type: 'record-combat-events',
+      playerConfirmedHits: 0,
+      playerDamageEvents: 1,
+      defeatedEnemyClasses: ['boss'],
+    })
+    const gameOver = runReducer(recorded.state, { type: 'player-defeated' })
+
+    expect(gameOver.state).toMatchObject({
+      status: 'game-over',
+      score: 5_000,
+      hitsTaken: 1,
+    })
+  })
+
+  it('applies the approved Continue statistic preservation and reset matrix', () => {
+    const gameOver = createRun({
+      lives: 0,
+      hp: 0,
+      activeTimeMs: 123_000,
+      score: 99_999,
+      currentCombo: 11,
+      lastPlayerHitAtMs: 122_900,
+      maxCombo: 15,
+      hitsTaken: 9,
+      debugClearUsed: true,
+      status: 'game-over',
+      continueAvailable: true,
+      currentWaveId: 'n9-depot-wave-3',
+    })
+
+    const result = runReducer(gameOver, {
+      type: 'continue-from-checkpoint',
+      checkpoint: checkpoint(),
+    })
+
+    expect(result.state).toMatchObject({
+      activeTimeMs: 123_000,
+      score: 0,
+      currentCombo: 0,
+      lastPlayerHitAtMs: null,
+      maxCombo: 15,
+      hitsTaken: 9,
+      debugClearUsed: true,
+      rankCap: 'C',
+      continueUsed: true,
+    })
+  })
+
+  it('ignores time and combat statistics after terminal Game Over', () => {
+    const terminal = createRun({
+      lives: 0,
+      hp: 0,
+      status: 'game-over',
+      activeTimeMs: 500,
+      score: 500,
+      hitsTaken: 2,
+    })
+    const advanced = runReducer(terminal, { type: 'advance-time', deltaMs: 1_000 })
+    const recorded = runReducer(advanced.state, {
+      type: 'record-combat-events',
+      playerConfirmedHits: 4,
+      playerDamageEvents: 3,
+      defeatedEnemyClasses: ['elite'],
+    })
+
+    expect(advanced.state).toEqual(terminal)
+    expect(recorded.state).toEqual(terminal)
+  })
+
 })

@@ -420,9 +420,9 @@ export class CombatVfx {
   }
 
   private setCameraScroll(x: number, y: number): void {
-    const camera = this.scene.cameras.main as Phaser.Cameras.Scene2D.Camera & {
+    const camera = this.scene.cameras?.main as (Phaser.Cameras.Scene2D.Camera & {
       setScroll?: (x: number, y: number) => unknown
-    }
-    camera.setScroll?.(x, y)
+    }) | undefined
+    camera?.setScroll?.(x, y)
   }
 }

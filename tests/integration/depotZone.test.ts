@@ -599,6 +599,7 @@ type CombatSceneHarness = {
   update(time: number, deltaMs: number): void
   stepDomain(): void
   consumePresentationBatch(warningIds: readonly []): void
+  recordRunCombatEvents(): void
   handlePlayerDefeat(): void
   handleZoneEntered(entry: { zoneId: 'service-train'; zoneStartWaveId: string }): void
   recordEnemyDefeats(enemyIds: readonly string[]): void
@@ -798,6 +799,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
       range: attack.range,
     })
     scene.state.hitstopRemainingMs = fixedStepMs
+    const activeTimeBefore = scene.runState.activeTimeMs
     const brainBefore = scene.enemyBrains.get(enemyId)
     const waveElapsedBefore = scene.waveRuntime.wave.elapsedMs
     const rngBefore = scene.enemyRngs.get(enemyId)?.snapshot()
@@ -805,6 +807,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
     scene.stepDomain()
 
     expect(scene.state.hitstopRemainingMs).toBe(0)
+    expect(scene.runState.activeTimeMs).toBe(activeTimeBefore)
     expect(scene.waveRuntime.wave.elapsedMs).toBe(waveElapsedBefore)
     expect(scene.enemyBrains.get(enemyId)).toEqual(brainBefore)
     expect(scene.enemyRngs.get(enemyId)?.snapshot()).toEqual(rngBefore)
@@ -850,6 +853,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
     }
     scene.state.hitstopRemainingMs = frozenMs
     const combatElapsedBefore = scene.state.elapsedMs
+    const activeTimeBefore = scene.runState.activeTimeMs
     const waveElapsedBefore = scene.waveRuntime.wave.elapsedMs
     const rendererElapsedBefore = scene.zoneRenderer?.snapshot().elapsedMs ?? 0
 
@@ -857,6 +861,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
 
     expect(scene.state.hitstopRemainingMs).toBe(0)
     expect(scene.state.elapsedMs - combatElapsedBefore).toBeCloseTo(activeDeltaMs, 8)
+    expect(scene.runState.activeTimeMs - activeTimeBefore).toBeCloseTo(activeDeltaMs, 8)
     expect(scene.waveRuntime.wave.elapsedMs - waveElapsedBefore).toBeCloseTo(
       activeDeltaMs,
       8,
@@ -895,7 +900,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
     clearCurrentWave(scene)
     expect(scene.zonePhase).toBe('inter-wave')
     expect(scene.zoneRenderer?.snapshot().locked).toBe(false)
-    expect(services.result).toBeNull()
+    expect(services.completedRun).toBeNull()
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
 
     stepUntil(scene, () => scene.waveIndex === 1 && scene.zonePhase === 'active')
@@ -907,7 +912,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
 
     clearCurrentWave(scene)
     expect(scene.zonePhase).toBe('inter-wave')
-    expect(services.result).toBeNull()
+    expect(services.completedRun).toBeNull()
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
 
     stepUntil(scene, () => scene.waveIndex === 2 && scene.zonePhase === 'active')
@@ -915,11 +920,11 @@ describe('CombatScene N-9 Depot orchestration', () => {
     expect(scene.zonePhase).toBe('zone-clear')
     expect(scene.transitionRemainingMs).toBe(n9DepotZone.transitionDurationMs)
     expect(scene.zoneClearText?.visible).toBe(true)
-    expect(services.result).toBeNull()
+    expect(services.completedRun).toBeNull()
 
     const stepsBeforeExpiry = Math.ceil(n9DepotZone.transitionDurationMs / fixedStepMs) - 1
     for (let step = 0; step < stepsBeforeExpiry; step += 1) scene.stepDomain()
-    expect(services.result).toBeNull()
+    expect(services.completedRun).toBeNull()
     scene.stepDomain()
     expect(scene.runState).toMatchObject({
       zoneId: 'service-train',
@@ -930,7 +935,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
     expect(scene.waveIndex).toBe(0)
     expect(scene.zoneRenderer).toBeNull()
     expect(scene.trainBackdrop).toBeInstanceOf(TrainBackdrop)
-    expect(services.result).toBeNull()
+    expect(services.completedRun).toBeNull()
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
   })
 
@@ -964,7 +969,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
       status: 'game-over',
       continueAvailable: true,
     })
-    expect(services.result).toBeNull()
+    expect(services.completedRun).toBeNull()
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
   })
 
@@ -1427,22 +1432,63 @@ describe('Task 14 CombatScene presentation ownership', () => {
     enemy.position = { x: 412, y: 258, z: 0 }
     enemy.hp = 0
     enemy.mode = 'defeated'
-    scene.state.events = [{
-      type: 'actor-defeated', atMs: scene.state.elapsedMs, actorId: enemyId,
-      attackerId: 'han', attackId: 'han-right-foot', strength: 3,
-    }]
+    scene.state.events = [
+      {
+        type: 'hit-confirmed', atMs: scene.state.elapsedMs, attackerId: 'han',
+        targetId: enemyId, attackId: 'han-right-foot', strength: 3, damage: 10,
+      },
+      {
+        type: 'hit-confirmed', atMs: scene.state.elapsedMs, attackerId: enemyId,
+        targetId: 'han', attackId: 'enemy-counter', strength: 2, damage: 5,
+      },
+      { type: 'environmental-impact', atMs: scene.state.elapsedMs, actorId: 'han', damage: 6 },
+      {
+        type: 'actor-defeated', atMs: scene.state.elapsedMs, actorId: enemyId,
+        attackerId: 'han', attackId: 'han-right-foot', strength: 3,
+      },
+      {
+        type: 'actor-defeated', atMs: scene.state.elapsedMs, actorId: enemyId,
+        attackerId: 'han', attackId: 'han-right-foot', strength: 3,
+      },
+    ]
     const consume = vi.spyOn(scene.combatVfx as CombatVfx, 'consume')
 
     scene.consumePresentationBatch([])
+    scene.recordRunCombatEvents()
     scene.recordEnemyDefeats([enemyId])
 
     expect(scene.state.actors[enemyId]).toBeUndefined()
+    expect(scene.itemTargetClasses.has(enemyId)).toBe(false)
+    expect(scene.runState).toMatchObject({
+      score: 500,
+      currentCombo: 1,
+      maxCombo: 1,
+      hitsTaken: 2,
+    })
     expect(consume).toHaveBeenCalledOnce()
     const plan = consume.mock.calls[0][1]
     expect(plan.effects).toContainEqual(expect.objectContaining({
       type: 'burst',
       point: expect.objectContaining({ x: 412 }),
     }))
+  })
+
+  it('records one normal defeat when duplicate final events have no actor-class map entry', () => {
+    const { scene } = createLiveScene()
+    scene.state.events = [
+      {
+        type: 'actor-defeated', atMs: 0, actorId: 'missing-class-enemy',
+        attackerId: 'environment', attackId: 'environmental-impact', strength: 3,
+      },
+      {
+        type: 'actor-defeated', atMs: 0, actorId: 'missing-class-enemy',
+        attackerId: 'environment', attackId: 'environmental-impact', strength: 3,
+      },
+    ]
+
+    scene.recordRunCombatEvents()
+
+    expect(scene.runState.score).toBe(500)
   })
 
   it('resets transient combo on Continue and zone entry without rewinding batch ids', () => {

@@ -5,22 +5,24 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "preview": "vite preview",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
     "art:sprites": "node scripts/generate-sprite-atlas.mjs",
     "art:audio": "node scripts/generate-audio.mjs",
-    "verify": "npm run typecheck && npm run test:run && npm run build",
-    "qa:e2e": "node -e \"console.log('qa:e2e deferred: end-to-end checks are not implemented in Task 1.')\"",
+    "verify": "npm run typecheck && npm run test:run && npm run build && npm run qa:size && npm run qa:e2e",
+    "qa:e2e": "playwright test",
     "qa:fps": "node -e \"console.log('qa:fps deferred: performance checks are not implemented in Task 1.')\"",
-    "qa:size": "node -e \"console.log('qa:size deferred: size-budget checks are not implemented in Task 1.')\"",
+    "qa:size": "node scripts/check-asset-budget.mjs",
     "qa:public": "node -e \"console.log('qa:public deferred: public-deployment checks are not implemented in Task 1.')\""
   },
   "dependencies": {
     "phaser": "3.90.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/pngjs": "^6.0.5",
     "pngjs": "^7.0.0",
     "typescript": "7.0.2",
