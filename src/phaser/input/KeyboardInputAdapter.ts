@@ -2,6 +2,7 @@ import {
   type ActionEdge,
   type InputFrame,
   InputBuffer,
+  isBufferedActionEdge,
 } from '../../domain/combat/inputBuffer'
 
 const movementCodes = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD'])
@@ -84,7 +85,9 @@ export class KeyboardInputAdapter {
     }
 
     this.pendingEdges.push(edge)
-    this.inputBuffer.enqueue(edge, this.getDomainTimeMs())
+    if (isBufferedActionEdge(edge)) {
+      this.inputBuffer.enqueue(edge, this.getDomainTimeMs())
+    }
   }
 
   private readonly onKeyUp = (event: Event): void => {

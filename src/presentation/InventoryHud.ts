@@ -2,7 +2,7 @@ import type Phaser from 'phaser'
 
 import { ITEM_ORDER } from '../content/items'
 import type { ItemInventory } from '../domain/items/itemReducer'
-import type { ItemId } from '../domain/run/types'
+import type { ItemId } from '../domain/items/types'
 
 const SAFE_MARGIN = 8
 const SLOT_WIDTH = 80

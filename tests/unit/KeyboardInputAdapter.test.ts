@@ -86,7 +86,7 @@ describe('KeyboardInputAdapter', () => {
   })
 
   it('uses KeyboardEvent.code bindings for every action edge', () => {
-    const { adapter, events } = createAdapter()
+    const { adapter, buffer, events } = createAdapter()
     for (const code of ['KeyJ', 'KeyK', 'KeyL', 'Semicolon', 'Space', 'KeyQ', 'KeyE']) {
       events.dispatch('keydown', new FakeKeyboardEvent(code))
     }
@@ -100,6 +100,22 @@ describe('KeyboardInputAdapter', () => {
       { type: 'cycle-item' },
       { type: 'interact-use' },
     ])
+    expect(buffer.size).toBe(5)
+  })
+
+  it('delivers Q/E once in capture order without ever entering the combo buffer', () => {
+    const { adapter, buffer, events } = createAdapter()
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyQ'))
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyE'))
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyQ'))
+
+    expect(adapter.readFrame().edges).toEqual([
+      { type: 'cycle-item' },
+      { type: 'interact-use' },
+      { type: 'cycle-item' },
+    ])
+    expect(adapter.readFrame().edges).toEqual([])
+    expect(buffer.size).toBe(0)
   })
 
   it('prevents browser defaults and accepts input only while the canvas owns focus', () => {

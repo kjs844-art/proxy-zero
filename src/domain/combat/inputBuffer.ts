@@ -7,6 +7,11 @@ export type ActionEdge =
   | { type: 'cycle-item' }
   | { type: 'interact-use' }
 
+export type BufferedActionEdge = Extract<ActionEdge, { type: 'attack' | 'jump' }>
+
+export const isBufferedActionEdge = (edge: Readonly<ActionEdge>): edge is BufferedActionEdge =>
+  edge.type === 'attack' || edge.type === 'jump'
+
 /** The input sampled by a fixed domain step. */
 export interface InputFrame {
   moveX: -1 | 0 | 1
@@ -16,7 +21,7 @@ export interface InputFrame {
 
 export interface BufferedAction {
   sequence: number
-  edge: ActionEdge
+  edge: BufferedActionEdge
   enqueuedAtMs: number
   expiresAtMs: number
   attackCandidate?: LimbInput
@@ -41,10 +46,13 @@ export class InputBuffer {
   }
 
   enqueue(
-    edge: ActionEdge,
+    edge: BufferedActionEdge,
     domainTimeMs: number,
     lifetimeMs = DEFAULT_ACTION_BUFFER_MS,
   ): BufferedAction {
+    if (!isBufferedActionEdge(edge)) {
+      throw new Error('Only attack and jump edges can enter the combat action buffer.')
+    }
     const entry: BufferedAction = {
       sequence: this.nextSequence,
       edge,

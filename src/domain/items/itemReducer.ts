@@ -7,9 +7,9 @@ import {
   REPAIR_AMOUNT_HP,
   type EmpTargetClass,
 } from '../../content/items'
-import type { ItemId } from '../run/types'
+import type { ItemId } from './types'
 
-export type { ItemId } from '../run/types'
+export type { ItemId } from './types'
 
 export type ItemCount = 0 | 1
 

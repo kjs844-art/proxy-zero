@@ -4,7 +4,8 @@ import {
   type RunCheckpoint,
 } from '../domain/run/runReducer'
 import type { ItemInventory } from '../domain/items/itemReducer'
-import type { ItemId, ZoneId } from '../domain/run/types'
+import type { ItemId } from '../domain/items/types'
+import type { ZoneId } from '../domain/run/types'
 
 export interface StorageLike {
   getItem(key: string): string | null

@@ -65,4 +65,13 @@ describe('InputBuffer', () => {
     })
     expect(buffer.consume(1)).toMatchObject({ edge: jump })
   })
+
+  it('rejects item edges even when a caller bypasses the static buffer type', () => {
+    const buffer = new InputBuffer()
+
+    expect(() =>
+      buffer.enqueue({ type: 'cycle-item' } as never, 0),
+    ).toThrow('Only attack and jump edges can enter the combat action buffer.')
+    expect(buffer.size).toBe(0)
+  })
 })

@@ -1,4 +1,4 @@
-import type { ItemId } from '../domain/run/types'
+import type { ItemId } from '../domain/items/types'
 
 export const ITEM_PICKUP_RADIUS_PX = 48
 export const EMP_RADIUS_PX = 150

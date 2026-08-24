@@ -13,6 +13,7 @@ import {
   type ItemPickupSnapshot,
   type ItemTargetSnapshot,
 } from '../../src/domain/items/itemReducer'
+import type { ItemId } from '../../src/domain/items/types'
 
 const inventory = (
   emp: 0 | 1,
@@ -22,6 +23,8 @@ const inventory = (
   counts: { emp, 'repair-kit': repair },
   selectedItemId,
 })
+
+const itemIdentity: readonly ItemId[] = ['emp', 'repair-kit']
 
 const pickup = (
   id: string,
@@ -52,6 +55,10 @@ const use = (
 })
 
 describe('itemReducer', () => {
+  it('owns item identity inside the item domain', () => {
+    expect(itemIdentity).toEqual(['emp', 'repair-kit'])
+  })
+
   it('keeps two independent one-count slots and cycles held items in fixed wrap order', () => {
     const empty = createItemRuntimeState({ inventory: inventory(0, 0) })
     expect(itemReducer(empty, { type: 'cycle-item' }).state.inventory).toEqual(
