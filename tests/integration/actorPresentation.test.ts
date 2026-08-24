@@ -1,10 +1,31 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('phaser', () => ({ default: {} }))
 
 import type { CombatActor } from '../../src/domain/combat/combatReducer'
 import {
   selectActorFrame,
   type ActorPresentationSnapshot,
 } from '../../src/content/animations'
+import { ActorView } from '../../src/phaser/actors/ActorView'
+
+class FakeDisplay {
+  x = 0
+  y = 0
+  origin = { x: 0, y: 0 }
+  flipX = false
+
+  setAlpha(_value: number): this { return this }
+  setDepth(_value: number): this { return this }
+  setFrame(_value: string): this { return this }
+  setOrigin(x: number, y: number): this { this.origin = { x, y }; return this }
+  setPosition(x: number, y: number): this { this.x = x; this.y = y; return this }
+  setFlipX(value: boolean): this { this.flipX = value; return this }
+  setTintFill(_value: number): this { return this }
+  setVisible(_value: boolean): this { return this }
+  clearTint(): this { return this }
+  destroy(): void {}
+}
 
 const actor = (overrides: Partial<CombatActor> = {}): CombatActor => ({
   id: 'han',
@@ -111,5 +132,34 @@ describe('Task 13 deterministic actor presentation', () => {
       profileId: 'boss-silo-dredger', actor: actor({ id: 'boss', team: 'enemies' }),
       telegraph: { attackId: 'boss-dredger-slam', elapsedMs: 300 },
     }))).toContain('/telegraph/boss-dredger-slam/')
+  })
+
+  it('clamps the rendered sprite and shadow while preserving bottom origin and facing', () => {
+    const shadow = new FakeDisplay()
+    const image = new FakeDisplay()
+    const scene = {
+      add: {
+        ellipse: () => shadow,
+        image: () => image,
+      },
+    }
+    const view = new ActorView(
+      scene as never,
+      actor({ id: 'boss', team: 'enemies', position: { x: 0, y: 240, z: 0 }, facing: -1 }),
+      'boss-silo-dredger',
+    )
+    expect(image.origin).toEqual({ x: 0.5, y: 1 })
+    expect({ x: image.x, y: image.y, flipX: image.flipX }).toEqual({
+      x: 157, y: 240, flipX: true,
+    })
+    expect({ x: shadow.x, y: shadow.y }).toEqual({ x: 157, y: 240 })
+
+    view.update(actor({
+      id: 'boss', team: 'enemies', position: { x: 640, y: 236, z: 4 }, facing: 1,
+    }))
+    expect({ x: image.x, y: image.y, flipX: image.flipX }).toEqual({
+      x: 483, y: 232, flipX: false,
+    })
+    expect({ x: shadow.x, y: shadow.y }).toEqual({ x: 483, y: 236 })
   })
 })

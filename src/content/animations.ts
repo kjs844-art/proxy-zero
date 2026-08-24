@@ -42,6 +42,7 @@ export interface ActorVisualProfile {
   readonly cell: { readonly width: number; readonly height: number }
   readonly targetHeight: number
   readonly anchor: { readonly x: 0.5; readonly y: 1 }
+  readonly visibleBounds: { readonly left: number; readonly right: number }
   readonly shadow: { readonly width: number; readonly height: number }
   readonly clips: Readonly<Record<ActorBaseClipId, ActorAnimationClip>>
   readonly attacks: Readonly<Record<string, ActorAnimationClip>>
@@ -133,22 +134,23 @@ const profileLayout: ReadonlyArray<{
   readonly id: ActorVisualProfileId
   readonly sheet: ActorSheetId
   readonly targetHeight: number
+  readonly visibleBounds: { readonly left: number; readonly right: number }
 }> = [
-  { id: 'han', sheet: 'players', targetHeight: 120 },
-  { id: 'mina', sheet: 'players', targetHeight: 114 },
-  { id: 'jin', sheet: 'players', targetHeight: 124 },
-  { id: 'scout-striker', sheet: 'enemies', targetHeight: 104 },
-  { id: 'scout-patrol', sheet: 'enemies', targetHeight: 100 },
-  { id: 'bulwark-sentinel', sheet: 'enemies', targetHeight: 128 },
-  { id: 'bulwark-enforcer', sheet: 'enemies', targetHeight: 124 },
-  { id: 'elite-bulwark-frame', sheet: 'enemies', targetHeight: 136 },
-  { id: 'boss-silo-dredger', sheet: 'boss', targetHeight: 172 },
+  { id: 'han', sheet: 'players', targetHeight: 120, visibleBounds: { left: 59, right: 59 } },
+  { id: 'mina', sheet: 'players', targetHeight: 114, visibleBounds: { left: 48, right: 47 } },
+  { id: 'jin', sheet: 'players', targetHeight: 124, visibleBounds: { left: 65, right: 65 } },
+  { id: 'scout-striker', sheet: 'enemies', targetHeight: 104, visibleBounds: { left: 59, right: 59 } },
+  { id: 'scout-patrol', sheet: 'enemies', targetHeight: 100, visibleBounds: { left: 55, right: 55 } },
+  { id: 'bulwark-sentinel', sheet: 'enemies', targetHeight: 128, visibleBounds: { left: 74, right: 74 } },
+  { id: 'bulwark-enforcer', sheet: 'enemies', targetHeight: 124, visibleBounds: { left: 85, right: 85 } },
+  { id: 'elite-bulwark-frame', sheet: 'enemies', targetHeight: 136, visibleBounds: { left: 101, right: 100 } },
+  { id: 'boss-silo-dredger', sheet: 'boss', targetHeight: 172, visibleBounds: { left: 157, right: 156 } },
 ]
 
 const makeProfile = (
   layout: (typeof profileLayout)[number],
 ): ActorVisualProfile => {
-  const { id, sheet, targetHeight } = layout
+  const { id, sheet, targetHeight, visibleBounds } = layout
   const attackPairs = id === 'han' || id === 'mina' || id === 'jin'
     ? playerAttacks[id].map((attackId) => [attackId, attackId] as const)
     : enemyAttackPairs[id] ?? []
@@ -167,6 +169,7 @@ const makeProfile = (
     cell: boss ? { width: 384, height: 384 } : { width: 256, height: 256 },
     targetHeight,
     anchor: { x: 0.5, y: 1 },
+    visibleBounds,
     shadow: { width: boss ? 84 : sheet === 'enemies' ? 50 : 42, height: boss ? 14 : 10 },
     clips: {
       idle: baseClip(id, 'idle', 2, true),
@@ -199,6 +202,20 @@ export const isActorVisualProfileId = (value: string): value is ActorVisualProfi
 /** Unknown renderer IDs fall back to HAN instead of producing a missing texture. */
 export const getActorVisualProfile = (profileId: string): ActorVisualProfile =>
   profileById.get(profileId as ActorVisualProfileId) ?? profiles[0]
+
+/** Stable profile-wide clamp: every authored frame remains visible without frame-to-frame jitter. */
+export const clampActorPresentationX = (
+  profileId: string,
+  domainX: number,
+  viewportWidth: number,
+): number => {
+  const profile = getActorVisualProfile(profileId)
+  const extent = Math.max(profile.visibleBounds.left, profile.visibleBounds.right)
+  const width = Number.isFinite(viewportWidth) ? Math.max(0, Math.round(viewportWidth)) : 0
+  if (width <= extent * 2) return Math.round(width / 2)
+  const x = Number.isFinite(domainX) ? Math.round(domainX) : Math.round(width / 2)
+  return Math.max(extent, Math.min(width - extent, x))
+}
 
 export const resolveVisualAttackId = (profileId: string, domainAttackId: string): string => {
   const profile = getActorVisualProfile(profileId)

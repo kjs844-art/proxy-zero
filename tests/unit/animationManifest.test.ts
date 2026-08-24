@@ -12,6 +12,7 @@ import {
   ACTOR_ATLAS_KEY,
   ACTOR_PROFILE_IDS,
   actorAnimationManifest,
+  clampActorPresentationX,
   getActorVisualProfile,
   resolveVisualAttackId,
 } from '../../src/content/animations'
@@ -52,6 +53,7 @@ interface GeneratedProfile {
   cell: { width: number; height: number }
   targetHeight: number
   anchor: { x: number; y: number }
+  visibleBounds: { left: number; right: number }
   clips: GeneratedClip[]
 }
 
@@ -67,7 +69,14 @@ const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).dig
 const alphaBounds = (
   png: PNG,
   frame: Readonly<AtlasFrame>,
-): { width: number; height: number; bottom: number; hash: string } => {
+): {
+  minX: number
+  maxX: number
+  width: number
+  height: number
+  bottom: number
+  hash: string
+} => {
   let minX = frame.frame.w
   let minY = frame.frame.h
   let maxX = -1
@@ -86,11 +95,85 @@ const alphaBounds = (
     }
   }
   return {
+    minX,
+    maxX,
     width: maxX - minX + 1,
     height: maxY - minY + 1,
     bottom: maxY,
     hash: sha256(alpha),
   }
+}
+
+interface AlphaComponent {
+  readonly pixels: number
+  readonly minX: number
+  readonly minY: number
+  readonly maxX: number
+  readonly maxY: number
+}
+
+const alphaComponents = (png: PNG, frame: Readonly<AtlasFrame>): AlphaComponent[] => {
+  const { w: width, h: height, x: frameX, y: frameY } = frame.frame
+  const visited = new Uint8Array(width * height)
+  const queue = new Int32Array(width * height)
+  const components: AlphaComponent[] = []
+  for (let seed = 0; seed < visited.length; seed += 1) {
+    const seedX = seed % width
+    const seedY = Math.floor(seed / width)
+    const seedIndex = ((frameY + seedY) * png.width + frameX + seedX) * 4
+    if (visited[seed] || png.data[seedIndex + 3] <= 8) continue
+    let head = 0
+    let tail = 0
+    let pixels = 0
+    let minX = width
+    let minY = height
+    let maxX = -1
+    let maxY = -1
+    visited[seed] = 1
+    queue[tail++] = seed
+    while (head < tail) {
+      const flat = queue[head++]
+      const x = flat % width
+      const y = Math.floor(flat / width)
+      pixels += 1
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x)
+      maxY = Math.max(maxY, y)
+      for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+        for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+          if (offsetX === 0 && offsetY === 0) continue
+          const nextX = x + offsetX
+          const nextY = y + offsetY
+          if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= height) continue
+          const next = nextY * width + nextX
+          const nextIndex = ((frameY + nextY) * png.width + frameX + nextX) * 4
+          if (visited[next] || png.data[nextIndex + 3] <= 8) continue
+          visited[next] = 1
+          queue[tail++] = next
+        }
+      }
+    }
+    components.push({ pixels, minX, minY, maxX, maxY })
+  }
+  return components.sort((left, right) => right.pixels - left.pixels)
+}
+
+const componentGap = (
+  primary: Readonly<AlphaComponent>,
+  candidate: Readonly<AlphaComponent>,
+): number => {
+  const gapX = Math.max(
+    0,
+    primary.minX - candidate.maxX - 1,
+    candidate.minX - primary.maxX - 1,
+  )
+  const gapY = Math.max(
+    0,
+    primary.minY - candidate.maxY - 1,
+    candidate.minY - primary.maxY - 1,
+  )
+  return Math.hypot(gapX, gapY)
 }
 
 describe('Task 13 actor animation manifest', () => {
@@ -165,6 +248,35 @@ describe('Task 13 actor animation manifest', () => {
         expect(profile.cell).toEqual(runtime.cell)
         expect(profile.targetHeight).toBe(runtime.targetHeight)
         expect(profile.anchor).toEqual(runtime.anchor)
+        expect(profile.visibleBounds).toEqual(runtime.visibleBounds)
+        let left = 0
+        let right = 0
+        for (const frameName of profile.clips.flatMap((entry) => entry.frames)) {
+          const atlasFrame = frameByName.get(frameName)
+          const profileImage = sheetImageById[runtime.sheet]
+          const profilePng = pngsByImage.get(profileImage)
+          expect(atlasFrame, frameName).toBeDefined()
+          expect(profilePng, profileImage).toBeDefined()
+          if (!atlasFrame || !profilePng) continue
+          const bounds = alphaBounds(profilePng, atlasFrame)
+          left = Math.max(left, profile.cell.width / 2 - bounds.minX)
+          right = Math.max(right, bounds.maxX + 1 - profile.cell.width / 2)
+          const components = alphaComponents(profilePng, atlasFrame)
+          expect(components.length, frameName).toBeGreaterThan(0)
+          const significantPixels = Math.max(16, Math.ceil(components[0].pixels * 0.01))
+          const maximumGap = Math.ceil(profile.targetHeight * 0.15)
+          for (const component of components.slice(1)) {
+            if (component.pixels < significantPixels) continue
+            expect(componentGap(components[0], component), frameName).toBeLessThanOrEqual(
+              maximumGap,
+            )
+          }
+        }
+        expect(profile.visibleBounds, profile.id).toEqual({ left, right })
+        const extent = Math.max(left, right)
+        expect(clampActorPresentationX(profile.id, -100, 640), profile.id).toBe(extent)
+        expect(clampActorPresentationX(profile.id, 740, 640), profile.id).toBe(640 - extent)
+        expect(clampActorPresentationX(profile.id, 320, 640), profile.id).toBe(320)
         const idleName = profile.clips.find((clip) => clip.id === 'idle')?.frames[0]
         expect(idleName).toBeDefined()
         const frame = frameByName.get(idleName ?? '')

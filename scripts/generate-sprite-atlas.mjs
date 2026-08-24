@@ -158,8 +158,22 @@ const adaptiveBoundaries = (png, axis, segments, minSize, maxSize) => {
   return boundaries
 }
 
-/** Drops isolated compression specks or neighboring-pose slivers after adaptive slicing. */
-const retainActorComponents = (png) => {
+const componentGap = (primary, candidate) => {
+  const gapX = Math.max(
+    0,
+    primary.minX - candidate.maxX - 1,
+    candidate.minX - primary.maxX - 1,
+  )
+  const gapY = Math.max(
+    0,
+    primary.minY - candidate.maxY - 1,
+    candidate.minY - primary.maxY - 1,
+  )
+  return Math.hypot(gapX, gapY)
+}
+
+/** Drops isolated specks and only the proven edge-cut remnants from player pose six. */
+const retainActorComponents = (png, removeDistantEdgeFragments = false) => {
   const visited = new Uint8Array(png.width * png.height)
   const components = []
   const queue = new Int32Array(png.width * png.height)
@@ -168,6 +182,10 @@ const retainActorComponents = (png) => {
     let head = 0
     let tail = 0
     const pixels = []
+    let minX = png.width
+    let minY = png.height
+    let maxX = -1
+    let maxY = -1
     visited[seed] = 1
     queue[tail++] = seed
     while (head < tail) {
@@ -175,6 +193,10 @@ const retainActorComponents = (png) => {
       pixels.push(flat)
       const x = flat % png.width
       const y = Math.floor(flat / png.width)
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x)
+      maxY = Math.max(maxY, y)
       for (let oy = -1; oy <= 1; oy += 1) {
         for (let ox = -1; ox <= 1; ox += 1) {
           if (ox === 0 && oy === 0) continue
@@ -188,14 +210,21 @@ const retainActorComponents = (png) => {
         }
       }
     }
-    components.push(pixels)
+    components.push({ pixels, minX, minY, maxX, maxY })
   }
-  components.sort((left, right) => right.length - left.length)
-  const largest = components[0]?.length ?? 0
+  components.sort((left, right) => right.pixels.length - left.pixels.length)
+  const primary = components[0]
+  const largest = primary?.pixels.length ?? 0
   const minimum = Math.max(24, Math.ceil(largest * 0.015))
-  for (const pixels of components) {
-    if (pixels.length >= minimum) continue
-    for (const flat of pixels) png.data[flat * 4 + 3] = 0
+  for (const component of components) {
+    const touchesSliceEdge = component.minX === 0 || component.maxX === png.width - 1
+    const isDistantEdgeFragment =
+      removeDistantEdgeFragments &&
+      component !== primary &&
+      touchesSliceEdge &&
+      componentGap(primary, component) > 48
+    if (component.pixels.length >= minimum && !isDistantEdgeFragment) continue
+    for (const flat of component.pixels) png.data[flat * 4 + 3] = 0
   }
   return png
 }
@@ -311,15 +340,16 @@ const loadProfilePoses = async (profile) => {
     rowImage = rows[profile.row]
     columnBounds = adaptiveBoundaries(rowImage, 'x', 8, 130, 300)
   }
-  const poses = Array.from({ length: 8 }, (_, column) =>
-    retainActorComponents(crop(
+  const poses = Array.from({ length: 8 }, (_, column) => {
+    const pose = crop(
       rowImage,
       columnBounds[column],
       0,
       columnBounds[column + 1] - columnBounds[column],
       rowImage.height,
-    )),
-  )
+    )
+    return retainActorComponents(pose, profile.sheet === 'players' && column === 6)
+  })
   const idleHeight = alphaBounds(poses[0]).height
   const scale = profile.targetHeight / idleHeight
   const cell = sheetSpecs[profile.sheet].cell
@@ -364,12 +394,23 @@ for (const profile of profileSpecs) {
   }
   const { poseIndices: _ignored, ...firstClip } = clips[0]
   void firstClip
+  const cell = sheetSpecs[profile.sheet].cell
+  const usedPoseIndices = [...new Set(clips.flatMap((entry) => entry.poseIndices))]
+  const visibleBounds = usedPoseIndices.reduce((result, poseIndex) => {
+    const pose = poses[poseIndex]
+    const bounds = alphaBounds(pose)
+    return {
+      left: Math.max(result.left, cell.width / 2 - bounds.x),
+      right: Math.max(result.right, bounds.x + bounds.width - cell.width / 2),
+    }
+  }, { left: 0, right: 0 })
   manifestProfiles.push({
     id: profile.id,
     sheet: profile.sheet,
     cell: sheetSpecs[profile.sheet].cell,
     targetHeight: profile.targetHeight,
     anchor: { x: 0.5, y: 1 },
+    visibleBounds,
     shadow: {
       width: profile.sheet === 'boss' ? 84 : profile.sheet === 'enemies' ? 50 : 42,
       height: profile.sheet === 'boss' ? 14 : 10,

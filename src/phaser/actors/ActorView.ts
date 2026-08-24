@@ -2,12 +2,15 @@ import Phaser from 'phaser'
 
 import {
   ACTOR_ATLAS_KEY,
+  clampActorPresentationX,
   getActorVisualProfile,
   selectActorFrame,
   type ActorItemUseSnapshot,
   type ActorTelegraphSnapshot,
 } from '../../content/animations'
 import type { CombatActor } from '../../domain/combat/combatReducer'
+
+const LOGICAL_VIEWPORT_WIDTH = 640
 
 export interface ActorViewPresentation {
   readonly domainTimeMs: number
@@ -50,7 +53,11 @@ export class ActorView {
     actor: Readonly<CombatActor>,
     presentation: Readonly<ActorViewPresentation> = defaultPresentation,
   ): void {
-    const screenX = Math.round(actor.position.x)
+    const screenX = clampActorPresentationX(
+      this.profileId,
+      actor.position.x,
+      LOGICAL_VIEWPORT_WIDTH,
+    )
     const screenY = Math.round(actor.position.y - actor.position.z)
     const depth = Math.round(actor.position.y)
     const frame = selectActorFrame({
