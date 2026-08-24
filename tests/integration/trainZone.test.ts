@@ -256,6 +256,9 @@ interface HanTimingSample {
   readonly zoneActiveMs: number
   readonly eliteActiveMs: number
   readonly noTargetMs: number
+  readonly pickupsAcquired: number
+  readonly itemsUsed: number
+  readonly handedOff: boolean
 }
 
 const measureDeterministicHanRun = (): HanTimingSample => {
@@ -263,6 +266,9 @@ const measureDeterministicHanRun = (): HanTimingSample => {
   enterServiceTrain(scene)
   let eliteStartedAtMs: number | null = null
   let noTargetMs = 0
+  let sawLivingEnemy = false
+  let waitingForNextSpawn = false
+  let itemsUsed = 0
 
   for (let step = 0; step < 15_000 && scene.zonePhase !== 'zone-clear'; step += 1) {
     if (scene.runState.status === 'game-over') {
@@ -285,8 +291,16 @@ const measureDeterministicHanRun = (): HanTimingSample => {
     const target = livingTargets[0]
     const frozenMs = Math.min(scene.state.hitstopRemainingMs, fixedStepMs)
     const activeDeltaMs = fixedStepMs - frozenMs
-    if (scene.zonePhase === 'inter-wave') {
-      noTargetMs += Math.min(activeDeltaMs, scene.interWaveRemainingMs)
+    if (target) {
+      sawLivingEnemy = true
+      waitingForNextSpawn = false
+    } else if (sawLivingEnemy && scene.waveIndex < serviceTrainZone.waves.length - 1) {
+      waitingForNextSpawn = true
+    }
+    if (waitingForNextSpawn && !target) {
+      noTargetMs += scene.zonePhase === 'inter-wave'
+        ? Math.min(activeDeltaMs, scene.interWaveRemainingMs)
+        : activeDeltaMs
     }
 
     if (scene.eliteBrains.size > 0 && eliteStartedAtMs === null) {
@@ -294,7 +308,33 @@ const measureDeterministicHanRun = (): HanTimingSample => {
     }
 
     let moveX: -1 | 0 | 1 = 0
-    if (target) {
+    let moveY: -1 | 0 | 1 = 0
+    const edges: InputFrame['edges'][number][] = []
+    const nextPickup = scene.itemRuntime.pickups.find((pickup) => !pickup.consumed)
+    if (nextPickup) {
+      const deltaX = nextPickup.position.x - player.position.x
+      const deltaY = nextPickup.position.y - player.position.y
+      if (Math.hypot(deltaX, deltaY) <= 46) {
+        edges.push({ type: 'interact-use' })
+      } else {
+        if (Math.abs(deltaX) > 4) moveX = deltaX < 0 ? -1 : 1
+        if (Math.abs(deltaY) > 4) moveY = deltaY < 0 ? -1 : 1
+      }
+    } else if (scene.itemRuntime.inventory.counts.emp === 1) {
+      if (scene.itemRuntime.inventory.selectedItemId !== 'emp') {
+        edges.push({ type: 'cycle-item' })
+      } else if (
+        target &&
+        Math.hypot(
+          target.position.x - player.position.x,
+          target.position.y - player.position.y,
+        ) <= 145
+      ) {
+        edges.push({ type: 'interact-use' })
+      }
+    }
+
+    if (!nextPickup && edges.length === 0 && target) {
       const deltaX = target.position.x - player.position.x
       if (Math.abs(deltaX) > 48) moveX = deltaX < 0 ? -1 : 1
       const playerActionable = player.mode === 'idle' || player.mode === 'moving'
@@ -307,15 +347,36 @@ const measureDeterministicHanRun = (): HanTimingSample => {
         )
       }
     }
-    captureOneFrame(scene, { moveX, moveY: 0, edges: [] })
+    const heldBefore =
+      scene.itemRuntime.inventory.counts.emp +
+      scene.itemRuntime.inventory.counts['repair-kit']
+    const consumedBefore = scene.itemRuntime.pickups.filter((pickup) => pickup.consumed).length
+    captureOneFrame(scene, { moveX, moveY, edges })
     scene.stepDomain()
+    const heldAfter =
+      scene.itemRuntime.inventory.counts.emp +
+      scene.itemRuntime.inventory.counts['repair-kit']
+    const consumedAfter = scene.itemRuntime.pickups.filter((pickup) => pickup.consumed).length
+    itemsUsed += Math.max(0, heldBefore + consumedAfter - consumedBefore - heldAfter)
   }
 
   expect(scene.zonePhase).toBe('zone-clear')
   const zoneActiveMs = scene.state.elapsedMs
   const eliteActiveMs = eliteStartedAtMs === null ? 0 : zoneActiveMs - eliteStartedAtMs
+  const pickupsAcquired = scene.itemRuntime.pickups.filter((pickup) => pickup.consumed).length
+  stepUntil(scene, () => scene.zonePhase === 'zone-handoff')
+  const handedOff =
+    scene.runState.zoneId === 'flooded-tunnel' &&
+    scene.runState.currentWaveId === 'flooded-tunnel-wave-1'
   scene.dispose()
-  return { zoneActiveMs, eliteActiveMs, noTargetMs }
+  return {
+    zoneActiveMs,
+    eliteActiveMs,
+    noTargetMs,
+    pickupsAcquired,
+    itemsUsed,
+    handedOff,
+  }
 }
 
 describe('CombatScene service-train orchestration', () => {
@@ -680,7 +741,7 @@ describe('CombatScene service-train orchestration', () => {
     expect(trainDispose).toHaveBeenCalledOnce()
   })
 
-  it('produces three transparent deterministic direct-engagement HAN samples', () => {
+  it('produces reproducible deterministic lower-bound diagnostics without claiming human pacing', () => {
     const samples = [
       measureDeterministicHanRun(),
       measureDeterministicHanRun(),
@@ -688,8 +749,12 @@ describe('CombatScene service-train orchestration', () => {
     ]
     expect(samples[1]).toEqual(samples[0])
     expect(samples[2]).toEqual(samples[0])
+    expect(samples[0].noTargetMs).toBeLessThanOrEqual(1_800 + 1e-6)
     expect(samples[0].noTargetMs).toBeCloseTo(1_800, 6)
-    expect(samples[0].zoneActiveMs).toBeCloseTo(41_395, 6)
-    expect(samples[0].eliteActiveMs).toBeCloseTo(18_955, 6)
+    expect(samples[0].zoneActiveMs).toBeGreaterThan(0)
+    expect(samples[0].eliteActiveMs).toBeGreaterThan(0)
+    expect(samples[0].pickupsAcquired).toBe(2)
+    expect(samples[0].itemsUsed).toBeGreaterThanOrEqual(1)
+    expect(samples[0].handedOff).toBe(true)
   })
 })

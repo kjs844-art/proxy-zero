@@ -436,23 +436,54 @@ const advanceLifecycle = (state: CombatState, actor: CombatActor, deltaMs: numbe
   return true
 }
 
-const advanceAttack = (actor: CombatActor, deltaMs: number): void => {
-  if (!actor.activeAttack) return
+interface AttackAdvanceResult {
+  readonly crossedActive: boolean
+  readonly completed: boolean
+}
+
+const advanceAttack = (actor: CombatActor, deltaMs: number): AttackAdvanceResult => {
+  if (!actor.activeAttack) return { crossedActive: false, completed: false }
   const attack = attackById.get(actor.activeAttack.attackId)
   if (!attack) {
     actor.activeAttack = null
     if (actor.mode === 'attacking') actor.mode = isGrounded(actor) ? 'idle' : 'airborne'
-    return
+    return { crossedActive: false, completed: false }
   }
 
+  const timing = scaledTiming(attack, actor.attackSpeedScale)
+  const priorElapsedMs = actor.activeAttack.elapsedMs
   actor.activeAttack.elapsedMs += deltaMs
-  const phase = phaseAt(
-    actor.activeAttack.elapsedMs,
-    scaledTiming(attack, actor.attackSpeedScale),
-  )
-  if (phase) {
-    actor.activeAttack.phase = phase
-  } else {
+  const crossedActive =
+    priorElapsedMs <= timing.startupMs + timing.activeMs &&
+    actor.activeAttack.elapsedMs >= timing.startupMs
+  const phase = phaseAt(actor.activeAttack.elapsedMs, timing)
+  if (!phase) {
+    // Keep the record alive through this step's hit pass, then finalize it.
+    actor.activeAttack.phase = 'recovery'
+    return { crossedActive, completed: true }
+  }
+
+  actor.activeAttack.phase = phase
+  return { crossedActive, completed: false }
+}
+
+const finishCompletedAttacks = (
+  state: CombatState,
+  completedAttackActorIds: ReadonlySet<string>,
+): void => {
+  for (const actorId of completedAttackActorIds) {
+    const actor = state.actors[actorId]
+    if (!actor?.activeAttack) continue
+    const attack = attackById.get(actor.activeAttack.attackId)
+    if (
+      attack &&
+      phaseAt(
+        actor.activeAttack.elapsedMs,
+        scaledTiming(attack, actor.attackSpeedScale),
+      ) !== null
+    ) {
+      continue
+    }
     actor.activeAttack = null
     if (actor.mode === 'attacking') actor.mode = isGrounded(actor) ? 'idle' : 'airborne'
   }
@@ -603,16 +634,26 @@ const applyHit = (
   }
 }
 
-const resolveActiveHits = (state: CombatState): void => {
+const resolveActiveHits = (
+  state: CombatState,
+  crossedActiveActorIds: ReadonlySet<string>,
+  vulnerableTargetIdsAtStepStart: ReadonlySet<string>,
+): void => {
   for (const attackerId of Object.keys(state.actors).sort()) {
     const attacker = state.actors[attackerId]
     const activeAttack = attacker.activeAttack
-    if (!activeAttack || activeAttack.phase !== 'active' || attacker.mode === 'defeated') continue
+    if (
+      !activeAttack ||
+      (activeAttack.phase !== 'active' && !crossedActiveActorIds.has(attackerId)) ||
+      attacker.mode === 'defeated'
+    ) continue
     const attack = attackById.get(activeAttack.attackId)
     if (!attack) continue
+    const crossedOnly = activeAttack.phase !== 'active'
 
     for (const targetId of resolveHitTargets(state.actors, attackerId, attack)) {
       if (!attacker.activeAttack) break
+      if (crossedOnly && !vulnerableTargetIdsAtStepStart.has(targetId)) continue
       if (!canHitByRecord(attacker.activeAttack, targetId, attack, state.elapsedMs)) continue
       applyHit(state, attacker, state.actors[targetId], attack)
     }
@@ -645,7 +686,21 @@ export const combatReducer = (
     deltaMs = requestedDeltaMs
   }
 
+  const vulnerableTargetIdsAtStepStart = new Set(
+    Object.values(state.actors)
+      .filter(
+        (actor) =>
+          actor.hp > 0 &&
+          actor.mode !== 'defeated' &&
+          actor.mode !== 'knocked-down' &&
+          actor.mode !== 'getting-up' &&
+          actor.wakeInvulnerabilityRemainingMs <= 0,
+      )
+      .map((actor) => actor.id),
+  )
   state.elapsedMs += deltaMs
+  const crossedActiveActorIds = new Set<string>()
+  const completedAttackActorIds = new Set<string>()
 
   for (const actorId of Object.keys(state.actors).sort()) {
     const actor = state.actors[actorId]
@@ -653,7 +708,9 @@ export const combatReducer = (
     const canAdvance = advanceLifecycle(state, actor, deltaMs)
     if (!canAdvance) continue
     if (!command?.suppressActions) tryStartAttack(state, actor, command?.attackId)
-    advanceAttack(actor, deltaMs)
+    const attackAdvance = advanceAttack(actor, deltaMs)
+    if (attackAdvance.crossedActive) crossedActiveActorIds.add(actorId)
+    if (attackAdvance.completed) completedAttackActorIds.add(actorId)
     applyMovementAndPhysics(
       state,
       actor,
@@ -662,7 +719,8 @@ export const combatReducer = (
     )
   }
 
-  resolveActiveHits(state)
+  resolveActiveHits(state, crossedActiveActorIds, vulnerableTargetIdsAtStepStart)
+  finishCompletedAttacks(state, completedAttackActorIds)
   return state
 }
 

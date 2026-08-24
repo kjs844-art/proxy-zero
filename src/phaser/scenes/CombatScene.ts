@@ -482,6 +482,9 @@ export class CombatScene extends Phaser.Scene {
         : [],
     )
     this.recordEnemyDefeats(defeatedEnemyIds)
+    if (defeatedEnemyIds.length > 0 && this.zonePhase === 'active') {
+      this.advanceWaveRuntime(0)
+    }
     this.hazardView?.update(activeDeltaMs)
     this.zoneRenderer?.update(fixedStepMs)
     this.trainBackdrop?.update(
@@ -1064,8 +1067,15 @@ export class CombatScene extends Phaser.Scene {
   private advanceZoneClock(deltaMs: number): void {
     const elapsed = finiteDelta(deltaMs)
     if (this.zonePhase === 'inter-wave') {
-      this.interWaveRemainingMs = Math.max(0, this.interWaveRemainingMs - elapsed)
-      if (this.interWaveRemainingMs === 0) this.startNextWave()
+      const interWaveElapsed = Math.min(this.interWaveRemainingMs, elapsed)
+      this.interWaveRemainingMs -= interWaveElapsed
+      if (this.interWaveRemainingMs === 0) {
+        const priorWaveIndex = this.waveIndex
+        this.startNextWave()
+        if (this.waveIndex !== priorWaveIndex) {
+          this.advanceWaveRuntime(elapsed - interWaveElapsed)
+        }
+      }
       return
     }
     if (this.zonePhase !== 'zone-clear') return

@@ -90,6 +90,38 @@ const platformSupports = (
   playerX >= platformCenterX - TRAIN_PLATFORM_WIDTH / 2 &&
   playerX <= platformCenterX + TRAIN_PLATFORM_WIDTH / 2
 
+const untilPlatformSupportEntry = (
+  playerX: number,
+  player: Readonly<TrainHazardPlayerSnapshot>,
+  elapsedMs: number,
+  platformCenterX: number,
+): number => {
+  if (
+    !player.grounded ||
+    !inHazardLane(player) ||
+    platformSupports(playerX, player, platformCenterX)
+  ) {
+    return Number.POSITIVE_INFINITY
+  }
+
+  const halfWidth = TRAIN_PLATFORM_WIDTH / 2
+  const speedPerMs = TRAIN_PLATFORM_SPEED_PX_PER_SECOND / 1_000
+  const local = ((elapsedMs % 3_000) + 3_000) % 3_000
+  if (local < 1_500) {
+    const entryCenterX = playerX - halfWidth
+    if (entryCenterX > platformCenterX && entryCenterX <= TRAIN_PLATFORM_MAX_X) {
+      return (entryCenterX - platformCenterX) / speedPerMs
+    }
+  } else {
+    const entryCenterX = playerX + halfWidth
+    if (entryCenterX < platformCenterX && entryCenterX >= TRAIN_PLATFORM_MIN_X) {
+      return (platformCenterX - entryCenterX) / speedPerMs
+    }
+  }
+
+  return Number.POSITIVE_INFINITY
+}
+
 const canFall = (
   playerX: number,
   player: Readonly<TrainHazardPlayerSnapshot>,
@@ -147,11 +179,18 @@ export const stepTrainHazard = (
     const localElapsed = elapsedMs % TRAIN_HAZARD_PERIOD_MS
     const untilPhaseBoundary = nextPhaseBoundary(localElapsed) - localElapsed
     const untilPlatformBoundary = nextPlatformBoundary(elapsedMs) - elapsedMs
+    const untilSupportEntry = untilPlatformSupportEntry(
+      playerX,
+      input.player,
+      elapsedMs,
+      platformCenterX,
+    )
     const untilImmunityExpiry = immunityMs > 0 ? immunityMs : Number.POSITIVE_INFINITY
     const stepMs = Math.min(
       remainingMs,
       untilPhaseBoundary,
       untilPlatformBoundary,
+      untilSupportEntry,
       untilImmunityExpiry,
     )
     const supported = platformSupports(playerX, input.player, platformCenterX)

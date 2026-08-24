@@ -59,6 +59,30 @@ describe('service-train deterministic fall hazard', () => {
     expect(splitB.state).toEqual(turn.state)
   })
 
+  it('carries identically when the platform enters beneath a stationary player mid-step', () => {
+    const initial = createTrainHazardState()
+    const large = stepTrainHazard(initial, {
+      activeDeltaMs: 1_500,
+      player: player(350, 280),
+    })
+
+    const splitA = stepTrainHazard(initial, {
+      activeDeltaMs: 1_000,
+      player: player(350, 280),
+    })
+    const splitB = stepTrainHazard(splitA.state, {
+      activeDeltaMs: 500,
+      player: player(350 + splitA.carryDeltaX, 280),
+    })
+
+    expect(large.carryDeltaX).toBeCloseTo(68, 8)
+    expect(splitA.carryDeltaX + splitB.carryDeltaX).toBeCloseTo(68, 8)
+    expect(splitB.state).toEqual(large.state)
+    expect(splitA.carryDeltaX + splitB.carryDeltaX).toBeCloseTo(large.carryDeltaX, 8)
+    expect(splitA.effects).toEqual([])
+    expect(splitB.effects).toEqual(large.effects)
+  })
+
   it('keeps the upper lane safe and emits one fall outside platform support in open phase', () => {
     const open = stepTrainHazard(createTrainHazardState(), {
       activeDeltaMs: 4_000,
@@ -91,14 +115,17 @@ describe('service-train deterministic fall hazard', () => {
 
     let splitState = initial
     let x = 394
+    let splitCarryDeltaX = 0
     const splitEffects: PlayerFellEffect[] = []
     for (const delta of [3_000, 1_000, 1_500, 500, 250]) {
       const result = stepTrainHazard(splitState, { activeDeltaMs: delta, player: player(x, 280) })
       splitState = result.state
       x += result.carryDeltaX
+      splitCarryDeltaX += result.carryDeltaX
       splitEffects.push(...result.effects)
     }
     expect(splitState).toEqual(large.state)
+    expect(splitCarryDeltaX).toBeCloseTo(large.carryDeltaX, 8)
     expect(splitEffects).toEqual(large.effects)
 
     const frozen = stepTrainHazard(large.state, { activeDeltaMs: 0, player: player(x, 280) })

@@ -66,6 +66,32 @@ describe('combatReducer', () => {
     expect(current.actors.elite.activeAttack?.hitRecords.han?.count).toBe(1)
   })
 
+  it('resolves a lane sweep that crosses its active interval in one large step', () => {
+    const initial = state(
+      actor({ id: 'elite', team: 'enemies', position: { x: 0, y: 0, z: 0 } }),
+      actor({ id: 'han', position: { x: 150, y: 0, z: 0 } }),
+    )
+    initial.playerId = 'han'
+
+    let current = combatReducer(initial, [attack('elite', 'elite-lane-charge')], 221)
+    let split = combatReducer(initial, [attack('elite', 'elite-lane-charge')], 110)
+    split = combatReducer(split, [], 111)
+
+    expect(current.actors.han.hp).toBe(80)
+    expect(current.actors.han.hp).toBe(split.actors.han.hp)
+    expect(split.actors.elite.activeAttack?.hitRecords.han?.count).toBe(1)
+    expect(current.actors.elite.activeAttack).toMatchObject({
+      attackId: 'elite-lane-charge',
+      phase: 'recovery',
+      hitRecords: { han: { count: 1 } },
+    })
+
+    current = combatReducer(current, [], 110)
+    current = combatReducer(current, [], 1)
+    expect(current.actors.han.hp).toBe(80)
+    expect(current.actors.elite.activeAttack?.hitRecords.han?.count).toBe(1)
+  })
+
   it('applies one reducer-owned environmental impact atomically', () => {
     const falling = state(actor({
       hp: 30,
