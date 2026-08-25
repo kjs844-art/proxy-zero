@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { HUD_LAYOUT, HudController, deriveHudModel } from '../../src/presentation/HudController'
+import {
+  HUD_CONTROLS_TEXT,
+  HUD_LAYOUT,
+  HudController,
+  deriveHudModel,
+} from '../../src/presentation/HudController'
 
 class FakeDisplay {
   alpha = 1
@@ -32,6 +37,12 @@ const fakeScene = () => ({
 })
 
 describe('Task 14 unified HUD contract', () => {
+  it('spells out the item control semantics instead of binding keys to item names', () => {
+    expect(HUD_CONTROLS_TEXT).toContain('Q SELECT ITEM')
+    expect(HUD_CONTROLS_TEXT).toContain('E PICKUP-USE')
+    expect(HUD_CONTROLS_TEXT).not.toContain('Q/E ITEM')
+  })
+
   it('keeps the exact 640x360 modules inside protected HUD bands', () => {
     expect(HUD_LAYOUT).toMatchObject({
       player: { x: 8, y: 6, width: 366, height: 42 },

@@ -22,6 +22,15 @@ const characterById: Readonly<Record<CharacterId, (typeof characters)[number]>> 
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`
 
+export const CHARACTER_SELECT_CONTROLS_TEXT =
+  '1/2/3 OR A/D OR ARROWS  •  ENTER / SPACE TO FIGHT'
+
+export const characterSelectDirectionForCode = (code: string): -1 | 0 | 1 => {
+  if (code === 'ArrowLeft' || code === 'KeyA') return -1
+  if (code === 'ArrowRight' || code === 'KeyD') return 1
+  return 0
+}
+
 /** Short, data-backed role copy shown only for the currently selected fighter. */
 export const formatFighterBrief = (characterId: CharacterId): string => {
   const character = characterById[characterId]
@@ -100,7 +109,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     })
 
     this.add
-      .text(320, 336, '1/2/3 OR ARROWS  •  ENTER TO FIGHT', {
+      .text(320, 336, CHARACTER_SELECT_CONTROLS_TEXT, {
         fontFamily: 'monospace',
         fontSize: '12px',
         color: '#cbd5e1',
@@ -123,12 +132,31 @@ export class CharacterSelectScene extends Phaser.Scene {
   }
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
-    if (event.code === 'ArrowLeft') this.selectIndex(this.selectedIndex - 1)
-    if (event.code === 'ArrowRight') this.selectIndex(this.selectedIndex + 1)
-    if (event.code === 'Digit1') this.selectIndex(0)
-    if (event.code === 'Digit2') this.selectIndex(1)
-    if (event.code === 'Digit3') this.selectIndex(2)
-    if (event.code === 'Enter' || event.code === 'Space') this.confirmSelection()
+    const direction = characterSelectDirectionForCode(event.code)
+    if (direction !== 0) {
+      event.preventDefault()
+      this.selectIndex(this.selectedIndex + direction)
+      return
+    }
+    if (event.code === 'Digit1') {
+      event.preventDefault()
+      this.selectIndex(0)
+      return
+    }
+    if (event.code === 'Digit2') {
+      event.preventDefault()
+      this.selectIndex(1)
+      return
+    }
+    if (event.code === 'Digit3') {
+      event.preventDefault()
+      this.selectIndex(2)
+      return
+    }
+    if (event.code === 'Enter' || event.code === 'Space') {
+      event.preventDefault()
+      this.confirmSelection()
+    }
   }
 
   private selectIndex(index: number): void {

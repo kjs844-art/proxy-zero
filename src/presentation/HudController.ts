@@ -28,6 +28,9 @@ const palette = Object.freeze({
 const controlsHoldMs = 8_000
 const controlsFadeMs = 1_000
 
+export const HUD_CONTROLS_TEXT =
+  'WASD MOVE  SPACE JUMP  J/K/L/; ATTACK  Q SELECT ITEM  E PICKUP-USE'
+
 export interface EncounterHudSnapshot {
   readonly label: string
   readonly hp: number
@@ -109,6 +112,10 @@ export class HudController {
   constructor(scene: Phaser.Scene, characterId: CharacterId, inventory: Readonly<ItemInventory>) {
     this.chrome = scene.add.graphics().setDepth(10_000).setScrollFactor(0)
     this.bars = scene.add.graphics().setDepth(10_003).setScrollFactor(0)
+    // A continuous opaque top band keeps rain and animated backdrops out of
+    // the HUD, while the smaller framed modules retain their arcade layout.
+    this.chrome.fillStyle(palette.panel, 1)
+    this.chrome.fillRect(0, 0, 640, 52)
     this.chrome.fillStyle(palette.panel, 0.91)
     this.chrome.fillRect(HUD_LAYOUT.player.x, HUD_LAYOUT.player.y, HUD_LAYOUT.player.width, HUD_LAYOUT.player.height)
     this.chrome.fillRect(HUD_LAYOUT.inventory.x, HUD_LAYOUT.inventory.y, HUD_LAYOUT.inventory.width, HUD_LAYOUT.inventory.height)
@@ -122,7 +129,7 @@ export class HudController {
     this.meterText = scene.add.text(368, 24, '', textStyle('9px', '#f6c76e')).setOrigin(1, 0).setDepth(10_004).setScrollFactor(0)
     this.comboText = scene.add.text(HUD_LAYOUT.combo.x, HUD_LAYOUT.combo.y, '', textStyle('18px', '#f6c76e')).setOrigin(1, 0.5).setDepth(10_004).setScrollFactor(0).setVisible(false)
     this.encounterText = scene.add.text(320, 60, '', textStyle('9px')).setOrigin(0.5).setDepth(10_004).setScrollFactor(0).setVisible(false)
-    this.controlsText = scene.add.text(HUD_LAYOUT.controls.x, HUD_LAYOUT.controls.y, 'WASD MOVE  SPACE JUMP  J/K/L/; ATTACK  Q/E ITEM', {
+    this.controlsText = scene.add.text(HUD_LAYOUT.controls.x, HUD_LAYOUT.controls.y, HUD_CONTROLS_TEXT, {
       ...textStyle('10px', palette.secondary),
       backgroundColor: '#071018d9',
       padding: { x: 6, y: 3 },

@@ -12,6 +12,9 @@ class FakeDisplayObject {
 
   setDepth(_value: number): this { return this }
   setFillStyle(_color: number, _alpha?: number): this { return this }
+  clear(): this { return this }
+  fillStyle(_color: number, _alpha?: number): this { return this }
+  fillRect(_x: number, _y: number, _width: number, _height: number): this { return this }
   setOrigin(_x: number, _y?: number): this { return this }
   setScrollFactor(_value: number): this { return this }
   setStrokeStyle(_width: number, color: number, _alpha?: number): this {
@@ -37,7 +40,7 @@ describe('Task 10 item scene presentation', () => {
       return object
     }
     const scene = {
-      add: { rectangle: own, text: own },
+      add: { graphics: own, rectangle: own, text: own },
     }
     const hud = new InventoryHud(scene as never, inventory(0, 0, null))
     const initial = hud.snapshot()
@@ -56,8 +59,8 @@ describe('Task 10 item scene presentation', () => {
     expect(hud.snapshot()).toMatchObject({
       ownedObjectCount: 4,
       slots: [
-        { itemId: 'emp', count: 1, selected: false, label: 'Q EMP  ×1' },
-        { itemId: 'repair-kit', count: 1, selected: true, label: 'E REPAIR  ×1' },
+        { itemId: 'emp', count: 1, selected: false, label: 'EMP  ×1' },
+        { itemId: 'repair-kit', count: 1, selected: true, label: 'REPAIR  ×1' },
       ],
     })
 

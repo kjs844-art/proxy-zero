@@ -4,6 +4,7 @@ import type { EnemyAttackRange, EnemyPoint } from '../../domain/enemies/types'
 
 interface TelegraphMarker {
   readonly object: Phaser.GameObjects.Ellipse
+  readonly totalMs: number
   remainingMs: number
 }
 
@@ -43,7 +44,8 @@ export class HazardView {
     )
       .setDepth(position.y - 2)
       .setStrokeStyle(2, 0xff6b6b, 0.82)
-    this.telegraphs.set(enemyId, { object, remainingMs: finiteDuration(durationMs) })
+    const totalMs = finiteDuration(durationMs)
+    this.telegraphs.set(enemyId, { object, totalMs, remainingMs: totalMs })
   }
 
   setGuard(enemyId: string, position: Readonly<EnemyPoint>, active: boolean): void {
@@ -69,6 +71,11 @@ export class HazardView {
     for (const [enemyId, marker] of this.telegraphs) {
       marker.remainingMs = Math.max(0, marker.remainingMs - elapsed)
       if (marker.remainingMs === 0) this.destroyTelegraph(enemyId)
+      else {
+        const progress = marker.totalMs === 0 ? 1 : 1 - marker.remainingMs / marker.totalMs
+        const pulse = 0.5 + 0.5 * Math.sin(progress * Math.PI * 6)
+        marker.object.setAlpha(0.72 + progress * 0.12 + pulse * 0.12)
+      }
     }
   }
 

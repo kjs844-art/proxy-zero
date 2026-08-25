@@ -115,7 +115,7 @@ describe('ResultsScene', () => {
       '4',
       'CONTINUE',
       'NO',
-      'ENTER / J  RETRY    ESC / T  TITLE',
+      'ENTER / SPACE / J  RETRY    ESC / T  TITLE',
     ]))
     for (const [x, y] of calls) {
       expect(x).toBeGreaterThanOrEqual(0)

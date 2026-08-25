@@ -54,7 +54,7 @@ import {
   GameServices,
   probeGameCapabilities,
 } from '../../src/app/GameServices'
-import { TitleScene } from '../../src/phaser/scenes/TitleScene'
+import { TITLE_CONTROLS_TEXT, TitleScene } from '../../src/phaser/scenes/TitleScene'
 
 type TitleHarness = {
   readonly game: {
@@ -109,6 +109,11 @@ describe('TitleScene keyboard requirement', () => {
         String(call[2]).includes('PC KEYBOARD REQUIRED'),
       ),
     ).toBe(false)
+  })
+
+  it('shows every supported keyboard start key', () => {
+    createTitle(false)
+    expect(phaserMocks.text.mock.calls.some((call) => call[2] === TITLE_CONTROLS_TEXT)).toBe(true)
   })
 
   it('classifies a coarse pointer as mobile for the title notice contract', () => {

@@ -9,6 +9,8 @@ import {
 const retryCodes = new Set(['Enter', 'Space', 'KeyJ'])
 const titleCodes = new Set(['Escape', 'KeyT'])
 
+export const RESULTS_CONTROLS_TEXT = 'ENTER / SPACE / J  RETRY    ESC / T  TITLE'
+
 const rankColors: Readonly<Record<CompletedRunRecord['rank'], string>> = {
   S: '#fbbf24',
   A: '#67e8f9',
@@ -115,7 +117,7 @@ export class ResultsScene extends Phaser.Scene {
     })
 
     this.add
-      .text(320, 330, 'ENTER / J  RETRY    ESC / T  TITLE', {
+      .text(320, 330, RESULTS_CONTROLS_TEXT, {
         fontFamily: 'monospace',
         fontSize: '13px',
         color: '#fbbf24',

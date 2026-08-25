@@ -530,8 +530,11 @@ describe('N-9 Depot owned presentation lifecycles', () => {
     const actor = { hp: 42 }
 
     hazards.showTelegraph('enemy-a', { x: 300, y: 240 }, { x: 64, y: 24 }, 300)
+    const telegraph = host.objects[0]
     hazards.setGuard('enemy-a', { x: 300, y: 240 }, true)
-    hazards.update(299)
+    hazards.update(150)
+    expect(telegraph.alpha).toBeGreaterThanOrEqual(0.72)
+    hazards.update(149)
     expect(hazards.snapshot()).toMatchObject({ telegraphCount: 1, guardCount: 1 })
     expect(actor.hp).toBe(42)
 

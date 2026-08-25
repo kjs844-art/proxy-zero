@@ -733,6 +733,10 @@ describe('CombatScene service-train orchestration', () => {
     const train = scene.trainBackdrop
     if (!train) throw new Error('Expected train renderer.')
     const trainDispose = vi.spyOn(train, 'dispose')
+    train.reset(scene.itemRuntime.pickups)
+    train.update(3_200, 'safe', 278, scene.itemRuntime.pickups)
+    expect(train.snapshot().offset).toBeCloseTo(0, 6)
+    train.reset(scene.itemRuntime.pickups)
     const stableObjectCount = train.snapshot().ownedObjectCount
     for (let step = 0; step < 60; step += 1) scene.stepDomain()
     expect(train.snapshot().ownedObjectCount).toBe(stableObjectCount)

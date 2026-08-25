@@ -116,6 +116,10 @@ import { ZoneRenderer } from '../world/ZoneRenderer'
 
 type ZonePhase = 'active' | 'inter-wave' | 'zone-clear' | 'zone-handoff'
 
+export const GAME_OVER_CONTINUE_PROMPT = 'GAME OVER\nENTER · CONTINUE   ESC · FORFEIT'
+export const GAME_OVER_EXHAUSTED_PROMPT =
+  'GAME OVER\nCONTINUE EXHAUSTED\nENTER / SPACE / J / ESC / T · RESULTS'
+
 const getWaveVariant = (id: string): EnemyVariantDefinition => {
   if (isBossDefinitionId(id)) {
     const boss = getBossDefinition(id)
@@ -1599,8 +1603,8 @@ export class CombatScene extends Phaser.Scene {
       return
     }
     const prompt = this.runState.continueAvailable
-      ? 'GAME OVER\nENTER · CONTINUE   ESC · FORFEIT'
-      : 'GAME OVER\nCONTINUE EXHAUSTED\nENTER / J / ESC / T · RESULTS'
+      ? GAME_OVER_CONTINUE_PROMPT
+      : GAME_OVER_EXHAUSTED_PROMPT
     this.gameOverText?.setText(prompt).setVisible(true)
   }
 

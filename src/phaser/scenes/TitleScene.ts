@@ -2,6 +2,8 @@ import Phaser from 'phaser'
 
 import { type GameServices, SCENE_KEYS } from '../../app/GameServices'
 
+export const TITLE_CONTROLS_TEXT = 'PRESS ENTER / SPACE / J TO START'
+
 export class TitleScene extends Phaser.Scene {
   private continuing = false
   private keyboardNoticeCanvas: HTMLCanvasElement | null = null
@@ -25,7 +27,7 @@ export class TitleScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
     this.add
-      .text(320, 220, 'PRESS START', {
+      .text(320, 220, TITLE_CONTROLS_TEXT, {
         fontFamily: 'monospace',
         fontSize: '20px',
         color: '#ffffff',

@@ -16,7 +16,8 @@ interface SlotView {
   itemId: ItemId
   bounds: { x: number; y: number; width: number; height: number }
   background: Phaser.GameObjects.Rectangle
-  label: Phaser.GameObjects.Text
+  label: Phaser.GameObjects.Graphics
+  renderedLabel: string
   count: 0 | 1
   selected: boolean
 }
@@ -32,9 +33,46 @@ export interface InventoryHudSnapshot {
   }>
 }
 
-const itemLabel: Readonly<Record<ItemId, string>> = {
-  emp: 'Q EMP',
-  'repair-kit': 'E REPAIR',
+export const INVENTORY_ITEM_LABELS: Readonly<Record<ItemId, string>> = {
+  emp: 'EMP',
+  'repair-kit': 'REPAIR',
+}
+
+const PIXEL_GLYPHS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  '0': ['01110', '10001', '10011', '10101', '11001', '10001', '01110'],
+  '1': ['00100', '01100', '00100', '00100', '00100', '00100', '01110'],
+  A: ['01110', '10001', '10001', '11111', '10001', '10001', '10001'],
+  E: ['11111', '10000', '10000', '11110', '10000', '10000', '11111'],
+  I: ['11111', '00100', '00100', '00100', '00100', '00100', '11111'],
+  M: ['10001', '11011', '10101', '10101', '10001', '10001', '10001'],
+  P: ['11110', '10001', '10001', '11110', '10000', '10000', '10000'],
+  R: ['11110', '10001', '10001', '11110', '10100', '10010', '10001'],
+  X: ['10001', '01010', '00100', '00100', '00100', '01010', '10001'],
+})
+
+const glyphAdvance = (character: string): number => character === ' ' ? 3 : 6
+
+const drawPixelLabel = (
+  graphics: Phaser.GameObjects.Graphics,
+  bounds: Readonly<SlotView['bounds']>,
+  text: string,
+): void => {
+  const width = [...text].reduce((total, character) => total + glyphAdvance(character), -1)
+  const startX = Math.round(bounds.x + (bounds.width - width) / 2)
+  const startY = Math.round(bounds.y + (bounds.height - 7) / 2)
+  graphics.clear().fillStyle(0xe8fbff, 1)
+  let cursorX = startX
+  for (const character of text) {
+    const glyph = PIXEL_GLYPHS[character]
+    if (glyph) {
+      glyph.forEach((row, rowIndex) => {
+        for (let column = 0; column < row.length; column += 1) {
+          if (row[column] === '1') graphics.fillRect(cursorX + column, startY + rowIndex, 1, 1)
+        }
+      })
+    }
+    cursorX += glyphAdvance(character)
+  }
 }
 
 /** Always-visible, presentation-only two-slot inventory HUD. */
@@ -58,21 +96,15 @@ export class InventoryHud {
         .setDepth(10_001)
         .setScrollFactor(0)
       const label = scene.add
-        .text(x + SLOT_WIDTH / 2, SLOT_Y + SLOT_HEIGHT / 2, '', {
-          align: 'center',
-          color: '#e8fbff',
-          fontFamily: 'monospace',
-          fontSize: '10px',
-          fontStyle: 'bold',
-        })
-        .setOrigin(0.5)
-        .setDepth(10_002)
+        .graphics()
+        .setDepth(10_005)
         .setScrollFactor(0)
       return {
         itemId,
         bounds,
         background,
         label,
+        renderedLabel: '',
         count: 0,
         selected: false,
       }
@@ -90,7 +122,11 @@ export class InventoryHud {
         slot.selected ? SELECTED_STROKE : UNSELECTED_STROKE,
         1,
       )
-      slot.label.setText(`${itemLabel[slot.itemId]}  ×${slot.count}`)
+      const nextLabel = `${INVENTORY_ITEM_LABELS[slot.itemId]}  ×${slot.count}`
+      if (slot.renderedLabel !== nextLabel) {
+        slot.renderedLabel = nextLabel
+        drawPixelLabel(slot.label, slot.bounds, `${INVENTORY_ITEM_LABELS[slot.itemId]} X${slot.count}`)
+      }
     }
   }
 
@@ -101,7 +137,7 @@ export class InventoryHud {
         itemId: slot.itemId,
         count: slot.count,
         selected: slot.selected,
-        label: `${itemLabel[slot.itemId]}  ×${slot.count}`,
+        label: slot.renderedLabel,
         bounds: { ...slot.bounds },
       })),
     }
