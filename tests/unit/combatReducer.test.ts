@@ -6,6 +6,7 @@ import {
   type CombatCommand,
   type CombatState,
 } from '../../src/domain/combat/combatReducer'
+import { playerRunSpeedMultiplier } from '../../src/domain/combat/tuning'
 
 const actor = (overrides: Partial<CombatActor> = {}): CombatActor => ({
   id: 'han',
@@ -216,6 +217,95 @@ describe('combatReducer', () => {
     expect(landed.actors.han.position.z).toBe(0)
     expect(landed.actors.han.velocity.z).toBe(0)
     expect(landed.actors.han.mode).toBe('idle')
+  })
+
+  it('applies the 1.65x run multiplier only to the player while D is held', () => {
+    const initial = state(
+      actor({ id: 'han' }),
+      actor({ id: 'enemy', team: 'enemies' }),
+    )
+    const result = combatReducer(initial, [
+      { actorId: 'han', moveX: 1, moveY: 0, running: true },
+      { actorId: 'enemy', moveX: 1, moveY: 0, running: true },
+    ], 100)
+
+    expect(result.actors.han.position.x).toBeCloseTo(29.7, 8)
+    expect(result.actors.han.velocity.x).toBeCloseTo(297, 8)
+    expect(result.actors.han.isRunning).toBe(true)
+    expect(result.actors.enemy.position.x).toBeCloseTo(18, 8)
+    expect(result.actors.enemy.velocity.x).toBeCloseTo(180, 8)
+    expect(result.actors.enemy.isRunning).toBe(false)
+  })
+
+  it('caps a running diagonal to the same total 1.65x speed', () => {
+    const result = combatReducer(
+      state(actor()),
+      [{ actorId: 'han', moveX: 1, moveY: -1, running: true }],
+      100,
+    )
+    const velocity = result.actors.han.velocity
+
+    expect(Math.hypot(velocity.x, velocity.y)).toBeCloseTo(
+      180 * playerRunSpeedMultiplier,
+      8,
+    )
+    expect(velocity.x).toBeGreaterThan(Math.abs(velocity.y))
+    expect(velocity.y).toBeLessThan(0)
+  })
+
+  it('resets the gait clock on walk-run transitions, stopping, and opposite movement', () => {
+    const walking = combatReducer(
+      state(actor()),
+      [{ actorId: 'han', moveX: 1, moveY: 0 }],
+      100,
+    )
+    expect(walking.actors.han.locomotionElapsedMs).toBe(100)
+
+    const running = combatReducer(
+      walking,
+      [{ actorId: 'han', moveX: 1, moveY: 0, running: true }],
+      100,
+    )
+    expect(running.actors.han.isRunning).toBe(true)
+    expect(running.actors.han.locomotionElapsedMs).toBe(0)
+
+    const continued = combatReducer(
+      running,
+      [{ actorId: 'han', moveX: 1, moveY: 0, running: true }],
+      100,
+    )
+    expect(continued.actors.han.locomotionElapsedMs).toBe(100)
+
+    const opposite = combatReducer(
+      continued,
+      [{ actorId: 'han', moveX: -1, moveY: 0 }],
+      100,
+    )
+    expect(opposite.actors.han.isRunning).toBe(false)
+    expect(opposite.actors.han.locomotionElapsedMs).toBe(0)
+    expect(opposite.actors.han.velocity.x).toBe(-180)
+
+    const stopped = combatReducer(
+      opposite,
+      [{ actorId: 'han', moveX: 0, moveY: 0 }],
+      100,
+    )
+    expect(stopped.actors.han.locomotionElapsedMs).toBe(0)
+  })
+
+  it('clears running on release even when hitstop consumes the whole step', () => {
+    const frozen = state(actor({ isRunning: true, locomotionElapsedMs: 100 }))
+    frozen.hitstopRemainingMs = 100
+
+    const released = combatReducer(
+      frozen,
+      [{ actorId: 'han', moveX: 0, moveY: 0 }],
+      16,
+    )
+
+    expect(released.hitstopRemainingMs).toBe(84)
+    expect(released.actors.han.isRunning).toBe(false)
+    expect(released.actors.han.locomotionElapsedMs).toBe(0)
   })
 
   it('tracks scaled startup, active, recovery, and completion', () => {

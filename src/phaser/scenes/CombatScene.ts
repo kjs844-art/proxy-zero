@@ -205,6 +205,8 @@ const makeActor = (overrides: Partial<CombatActor>): CombatActor => ({
   wakeInvulnerabilityRemainingMs: 0,
   pendingKnockdown: false,
   reactionSource: null,
+  isRunning: false,
+  locomotionElapsedMs: 0,
   ...overrides,
 })
 
@@ -237,7 +239,12 @@ const createCombatState = (
   }
 }
 
-const emptyInputFrame = (): InputFrame => ({ moveX: 0, moveY: 0, edges: [] })
+const emptyInputFrame = (): InputFrame => ({
+  moveX: 0,
+  moveY: 0,
+  running: false,
+  edges: [],
+})
 
 const browserStorage = (): StorageLike | null => {
   try {
@@ -623,6 +630,7 @@ export class CombatScene extends Phaser.Scene {
       actorId: player.id,
       moveX: frame.moveX,
       moveY: frame.moveY,
+      running: frame.running === true,
       jump: bufferedAction?.edge.type === 'jump',
       ...(attackId ? { attackId } : {}),
       ...(itemHealAmount > 0 ? { healAmount: itemHealAmount } : {}),
@@ -1820,6 +1828,8 @@ export class CombatScene extends Phaser.Scene {
       this.runState.respawnInvulnerabilityRemainingMs
     player.pendingKnockdown = false
     player.reactionSource = null
+    player.isRunning = false
+    player.locomotionElapsedMs = 0
     this.state.hitstopRemainingMs = 0
     this.state.combo = {
       hitCount: 0,

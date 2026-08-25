@@ -41,8 +41,25 @@
             "han/walk/00",
             "han/walk/01",
             "han/walk/02",
-            "han/walk/03"
-          ]
+            "han/walk/03",
+            "han/walk/04",
+            "han/walk/05"
+          ],
+          "fps": 9
+        },
+        {
+          "id": "run",
+          "state": "run",
+          "loop": true,
+          "frames": [
+            "han/run/00",
+            "han/run/01",
+            "han/run/02",
+            "han/run/03",
+            "han/run/04",
+            "han/run/05"
+          ],
+          "fps": 14
         },
         {
           "id": "airborne",
@@ -230,8 +247,25 @@
             "mina/walk/00",
             "mina/walk/01",
             "mina/walk/02",
-            "mina/walk/03"
-          ]
+            "mina/walk/03",
+            "mina/walk/04",
+            "mina/walk/05"
+          ],
+          "fps": 9
+        },
+        {
+          "id": "run",
+          "state": "run",
+          "loop": true,
+          "frames": [
+            "mina/run/00",
+            "mina/run/01",
+            "mina/run/02",
+            "mina/run/03",
+            "mina/run/04",
+            "mina/run/05"
+          ],
+          "fps": 14
         },
         {
           "id": "airborne",
@@ -419,8 +453,25 @@
             "jin/walk/00",
             "jin/walk/01",
             "jin/walk/02",
-            "jin/walk/03"
-          ]
+            "jin/walk/03",
+            "jin/walk/04",
+            "jin/walk/05"
+          ],
+          "fps": 9
+        },
+        {
+          "id": "run",
+          "state": "run",
+          "loop": true,
+          "frames": [
+            "jin/run/00",
+            "jin/run/01",
+            "jin/run/02",
+            "jin/run/03",
+            "jin/run/04",
+            "jin/run/05"
+          ],
+          "fps": 14
         },
         {
           "id": "airborne",

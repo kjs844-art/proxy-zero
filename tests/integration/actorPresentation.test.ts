@@ -114,6 +114,25 @@ describe('Task 13 deterministic actor presentation', () => {
     expect(selectActorFrame({ ...fixed, domainTimeMs: 250 })).toBe(selectActorFrame(fixed))
   })
 
+  it('uses the locomotion clock and distinct walk/run cadence for players', () => {
+    const moving = actor({
+      mode: 'moving',
+      velocity: { x: 150, y: 0, z: 0 },
+      locomotionElapsedMs: 0,
+    })
+    expect(selectActorFrame(snapshot({ actor: moving, domainTimeMs: 9_999 }))).toBe(
+      'han/walk/00',
+    )
+    expect(selectActorFrame(snapshot({
+      actor: actor({ ...moving, locomotionElapsedMs: 112 }),
+      domainTimeMs: 0,
+    }))).toBe('han/walk/01')
+    expect(selectActorFrame(snapshot({
+      actor: actor({ ...moving, isRunning: true, locomotionElapsedMs: 72 }),
+      domainTimeMs: 0,
+    }))).toBe('han/run/01')
+  })
+
   it('reverse-maps normal enemies and keeps elite and boss telegraphs authored', () => {
     const enemy = actor({
       id: 'enemy-1', team: 'enemies', mode: 'attacking',

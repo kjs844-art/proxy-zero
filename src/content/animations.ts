@@ -2,6 +2,8 @@ import type { CombatActor } from '../domain/combat/combatReducer'
 
 export const ACTOR_ATLAS_KEY = 'actors' as const
 export const ACTOR_ANIMATION_FPS = 10
+export const ACTOR_WALK_FPS = 9
+export const ACTOR_RUN_FPS = 14
 
 export const ACTOR_PROFILE_IDS = [
   'han',
@@ -20,6 +22,7 @@ export type ActorSheetId = 'players' | 'enemies' | 'boss'
 export type ActorBaseClipId =
   | 'idle'
   | 'walk'
+  | 'run'
   | 'airborne'
   | 'hitstun'
   | 'knocked-down'
@@ -32,6 +35,7 @@ export interface ActorAnimationClip {
   readonly state: ActorBaseClipId | 'attack' | 'telegraph'
   readonly loop: boolean
   readonly frames: readonly string[]
+  readonly fps?: number
   readonly authoredAttackId?: string
   readonly domainAttackId?: string
 }
@@ -64,7 +68,14 @@ const baseClip = (
   id: ActorBaseClipId,
   count: number,
   loop = false,
-): ActorAnimationClip => ({ id, state: id, loop, frames: frameNames(profileId, id, id, count) })
+  fps?: number,
+): ActorAnimationClip => ({
+  id,
+  state: id,
+  loop,
+  frames: frameNames(profileId, id, id, count),
+  ...(fps === undefined ? {} : { fps }),
+})
 
 const attackClip = (
   profileId: ActorVisualProfileId,
@@ -151,18 +162,29 @@ const makeProfile = (
   layout: (typeof profileLayout)[number],
 ): ActorVisualProfile => {
   const { id, sheet, targetHeight, visibleBounds } = layout
-  const attackPairs = id === 'han' || id === 'mina' || id === 'jin'
+  const player = id === 'han' || id === 'mina' || id === 'jin'
+  const attackPairs = player
     ? playerAttacks[id].map((attackId) => [attackId, attackId] as const)
     : enemyAttackPairs[id] ?? []
   const attacks = Object.fromEntries(
     attackPairs.map(([authored, domain]) => [authored, attackClip(id, authored, domain)]),
   )
-  const telegraphs = id === 'han' || id === 'mina' || id === 'jin'
+  const telegraphs = player
     ? {}
     : Object.fromEntries(
         attackPairs.map(([authored, domain]) => [authored, telegraphClip(id, authored, domain)]),
       )
   const boss = sheet === 'boss'
+  const walk = baseClip(
+    id,
+    'walk',
+    player ? 6 : 4,
+    true,
+    player ? ACTOR_WALK_FPS : undefined,
+  )
+  const run = player
+    ? baseClip(id, 'run', 6, true, ACTOR_RUN_FPS)
+    : walk
   return {
     id,
     sheet,
@@ -173,7 +195,8 @@ const makeProfile = (
     shadow: { width: boss ? 84 : sheet === 'enemies' ? 50 : 42, height: boss ? 14 : 10 },
     clips: {
       idle: baseClip(id, 'idle', 2, true),
-      walk: baseClip(id, 'walk', 4, true),
+      walk,
+      run,
       airborne: baseClip(id, 'airborne', 1),
       hitstun: baseClip(id, 'hitstun', 1),
       'knocked-down': baseClip(id, 'knocked-down', 1),
@@ -245,7 +268,8 @@ export interface ActorPresentationSnapshot {
 
 const frameAt = (clip: Readonly<ActorAnimationClip>, elapsedMs: number): string => {
   const safeElapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0
-  const rawIndex = Math.floor((safeElapsed * ACTOR_ANIMATION_FPS) / 1_000)
+  const fps = clip.fps ?? ACTOR_ANIMATION_FPS
+  const rawIndex = Math.floor((safeElapsed * fps) / 1_000)
   const index = clip.loop
     ? rawIndex % clip.frames.length
     : Math.min(rawIndex, clip.frames.length - 1)
@@ -287,7 +311,8 @@ export const selectActorFrame = (snapshot: Readonly<ActorPresentationSnapshot>):
   } else if (
     actor.mode === 'moving' || actor.velocity.x !== 0 || actor.velocity.y !== 0
   ) {
-    clip = profile.clips.walk
+    clip = actor.isRunning === true ? profile.clips.run : profile.clips.walk
+    elapsedMs = actor.locomotionElapsedMs ?? snapshot.domainTimeMs
   } else {
     clip = profile.clips.idle
   }

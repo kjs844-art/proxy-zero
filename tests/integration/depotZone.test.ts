@@ -94,7 +94,7 @@ import {
   type CombatActor,
   type CombatState,
 } from '../../src/domain/combat/combatReducer'
-import { fixedStepMs } from '../../src/domain/combat/tuning'
+import { fixedStepMs, playerRunSpeedMultiplier } from '../../src/domain/combat/tuning'
 import { SIDE_SCROLL_VIEWPORT_WIDTH } from '../../src/domain/world/sideScroll'
 import type { InputFrame } from '../../src/domain/combat/inputBuffer'
 import { createEnemyBrainState, type EnemyIntent } from '../../src/domain/enemies/enemyBrain'
@@ -735,6 +735,33 @@ const crossGateToNextWave = (scene: CombatSceneHarness): void => {
 }
 
 describe('CombatScene N-9 Depot orchestration', () => {
+  it('propagates the sampled running flag into player-only fixed-step movement', () => {
+    const { scene } = createLiveScene()
+    const player = scene.state.actors.han
+    player.position = { x: 250, y: 248, z: 0 }
+    const startX = player.position.x
+    const baseSpeed = player.moveSpeed * player.moveSpeedScale
+    captureOneFrame(scene, {
+      moveX: 1,
+      moveY: 0,
+      running: true,
+      edges: [],
+    })
+
+    scene.stepDomain()
+
+    expect(scene.state.actors.han.position.x - startX).toBeCloseTo(
+      baseSpeed * playerRunSpeedMultiplier * (fixedStepMs / 1_000),
+      8,
+    )
+    expect(scene.state.actors.han.isRunning).toBe(true)
+
+    captureOneFrame(scene, { moveX: 0, moveY: 0, edges: [] })
+    scene.stepDomain()
+    expect(scene.state.actors.han.isRunning).toBe(false)
+    expect(scene.state.actors.han.locomotionElapsedMs).toBe(0)
+  })
+
   it('does not flip an uncancellable active hitbox for a buffered attack behind the player', () => {
     const { scene } = createLiveScene()
     scene.stepDomain()

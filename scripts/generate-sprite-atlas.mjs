@@ -81,6 +81,25 @@ const playerAttackSourceSpecs = {
   ],
 }
 
+const playerLocomotionSourceSpecs = {
+  han: {
+    walk: 'han-walk-keyed-v2.png',
+    run: 'han-run-keyed-v2.png',
+  },
+  mina: {
+    walk: 'mina-walk-keyed-v2.png',
+    run: 'mina-run-keyed-v2.png',
+  },
+  jin: {
+    walk: 'jin-walk-keyed-v2.png',
+    run: 'jin-run-keyed-v2.png',
+  },
+}
+
+const PLAYER_WALK_FPS = 9
+const PLAYER_RUN_FPS = 14
+const PLAYER_LOCOMOTION_FRAMES = 6
+
 const enemyAttacks = {
   'scout-striker': [
     ['scout-striker-jab', 'han-right-hand'],
@@ -305,6 +324,49 @@ const normalizePose = (source, scale, cell) => {
   return result
 }
 
+/**
+ * Applies one authored strip coordinate system to every frame. Unlike normalizePose,
+ * this keeps the shared root and baseline instead of independently centering and
+ * bottom-aligning each silhouette. Airborne run phases therefore stay airborne.
+ */
+const normalizePoseAtRoot = (source, scale, cell, sourceRootX, sourceBaselineY) => {
+  const bounds = alphaBounds(source)
+  const sourceRight = bounds.x + bounds.width - 1
+  const sourceBottom = bounds.y + bounds.height - 1
+  const left = Math.round(cell.width / 2 + (bounds.x - sourceRootX) * scale)
+  const right = Math.round(cell.width / 2 + (sourceRight - sourceRootX) * scale)
+  const top = Math.round(cell.height - 1 + (bounds.y - sourceBaselineY) * scale)
+  const bottom = Math.round(cell.height - 1 + (sourceBottom - sourceBaselineY) * scale)
+  if (left < 0 || right >= cell.width || top < 0 || bottom >= cell.height) {
+    throw new Error(
+      `Root-normalized pose ${left},${top}..${right},${bottom} exceeds ${cell.width}x${cell.height}.`,
+    )
+  }
+
+  const result = new PNG({ width: cell.width, height: cell.height })
+  const targetWidth = right - left + 1
+  const targetHeight = bottom - top + 1
+  for (let y = 0; y < targetHeight; y += 1) {
+    const sourceY = bounds.y + Math.min(
+      bounds.height - 1,
+      Math.floor((y * bounds.height) / targetHeight),
+    )
+    for (let x = 0; x < targetWidth; x += 1) {
+      const sourceX = bounds.x + Math.min(
+        bounds.width - 1,
+        Math.floor((x * bounds.width) / targetWidth),
+      )
+      const from = pixelIndex(source.width, sourceX, sourceY)
+      const to = pixelIndex(result.width, left + x, top + y)
+      result.data[to] = source.data[from]
+      result.data[to + 1] = source.data[from + 1]
+      result.data[to + 2] = source.data[from + 2]
+      result.data[to + 3] = source.data[from + 3]
+    }
+  }
+  return result
+}
+
 const poseExtents = (pose, cell) => {
   const bounds = alphaBounds(pose)
   return {
@@ -315,11 +377,12 @@ const poseExtents = (pose, cell) => {
 
 const basePoseKey = (index) => `base:${index}`
 const attackPoseKey = (name) => `attack:${name}`
+const locomotionPoseKey = (kind, index) => `locomotion:${kind}:${index}`
 
 const clip = (profileId, id, state, poseKeys, extra = {}) => ({
   id,
   state,
-  loop: state === 'idle' || state === 'walk',
+  loop: state === 'idle' || state === 'walk' || state === 'run',
   frames: poseKeys.map((_, index) =>
     `${profileId}/${state === 'attack' || state === 'telegraph' ? `${state}/${id}` : id}/${String(index).padStart(2, '0')}`
   ),
@@ -328,11 +391,35 @@ const clip = (profileId, id, state, poseKeys, extra = {}) => ({
 })
 
 const buildClips = (profile) => {
+  const playerLocomotion = playerLocomotionSourceSpecs[profile.id]
   const clips = [
     clip(profile.id, 'idle', 'idle', [basePoseKey(0), basePoseKey(0)]),
-    clip(profile.id, 'walk', 'walk', [
-      basePoseKey(0), basePoseKey(1), basePoseKey(0), basePoseKey(1),
-    ]),
+    playerLocomotion
+      ? clip(
+          profile.id,
+          'walk',
+          'walk',
+          Array.from(
+            { length: PLAYER_LOCOMOTION_FRAMES },
+            (_, index) => locomotionPoseKey('walk', index),
+          ),
+          { fps: PLAYER_WALK_FPS },
+        )
+      : clip(profile.id, 'walk', 'walk', [
+          basePoseKey(0), basePoseKey(1), basePoseKey(0), basePoseKey(1),
+        ]),
+    ...(playerLocomotion
+      ? [clip(
+          profile.id,
+          'run',
+          'run',
+          Array.from(
+            { length: PLAYER_LOCOMOTION_FRAMES },
+            (_, index) => locomotionPoseKey('run', index),
+          ),
+          { fps: PLAYER_RUN_FPS },
+        )]
+      : []),
     clip(profile.id, 'airborne', 'airborne', [basePoseKey(2)]),
     clip(profile.id, 'hitstun', 'hitstun', [basePoseKey(5)]),
     clip(profile.id, 'knocked-down', 'knocked-down', [basePoseKey(6)]),
@@ -413,6 +500,23 @@ const splitHorizontalPoses = (source, segments) => {
   )))
 }
 
+const splitFixedHorizontalPoses = (source, segments) => {
+  if (source.width % segments !== 0) {
+    throw new Error(`Expected ${segments} equal horizontal slots, received ${source.width}px.`)
+  }
+  const slotWidth = source.width / segments
+  return {
+    slotWidth,
+    poses: Array.from({ length: segments }, (_, column) => retainActorComponents(crop(
+      source,
+      column * slotWidth,
+      0,
+      slotWidth,
+      source.height,
+    ))),
+  }
+}
+
 const loadPlayerAttackPoses = async (profile, poses, cell) => {
   for (const spec of playerAttackSourceSpecs[profile.id] ?? []) {
     const source = await loadKeyedSource(spec.source)
@@ -421,6 +525,45 @@ const loadPlayerAttackPoses = async (profile, poses, cell) => {
     spec.poseNames.forEach((poseName, index) => {
       if (!poseName) return
       poses.set(attackPoseKey(poseName), normalizePose(authoredPoses[index], scale, cell))
+    })
+  }
+}
+
+const loadPlayerLocomotionPoses = async (profile, poses, cell) => {
+  const spec = playerLocomotionSourceSpecs[profile.id]
+  if (!spec) return
+
+  const walkSource = await loadKeyedSource(spec.walk)
+  const runSource = await loadKeyedSource(spec.run)
+  if (walkSource.width !== runSource.width || walkSource.height !== runSource.height) {
+    throw new Error(`${profile.id} walk/run strips must share one source coordinate system.`)
+  }
+
+  const walk = splitFixedHorizontalPoses(walkSource, PLAYER_LOCOMOTION_FRAMES)
+  const run = splitFixedHorizontalPoses(runSource, PLAYER_LOCOMOTION_FRAMES)
+  if (walk.slotWidth !== run.slotWidth) {
+    throw new Error(`${profile.id} walk/run slots must have equal widths.`)
+  }
+
+  const walkBounds = walk.poses.map(alphaBounds)
+  const referenceHeight = Math.max(...walkBounds.map((bounds) => bounds.height))
+  const scale = referenceHeight <= 1
+    ? 1
+    : (profile.targetHeight - 1) / (referenceHeight - 1)
+  const sourceRootX = walk.slotWidth / 2
+  for (const [kind, authoredPoses] of [
+    ['walk', walk.poses],
+    ['run', run.poses],
+  ]) {
+    const authoredBounds = authoredPoses.map(alphaBounds)
+    const sourceBaselineY = Math.max(
+      ...authoredBounds.map((bounds) => bounds.y + bounds.height - 1),
+    )
+    authoredPoses.forEach((pose, index) => {
+      poses.set(
+        locomotionPoseKey(kind, index),
+        normalizePoseAtRoot(pose, scale, cell, sourceRootX, sourceBaselineY),
+      )
     })
   }
 }
@@ -461,6 +604,7 @@ const loadProfilePoses = async (profile) => {
     basePoseKey(index),
     normalizePose(pose, scale, cell),
   ]))
+  await loadPlayerLocomotionPoses(profile, poses, cell)
   await loadPlayerAttackPoses(profile, poses, cell)
   return poses
 }

@@ -16,6 +16,8 @@ export const isBufferedActionEdge = (edge: Readonly<ActionEdge>): edge is Buffer
 export interface InputFrame {
   moveX: -1 | 0 | 1
   moveY: -1 | 0 | 1
+  /** True only while the second D tap remains held. */
+  running?: boolean
   edges: ActionEdge[]
 }
 

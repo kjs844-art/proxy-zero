@@ -4,7 +4,7 @@ import {
   type AttackDefinition,
 } from '../../content/attacks'
 import type { Vec3 } from '../shared/types'
-import { fixedStepMs } from './tuning'
+import { fixedStepMs, playerRunSpeedMultiplier } from './tuning'
 import { resolveHitTargets } from './hitResolver'
 
 export type Facing = -1 | 1
@@ -66,6 +66,10 @@ export interface CombatActor {
   wakeInvulnerabilityRemainingMs: number
   pendingKnockdown: boolean
   reactionSource: ReactionSource | null
+  /** Presentation-readable gait mode. Only the player can enter the running gait. */
+  isRunning?: boolean
+  /** Deterministic gait-local clock; resets on stop and walk/run transitions. */
+  locomotionElapsedMs?: number
 }
 
 export interface ComboHitState {
@@ -139,6 +143,7 @@ export interface CombatCommand {
   actorId: string
   moveX: -1 | 0 | 1
   moveY: -1 | 0 | 1
+  running?: boolean
   jump?: boolean
   attackId?: string
   healAmount?: number
@@ -262,6 +267,8 @@ const applyImmediateCommand = (
     actor.wakeInvulnerabilityRemainingMs = 0
     actor.pendingKnockdown = false
     actor.reactionSource = null
+    actor.isRunning = false
+    actor.locomotionElapsedMs = 0
     if (actor.hp === 0) {
       actor.mode = 'defeated'
       actor.knockdownRemainingMs = 0
@@ -326,6 +333,8 @@ const applyImmediateCommand = (
   if (command.suppressActions && (isActionable(actor) || actor.mode === 'attacking')) {
     actor.velocity.x = 0
     actor.velocity.y = 0
+    actor.isRunning = false
+    actor.locomotionElapsedMs = 0
   }
 }
 
@@ -396,6 +405,8 @@ const enterKnockdown = (state: CombatState, actor: CombatActor): void => {
   actor.wakeInvulnerabilityRemainingMs = 0
   actor.pendingKnockdown = false
   actor.velocity = { x: 0, y: 0, z: 0 }
+  actor.isRunning = false
+  actor.locomotionElapsedMs = 0
   state.events.push({
     type: 'actor-knocked-down',
     atMs: state.elapsedMs,
@@ -514,6 +525,8 @@ const applyMovementAndPhysics = (
 ): void => {
   const deltaSeconds = deltaMs / 1_000
   const canControl = isActionable(actor) && actor.hitstunRemainingMs === 0
+  const wasRunning = actor.isRunning === true
+  actor.isRunning = false
 
   if (canControl && command?.jump && isGrounded(actor) && actor.mode !== 'airborne') {
     actor.velocity.z = actor.jumpSpeed
@@ -522,8 +535,32 @@ const applyMovementAndPhysics = (
 
   if (canControl && command) {
     const speed = actor.moveSpeed * actor.moveSpeedScale
-    actor.velocity.x = command.moveX * speed
-    actor.velocity.y = command.moveY * speed
+    const isMoving = command.moveX !== 0 || command.moveY !== 0
+    const isRunning =
+      actor.id === state.playerId &&
+      command.running === true &&
+      command.moveX === 1
+    let velocityScaleX = command.moveX * (isRunning ? playerRunSpeedMultiplier : 1)
+    let velocityScaleY = command.moveY
+    if (isRunning) {
+      const magnitude = Math.hypot(velocityScaleX, velocityScaleY)
+      if (magnitude > playerRunSpeedMultiplier) {
+        const capScale = playerRunSpeedMultiplier / magnitude
+        velocityScaleX *= capScale
+        velocityScaleY *= capScale
+      }
+    }
+    actor.isRunning = isRunning
+    const priorLocomotionElapsedMs = Number.isFinite(actor.locomotionElapsedMs)
+      ? Math.max(0, actor.locomotionElapsedMs ?? 0)
+      : 0
+    actor.locomotionElapsedMs = isMoving
+      ? wasRunning !== isRunning
+        ? 0
+        : priorLocomotionElapsedMs + deltaMs
+      : 0
+    actor.velocity.x = velocityScaleX * speed
+    actor.velocity.y = velocityScaleY * speed
     actor.position.x += actor.velocity.x * deltaSeconds
     actor.position.y += actor.velocity.y * deltaSeconds
     if (command.moveX !== 0) actor.facing = command.moveX < 0 ? -1 : 1
@@ -531,8 +568,11 @@ const applyMovementAndPhysics = (
       actor.mode = command.moveX === 0 && command.moveY === 0 ? 'idle' : 'moving'
     }
   } else if (actor.mode === 'hitstun') {
+    actor.locomotionElapsedMs = 0
     actor.position.x += actor.velocity.x * deltaSeconds
     actor.position.y += actor.velocity.y * deltaSeconds
+  } else {
+    actor.locomotionElapsedMs = 0
   }
 
   if (actor.position.z > 0 || actor.velocity.z > 0 || actor.mode === 'airborne') {
@@ -622,6 +662,8 @@ const applyHit = (
     target.wakeInvulnerabilityRemainingMs = 0
     target.pendingKnockdown = false
     target.reactionSource = null
+    target.isRunning = false
+    target.locomotionElapsedMs = 0
     if (oldHp > 0) {
       state.events.push({
         type: 'actor-defeated',
@@ -644,6 +686,8 @@ const applyHit = (
   target.velocity.y = attack.hit.knockbackY
   target.velocity.z = attack.hit.launchZ
   target.pendingKnockdown = attack.hit.launchZ > 0 || attack.hit.strength === 3
+  target.isRunning = false
+  target.locomotionElapsedMs = 0
   target.reactionSource = {
     attackerId: attacker.id,
     attackId: attack.id,
@@ -699,7 +743,18 @@ export const combatReducer = (
   if (state.hitstopRemainingMs > 0) {
     const frozenMs = Math.min(state.hitstopRemainingMs, requestedDeltaMs)
     state.hitstopRemainingMs -= frozenMs
-    if (frozenMs === requestedDeltaMs) return state
+    if (frozenMs === requestedDeltaMs) {
+      const player = state.actors[state.playerId]
+      const playerCommand = commandsByActor.get(state.playerId)
+      if (
+        player &&
+        (playerCommand?.running !== true || playerCommand.moveX !== 1)
+      ) {
+        player.isRunning = false
+        player.locomotionElapsedMs = 0
+      }
+      return state
+    }
     deltaMs = requestedDeltaMs - frozenMs
   } else {
     deltaMs = requestedDeltaMs

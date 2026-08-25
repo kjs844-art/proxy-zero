@@ -14,6 +14,8 @@ import {
   actorAnimationManifest,
   clampActorPresentationX,
   getActorVisualProfile,
+  ACTOR_RUN_FPS,
+  ACTOR_WALK_FPS,
   resolveVisualAttackId,
 } from '../../src/content/animations'
 
@@ -46,6 +48,7 @@ interface GeneratedClip {
   id: string
   state: string
   frames: string[]
+  fps?: number
 }
 
 interface GeneratedProfile {
@@ -264,7 +267,10 @@ describe('Task 13 actor animation manifest', () => {
           const components = alphaComponents(profilePng, atlasFrame)
           expect(components.length, frameName).toBeGreaterThan(0)
           const significantPixels = Math.max(16, Math.ceil(components[0].pixels * 0.01))
-          const maximumGap = Math.ceil(profile.targetHeight * 0.15)
+          const authoredPlayerLocomotion = /^(han|mina|jin)\/(walk|run)\//.test(frameName)
+          const maximumGap = Math.ceil(
+            profile.targetHeight * (authoredPlayerLocomotion ? 0.2 : 0.15),
+          )
           for (const component of components.slice(1)) {
             if (component.pixels < significantPixels) continue
             expect(componentGap(components[0], component), frameName).toBeLessThanOrEqual(
@@ -313,6 +319,43 @@ describe('Task 13 actor animation manifest', () => {
           expect(frame, `${profileId}/${id}/${frameIndex}`).toBeDefined()
           return frame ? alphaBounds(png, frame).hash : ''
         }
+        const locomotionFrames = (id: 'walk' | 'run'): AtlasFrame[] => {
+          const clip = profile.clips.find((entry) => entry.id === id)
+          expect(clip?.frames, `${profileId}/${id}`).toHaveLength(6)
+          expect(clip?.fps, `${profileId}/${id} fps`).toBe(
+            id === 'walk' ? ACTOR_WALK_FPS : ACTOR_RUN_FPS,
+          )
+          return (clip?.frames ?? []).flatMap((frameName) => {
+            const frame = frameByName.get(frameName)
+            expect(frame, frameName).toBeDefined()
+            return frame ? [frame] : []
+          })
+        }
+        const walkFrames = locomotionFrames('walk')
+        const runFrames = locomotionFrames('run')
+        const walkBounds = walkFrames.map((frame) => alphaBounds(png, frame))
+        const runBounds = runFrames.map((frame) => alphaBounds(png, frame))
+        expect(new Set(walkBounds.map((bounds) => bounds.hash)).size, `${profileId} walk`).toBe(6)
+        expect(new Set(runBounds.map((bounds) => bounds.hash)).size, `${profileId} run`).toBe(6)
+        expect(Math.max(...walkBounds.map((bounds) => bounds.height)), `${profileId} walk scale`).toBe(
+          profile.targetHeight,
+        )
+        expect(walkBounds.every((bounds) => bounds.bottom === profile.cell.height - 1)).toBe(true)
+        expect(runBounds.some((bounds) => bounds.bottom === profile.cell.height - 1)).toBe(true)
+        expect(runBounds.some((bounds) => bounds.bottom <= profile.cell.height - 7)).toBe(true)
+        expect(
+          [...walkBounds, ...runBounds].some((bounds) => (
+            Math.abs((bounds.minX + bounds.maxX) / 2 - profile.cell.width / 2) >= 4
+          )),
+          `${profileId} authored locomotion root offsets`,
+        ).toBe(true)
+
+        const runtimeWalk = runtime.clips.walk
+        const runtimeRun = runtime.clips.run
+        expect(runtimeWalk.frames).toHaveLength(6)
+        expect(runtimeWalk.fps).toBe(ACTOR_WALK_FPS)
+        expect(runtimeRun.frames).toHaveLength(6)
+        expect(runtimeRun.fps).toBe(ACTOR_RUN_FPS)
         const directAttackIds = [
           `${profileId}-left-hand`,
           `${profileId}-right-hand`,
@@ -345,6 +388,11 @@ describe('Task 13 actor animation manifest', () => {
             attackHash('jin-zero-breaker'),
           )
         }
+      }
+
+      for (const profileId of ACTOR_PROFILE_IDS.slice(3)) {
+        const runtime = getActorVisualProfile(profileId)
+        expect(runtime.clips.run, `${profileId} run fallback`).toBe(runtime.clips.walk)
       }
     } finally {
       rmSync(first, { recursive: true, force: true })

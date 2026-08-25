@@ -47,14 +47,23 @@ function createAdapter() {
   const otherElement = {}
   canvas.ownerDocument = { activeElement: canvas, defaultView: windowBlurTarget }
   const buffer = new InputBuffer()
+  let domainTimeMs = 100
   const adapter = new KeyboardInputAdapter(
     canvas as unknown as HTMLCanvasElement,
     buffer,
-    () => 100,
+    () => domainTimeMs,
     events as unknown as EventTarget,
   )
 
-  return { adapter, buffer, canvas, events, otherElement, windowBlurTarget }
+  return {
+    adapter,
+    buffer,
+    canvas,
+    events,
+    otherElement,
+    windowBlurTarget,
+    setDomainTimeMs: (value: number) => { domainTimeMs = value },
+  }
 }
 
 describe('KeyboardInputAdapter', () => {
@@ -153,5 +162,85 @@ describe('KeyboardInputAdapter', () => {
 
     windowBlurTarget.dispatch('blur')
     expect(adapter.readFrame()).toMatchObject({ moveX: 0, moveY: 0 })
+  })
+
+  it('walks on the first D tap and runs while an in-window second tap is held', () => {
+    const { adapter, events, setDomainTimeMs } = createAdapter()
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyD'))
+    expect(adapter.readFrame()).toEqual({ moveX: 1, moveY: 0, edges: [] })
+
+    events.dispatch('keyup', new FakeKeyboardEvent('KeyD'))
+    setDomainTimeMs(350)
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyD'))
+
+    expect(adapter.readFrame()).toEqual({
+      moveX: 1,
+      moveY: 0,
+      running: true,
+      edges: [],
+    })
+    expect(adapter.readFrame().running).toBe(true)
+
+    events.dispatch('keyup', new FakeKeyboardEvent('KeyD'))
+    expect(adapter.readFrame()).toEqual({ moveX: 0, moveY: 0, edges: [] })
+  })
+
+  it('does not run when the second D tap arrives after 250 domain milliseconds', () => {
+    const { adapter, events, setDomainTimeMs } = createAdapter()
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyD'))
+    events.dispatch('keyup', new FakeKeyboardEvent('KeyD'))
+    setDomainTimeMs(351)
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyD'))
+
+    expect(adapter.readFrame()).toEqual({ moveX: 1, moveY: 0, edges: [] })
+  })
+
+  it('requires a release and never treats key repeat as the second D tap', () => {
+    const { adapter, events, setDomainTimeMs } = createAdapter()
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyD'))
+    setDomainTimeMs(150)
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyD'))
+    expect(adapter.readFrame()).toEqual({ moveX: 1, moveY: 0, edges: [] })
+
+    events.dispatch('keyup', new FakeKeyboardEvent('KeyD'))
+    setDomainTimeMs(200)
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyD', true))
+    expect(adapter.readFrame()).toEqual({ moveX: 0, moveY: 0, edges: [] })
+
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyD'))
+    expect(adapter.readFrame().running).toBe(true)
+  })
+
+  it('cancels running on A and does not resume it when A is released', () => {
+    const { adapter, events, setDomainTimeMs } = createAdapter()
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyD'))
+    events.dispatch('keyup', new FakeKeyboardEvent('KeyD'))
+    setDomainTimeMs(200)
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyD'))
+    expect(adapter.readFrame().running).toBe(true)
+
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyA'))
+    expect(adapter.readFrame()).toEqual({ moveX: 0, moveY: 0, edges: [] })
+    events.dispatch('keyup', new FakeKeyboardEvent('KeyA'))
+    expect(adapter.readFrame()).toEqual({ moveX: 1, moveY: 0, edges: [] })
+  })
+
+  it('keeps vertical input during a right-running diagonal and resets the gesture on clear', () => {
+    const { adapter, events, setDomainTimeMs } = createAdapter()
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyD'))
+    events.dispatch('keyup', new FakeKeyboardEvent('KeyD'))
+    setDomainTimeMs(200)
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyD'))
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyW'))
+    expect(adapter.readFrame()).toEqual({
+      moveX: 1,
+      moveY: -1,
+      running: true,
+      edges: [],
+    })
+
+    adapter.clear()
+    events.dispatch('keydown', new FakeKeyboardEvent('KeyD'))
+    expect(adapter.readFrame()).toEqual({ moveX: 1, moveY: 0, edges: [] })
   })
 })

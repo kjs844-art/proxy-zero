@@ -34,7 +34,7 @@ const controlsFadeMs = 2_000
 const hudTextResolution = 2
 
 export const HUD_CONTROLS_TEXT =
-  'WASD MOVE  ·  SPACE JUMP  ·  Q ITEM  ·  E USE'
+  'WASD MOVE  ·  D×2 HOLD RUN  ·  SPACE JUMP  ·  Q ITEM  ·  E USE'
 
 export const HUD_CONTROL_KEYS = Object.freeze([
   Object.freeze({ key: 'J', label: 'L.HAND' }),

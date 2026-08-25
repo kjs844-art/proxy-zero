@@ -81,6 +81,7 @@ describe('Task 14 unified HUD contract', () => {
       { key: ';', label: 'R.FOOT' },
     ])
     expect(HUD_CONTROLS_TEXT).toContain('WASD MOVE')
+    expect(HUD_CONTROLS_TEXT).toContain('D×2 HOLD RUN')
     expect(HUD_CONTROLS_TEXT).toContain('SPACE JUMP')
     expect(HUD_CONTROLS_TEXT).toContain('Q ITEM')
     expect(HUD_CONTROLS_TEXT).toContain('E USE')
