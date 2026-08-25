@@ -328,7 +328,16 @@ const measureDeterministicHanRun = (): HanTimingSample => {
     let moveX: -1 | 0 | 1 = 0
     let moveY: -1 | 0 | 1 = 0
     const edges: InputFrame['edges'][number][] = []
-    const nextPickup = scene.itemRuntime.pickups.find((pickup) => !pickup.consumed)
+    const currentArena = scene.currentZone.arena
+    const currentSegmentMinX = currentArena.minX + scene.waveIndex * SIDE_SCROLL_VIEWPORT_WIDTH
+    const currentSegmentMaxX = currentArena.maxX + scene.waveIndex * SIDE_SCROLL_VIEWPORT_WIDTH
+    const nextPickup = scene.itemRuntime.pickups.find(
+      (pickup) =>
+        !pickup.consumed &&
+        scene.itemRuntime.inventory.counts[pickup.itemId] === 0 &&
+        pickup.position.x >= currentSegmentMinX &&
+        pickup.position.x <= currentSegmentMaxX,
+    )
     if (nextPickup) {
       const deltaX = nextPickup.position.x - player.position.x
       const deltaY = nextPickup.position.y - player.position.y
@@ -788,7 +797,7 @@ describe('CombatScene service-train orchestration', () => {
     expect(samples[0].noTargetMs).toBeCloseTo(1_833.3333333333, 6)
     expect(samples[0].zoneActiveMs).toBeGreaterThan(0)
     expect(samples[0].eliteActiveMs).toBeGreaterThan(0)
-    expect(samples[0].pickupsAcquired).toBe(2)
+    expect(samples[0].pickupsAcquired).toBe(3)
     expect(samples[0].itemsUsed).toBeGreaterThanOrEqual(1)
     expect(samples[0].handedOff).toBe(true)
   })

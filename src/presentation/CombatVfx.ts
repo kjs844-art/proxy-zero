@@ -20,7 +20,8 @@ interface TimedEffect {
 
 export type PresentationEffect =
   | (TimedEffect & { readonly type: 'burst'; readonly point: ActorPresentationPoint; readonly particleCount: number; readonly color: number; readonly strength: number })
-  | (TimedEffect & { readonly type: 'trail'; readonly from: ActorPresentationPoint; readonly to: ActorPresentationPoint; readonly color: number })
+  | (TimedEffect & { readonly type: 'trail'; readonly from: ActorPresentationPoint; readonly to: ActorPresentationPoint; readonly color: number; readonly strength: number })
+  | (TimedEffect & { readonly type: 'afterimage'; readonly point: ActorPresentationPoint; readonly color: number; readonly strength: number })
   | (TimedEffect & { readonly type: 'floating-text'; readonly point: ActorPresentationPoint; readonly text: string; readonly color: number })
   | (TimedEffect & { readonly type: 'actor-flash'; readonly point: ActorPresentationPoint; readonly color: number; readonly radius: number })
   | (TimedEffect & { readonly type: 'ring'; readonly point: ActorPresentationPoint; readonly color: number; readonly radius: number })
@@ -47,6 +48,7 @@ export interface PresentationBatchInput {
 const color = Object.freeze({
   cyan: 0x67e8f9,
   white: 0xe8fbff,
+  hot: 0xffffff,
   hp: 0x36e5c7,
   meter: 0xf6c76e,
   warning: 0xff6b35,
@@ -60,6 +62,11 @@ const particlesFor = (strength: number, lowEffect: boolean): number =>
   (lowEffect ? [3, 5, 6] : [6, 8, 12])[strengthIndex(strength) - 1]
 const durationFor = (strength: number): number =>
   [90, 130, 170][strengthIndex(strength) - 1]
+
+const MAX_ACTIVE_EFFECTS = 32
+const MAX_BURST_PARTICLES = 24
+const MAX_TRAILS = 6
+const MAX_AFTERIMAGES = 3
 
 const hashText = (value: string): number => {
   let hash = 2_166_136_261
@@ -128,11 +135,12 @@ export const planPresentationBatch = (
           type: 'trail',
           from,
           to: {
-            x: point.x + point.facing * limbCue.arc.radius,
+            x: point.x + point.facing * limbCue.arc.direction * limbCue.arc.radius,
             y: from.y + verticalDirection * (foot ? 15 : 9),
             facing: point.facing,
           },
           color: limbCue.color,
+          strength,
           durationMs: foot ? 125 : 92,
           seed: hashText(event.attackId),
         })
@@ -159,8 +167,19 @@ export const planPresentationBatch = (
           from: point,
           to: { x: point.x + point.facing * (34 + strength * 8), y: point.y - 8, facing: point.facing },
           color: strength === 3 ? color.meter : color.cyan,
+          strength,
           durationMs: strength === 3 ? 150 : 105,
           seed: hashText(event.attackId),
+        })
+      }
+      if (strength >= 2 && !input.lowEffect) {
+        effects.push({
+          type: 'afterimage',
+          point,
+          color: strength === 3 ? color.meter : color.cyan,
+          strength,
+          durationMs: strength === 3 ? 145 : 110,
+          seed: hashText(`${event.attackId}:afterimage`),
         })
       }
       continue
@@ -173,14 +192,30 @@ export const planPresentationBatch = (
       if (!input.playerId || event.attackerId === input.playerId) confirmedHitCount += 1
       addBurst(point, strength, `${event.attackerId}:${event.targetId}:${event.attackId}`,
         strength === 3 ? color.meter : color.white)
-      effects.push({ type: 'actor-flash', point: target ?? point, color: color.white, radius: 14 + strength * 4,
-        durationMs: 32 + strength * 16, seed: eventIndex })
+      effects.push({ type: 'actor-flash', point: target ?? point, color: color.hot, radius: 14 + strength * 6,
+        durationMs: 34 + strength * 18, seed: eventIndex })
+      if (strength >= 2) {
+        effects.push({
+          type: 'ring',
+          point,
+          color: strength === 3 ? color.meter : color.cyan,
+          radius: strength === 3 ? 32 : 22,
+          durationMs: strength === 3 ? 125 : 90,
+          seed: hashText(`${event.attackId}:impact-ring`),
+        })
+      }
       if (strength >= 2 && attacker) {
         effects.push({ type: 'trail', from: attacker, to: point, color: strength === 3 ? color.meter : color.cyan,
-          durationMs: strength === 3 ? 150 : 105, seed: eventIndex })
+          strength, durationMs: strength === 3 ? 150 : 105, seed: eventIndex })
       }
       if (strength === 3 && !screenFlashAdded) {
-        effects.push({ type: 'screen-flash', color: color.white, alpha: 0.1, durationMs: 40, seed: eventIndex })
+        effects.push({
+          type: 'screen-flash',
+          color: color.hot,
+          alpha: input.lowEffect ? 0.06 : 0.14,
+          durationMs: 55,
+          seed: eventIndex,
+        })
         screenFlashAdded = true
       }
       addText(point, `${Math.ceil(event.damage)}`, strength === 3 ? color.meter : color.white)
@@ -247,9 +282,9 @@ export const planPresentationBatch = (
     effects.push({
       type: 'shake',
       strength: strongestShake,
-      amplitude: (strongestShake === 3 ? 2.5 : strongestShake === 2 ? 1 : 0) *
-        (input.lowEffect ? 0.35 : 1),
-      durationMs: strongestShake === 3 ? 90 : strongestShake === 2 ? 45 : 0,
+      amplitude: (strongestShake === 3 ? 4.2 : strongestShake === 2 ? 1.8 : 0) *
+        (input.lowEffect ? 0.3 : 1),
+      durationMs: strongestShake === 3 ? 105 : strongestShake === 2 ? 65 : 0,
       seed: eventIndex,
     })
   }
@@ -320,7 +355,7 @@ export class CombatVfx {
         if (effect.type === 'burst') {
           let activeParticles = this.activeEffects.reduce((total, active) =>
             total + (active.effect.type === 'burst' ? active.effect.particleCount : 0), 0)
-          while (activeParticles + effect.particleCount > 24) {
+          while (activeParticles + effect.particleCount > MAX_BURST_PARTICLES) {
             const oldestBurst = this.activeEffects.findIndex((active) => active.effect.type === 'burst')
             if (oldestBurst < 0) break
             const removed = this.activeEffects.splice(oldestBurst, 1)[0].effect
@@ -336,8 +371,22 @@ export class CombatVfx {
           const trailIndexes = this.activeEffects.flatMap((active, index) =>
             active.effect.type === 'trail' ? [index] : [],
           )
-          if (trailIndexes.length >= 6) this.activeEffects.splice(trailIndexes[0], 1)
+          if (trailIndexes.length >= MAX_TRAILS) this.activeEffects.splice(trailIndexes[0], 1)
         }
+        if (effect.type === 'afterimage') {
+          const afterimageIndexes = this.activeEffects.flatMap((active, index) =>
+            active.effect.type === 'afterimage' ? [index] : [],
+          )
+          if (afterimageIndexes.length >= MAX_AFTERIMAGES) {
+            this.activeEffects.splice(afterimageIndexes[0], 1)
+          }
+        }
+        if (effect.type === 'shake') {
+          for (let index = this.activeEffects.length - 1; index >= 0; index -= 1) {
+            if (this.activeEffects[index].effect.type === 'shake') this.activeEffects.splice(index, 1)
+          }
+        }
+        while (this.activeEffects.length >= MAX_ACTIVE_EFFECTS) this.activeEffects.shift()
         this.activeEffects.push({ effect, elapsedMs: 0 })
       }
     }
@@ -370,26 +419,122 @@ export class CombatVfx {
       const alpha = 1 - progress
       const effect = active.effect
       if (effect.type === 'burst') {
-        this.worldGraphics.lineStyle(effect.strength === 3 ? 2 : 1, effect.color, alpha)
-        const distance = (10 + effect.strength * 7) * (0.25 + progress)
+        const travel = 1 - ((1 - progress) ** 2)
+        const distance = (11 + effect.strength * 8) * (0.3 + travel * 0.82)
+        const rotation = (effect.seed % 17) * 0.03
+        this.worldGraphics.lineStyle(3 + effect.strength, effect.color, alpha * 0.18)
         for (let ray = 0; ray < effect.particleCount; ray += 1) {
-          const angle = ((ray / effect.particleCount) * Math.PI * 2) + (effect.seed % 17) * 0.03
-          const inner = distance * 0.34
+          const angle = ((ray / effect.particleCount) * Math.PI * 2) + rotation
+          const rayDistance = distance * (ray % 3 === 0 ? 1.15 : ray % 2 === 0 ? 0.82 : 1)
+          const inner = rayDistance * 0.28
           this.worldGraphics.lineBetween(
             effect.point.x + Math.cos(angle) * inner,
             effect.point.y + Math.sin(angle) * inner,
-            effect.point.x + Math.cos(angle) * distance,
-            effect.point.y + Math.sin(angle) * distance,
+            effect.point.x + Math.cos(angle) * rayDistance,
+            effect.point.y + Math.sin(angle) * rayDistance,
           )
         }
-        this.worldGraphics.fillStyle(effect.color, alpha * 0.85)
-        this.worldGraphics.fillCircle(effect.point.x, effect.point.y, Math.max(1, 5 * alpha))
+        this.worldGraphics.lineStyle(effect.strength === 3 ? 2.25 : 1.25, color.hot, alpha * 0.92)
+        for (let ray = 0; ray < effect.particleCount; ray += 1) {
+          const angle = ((ray / effect.particleCount) * Math.PI * 2) + rotation
+          const rayDistance = distance * (ray % 3 === 0 ? 1.02 : 0.72)
+          this.worldGraphics.lineBetween(
+            effect.point.x + Math.cos(angle) * rayDistance * 0.24,
+            effect.point.y + Math.sin(angle) * rayDistance * 0.24,
+            effect.point.x + Math.cos(angle) * rayDistance,
+            effect.point.y + Math.sin(angle) * rayDistance,
+          )
+        }
+        if (effect.strength >= 2) {
+          const slashAngle = (effect.seed % 29) * 0.07
+          const slashRadius = (7 + effect.strength * 4) * (0.7 + progress * 0.45)
+          this.worldGraphics.lineStyle(effect.strength === 3 ? 3 : 2, color.hot, alpha * 0.88)
+          this.worldGraphics.lineBetween(
+            effect.point.x - Math.cos(slashAngle) * slashRadius,
+            effect.point.y - Math.sin(slashAngle) * slashRadius,
+            effect.point.x + Math.cos(slashAngle) * slashRadius,
+            effect.point.y + Math.sin(slashAngle) * slashRadius,
+          )
+          if (effect.strength === 3) {
+            const crossAngle = slashAngle + Math.PI / 2
+            this.worldGraphics.lineBetween(
+              effect.point.x - Math.cos(crossAngle) * slashRadius * 0.72,
+              effect.point.y - Math.sin(crossAngle) * slashRadius * 0.72,
+              effect.point.x + Math.cos(crossAngle) * slashRadius * 0.72,
+              effect.point.y + Math.sin(crossAngle) * slashRadius * 0.72,
+            )
+          }
+        }
+        this.worldGraphics.fillStyle(effect.color, alpha * 0.42)
+        this.worldGraphics.fillCircle(
+          effect.point.x,
+          effect.point.y,
+          Math.max(1, (7 + effect.strength * 1.5) * alpha),
+        )
+        this.worldGraphics.fillStyle(color.hot, alpha * 0.96)
+        this.worldGraphics.fillCircle(effect.point.x, effect.point.y, Math.max(1, 4 * alpha))
       } else if (effect.type === 'trail') {
-        this.worldGraphics.lineStyle(3, effect.color, alpha * 0.7)
-        this.worldGraphics.lineBetween(effect.from.x, effect.from.y - 8, effect.to.x, effect.to.y)
+        const fromY = effect.from.y - 8
+        this.worldGraphics.lineStyle(6 + effect.strength * 2, effect.color, alpha * 0.12)
+        this.worldGraphics.lineBetween(effect.from.x, fromY, effect.to.x, effect.to.y)
+        this.worldGraphics.lineStyle(2 + effect.strength * 0.7, effect.color, alpha * 0.74)
+        this.worldGraphics.lineBetween(effect.from.x, fromY, effect.to.x, effect.to.y)
+        this.worldGraphics.lineStyle(1, color.hot, alpha * 0.82)
+        this.worldGraphics.lineBetween(
+          effect.from.x + (effect.to.x - effect.from.x) * 0.42,
+          fromY + (effect.to.y - fromY) * 0.42,
+          effect.to.x,
+          effect.to.y,
+        )
+      } else if (effect.type === 'afterimage') {
+        const echoCount = effect.strength === 3 ? 2 : 1
+        for (let echo = 0; echo < echoCount; echo += 1) {
+          const echoScale = 1 - echo * 0.08
+          const echoAlpha = (alpha ** 2) * (effect.strength === 3 ? 0.22 : 0.16) /
+            (echo + 1)
+          const x = effect.point.x - effect.point.facing * (
+            7 + progress * 18 + echo * 8
+          )
+          const y = effect.point.y
+          this.worldGraphics.fillStyle(effect.color, echoAlpha)
+          this.worldGraphics.fillCircle(x, y, 5.5 * echoScale)
+          this.worldGraphics.lineStyle(9 * echoScale, effect.color, echoAlpha)
+          this.worldGraphics.lineBetween(x, y + 8 * echoScale, x, y + 25 * echoScale)
+          this.worldGraphics.lineStyle(4.5 * echoScale, effect.color, echoAlpha)
+          this.worldGraphics.lineBetween(
+            x,
+            y + 12 * echoScale,
+            x + effect.point.facing * 15 * echoScale,
+            y + 18 * echoScale,
+          )
+          this.worldGraphics.lineBetween(
+            x,
+            y + 14 * echoScale,
+            x - effect.point.facing * 9 * echoScale,
+            y + 21 * echoScale,
+          )
+          this.worldGraphics.lineBetween(
+            x,
+            y + 25 * echoScale,
+            x + effect.point.facing * 8 * echoScale,
+            y + 42 * echoScale,
+          )
+          this.worldGraphics.lineBetween(
+            x,
+            y + 25 * echoScale,
+            x - effect.point.facing * 7 * echoScale,
+            y + 43 * echoScale,
+          )
+        }
       } else if (effect.type === 'actor-flash') {
-        this.worldGraphics.fillStyle(effect.color, alpha * 0.28)
+        this.worldGraphics.fillStyle(effect.color, alpha * 0.24)
         this.worldGraphics.fillCircle(effect.point.x, effect.point.y, effect.radius * (0.65 + progress * 0.35))
+        this.worldGraphics.fillStyle(color.hot, alpha * 0.22)
+        this.worldGraphics.fillCircle(
+          effect.point.x,
+          effect.point.y,
+          effect.radius * (0.28 + progress * 0.12),
+        )
       } else if (effect.type === 'ring' || effect.type === 'warning') {
         const radius = effect.type === 'ring' ? effect.radius : 34
         const expanded = radius * (0.45 + progress * 0.75)
@@ -448,12 +593,18 @@ export class CombatVfx {
     readonly activeEffectCount: number
     readonly activeTextCount: number
     readonly activeBurstParticles: number
+    readonly activeTrailCount: number
+    readonly activeAfterimageCount: number
   } {
     return {
       activeEffectCount: this.activeEffects.length,
       activeTextCount: this.activeTexts.length,
       activeBurstParticles: this.activeEffects.reduce((total, active) =>
         total + (active.effect.type === 'burst' ? active.effect.particleCount : 0), 0),
+      activeTrailCount: this.activeEffects.filter((active) =>
+        active.effect.type === 'trail').length,
+      activeAfterimageCount: this.activeEffects.filter((active) =>
+        active.effect.type === 'afterimage').length,
     }
   }
 

@@ -297,9 +297,8 @@ describe('Task 13 actor animation manifest', () => {
       }
       expect(playerSilhouettes.size).toBe(3)
 
-      // Direct limb controls must not collapse into the same static pose.
-      // The exporter mirrors the action frame for left-side inputs while the
-      // right-side inputs retain the authored facing-right pose.
+      // Each anatomical input owns approved forward-facing art. ActorView is
+      // solely responsible for facing; the atlas never mirrors a limb pose.
       for (const profileId of ['han', 'mina', 'jin']) {
         const profile = animations.profiles.find((entry) => entry.id === profileId)
         const runtime = getActorVisualProfile(profileId)
@@ -308,18 +307,44 @@ describe('Task 13 actor animation manifest', () => {
         expect(profile, profileId).toBeDefined()
         expect(png, image).toBeDefined()
         if (!profile || !png) continue
-        const attackHash = (id: string): string => {
+        const attackHash = (id: string, frameIndex = 1): string => {
           const clip = profile.clips.find((entry) => entry.id === id)
-          const frame = frameByName.get(clip?.frames[1] ?? '')
-          expect(frame, `${profileId}/${id}`).toBeDefined()
+          const frame = frameByName.get(clip?.frames[frameIndex] ?? '')
+          expect(frame, `${profileId}/${id}/${frameIndex}`).toBeDefined()
           return frame ? alphaBounds(png, frame).hash : ''
         }
-        expect(attackHash(`${profileId}-right-hand`), `${profileId} hands`).not.toBe(
-          attackHash(`${profileId}-left-hand`),
-        )
-        expect(attackHash(`${profileId}-right-foot`), `${profileId} feet`).not.toBe(
-          attackHash(`${profileId}-left-foot`),
-        )
+        const directAttackIds = [
+          `${profileId}-left-hand`,
+          `${profileId}-right-hand`,
+          `${profileId}-left-foot`,
+          `${profileId}-right-foot`,
+        ]
+        expect(
+          new Set(directAttackIds.map((id) => attackHash(id))).size,
+          `${profileId} direct limb poses`,
+        ).toBe(4)
+
+        const idle = profile.clips.find((entry) => entry.id === 'idle')
+        const idleFrame = frameByName.get(idle?.frames[0] ?? '')
+        expect(idleFrame, `${profileId} idle`).toBeDefined()
+        const idleHash = idleFrame ? alphaBounds(png, idleFrame).hash : ''
+        for (const attackId of directAttackIds) {
+          expect(attackHash(attackId, 0), `${attackId} idle startup`).toBe(idleHash)
+        }
+        expect(
+          attackHash(`${profileId}-left-foot`, 1),
+          `${profileId} left-foot A/B`,
+        ).not.toBe(attackHash(`${profileId}-left-foot`, 2))
+
+        if (profileId === 'jin') {
+          const shoulderCharge = attackHash('jin-anchor-blow')
+          expect(shoulderCharge, 'jin shoulder charge versus right knee').not.toBe(
+            attackHash('jin-right-foot'),
+          )
+          expect(shoulderCharge, 'jin shoulder charge versus legacy combo pose').not.toBe(
+            attackHash('jin-zero-breaker'),
+          )
+        }
       }
     } finally {
       rmSync(first, { recursive: true, force: true })

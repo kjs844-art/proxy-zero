@@ -82,9 +82,11 @@ const normalAttacks = (characterId: string): AttackDefinition[] => [
   }),
   defineAttack(`${characterId}-right-foot`, {
     hitbox: { offsetX: 40, halfWidth: 25, halfDepth: 18 },
+    hit: { strength: 2 },
   }),
   defineAttack(`${characterId}-left-foot`, {
     hitbox: { offsetX: 42, halfWidth: 26, halfDepth: 18 },
+    hit: { strength: 2 },
   }),
 ]
 

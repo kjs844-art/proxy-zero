@@ -18,6 +18,7 @@ import {
   type PlayableStageOneZoneId,
   type StageOneWaveDefinition,
 } from '../../content/stage1'
+import { createStageOneEnemyDropPickup } from '../../content/stage1ItemDrops'
 import {
   combatReducer,
   type CombatActor,
@@ -120,6 +121,7 @@ import { FixedStepRunner } from '../../runtime/FixedStepRunner'
 import { SeededRandom } from '../../runtime/SeededRandom'
 import { ActorView } from '../actors/ActorView'
 import { KeyboardInputAdapter } from '../input/KeyboardInputAdapter'
+import { EnemyDropView } from '../world/EnemyDropView'
 import { HazardView } from '../world/HazardView'
 import { TrainBackdrop } from '../world/TrainBackdrop'
 import { TunnelBackdrop } from '../world/TunnelBackdrop'
@@ -319,6 +321,7 @@ export class CombatScene extends Phaser.Scene {
   private zoneRenderer: ZoneRenderer | null = null
   private trainBackdrop: TrainBackdrop | null = null
   private tunnelBackdrop: TunnelBackdrop | null = null
+  private enemyDropView: EnemyDropView | null = null
   private hazardView: HazardView | null = null
 
   private currentZone: PlayableStageOneZoneDefinition = n9DepotZone
@@ -399,6 +402,7 @@ export class CombatScene extends Phaser.Scene {
     )
     this.trainBackdrop = null
     this.tunnelBackdrop = null
+    this.enemyDropView = new EnemyDropView(this)
     this.hazardView = new HazardView(this)
     this.actorViews.set(
       character.id,
@@ -657,7 +661,10 @@ export class CombatScene extends Phaser.Scene {
       this.empStatusCommands(),
     )
 
-    this.state = this.reduceCombatWithFacingAssist(commands)
+    // Attacks travel in the direction chosen by the player's last A/D move.
+    // Limb keys select an anatomical attack only; they must never silently
+    // turn the fighter toward a nearby target.
+    this.state = combatReducer(this.state, commands, fixedStepMs)
     this.acceptEliteAttackStarts()
     this.acceptBossAttackStarts()
     if (this.zonePhase === 'active') {
@@ -709,6 +716,10 @@ export class CombatScene extends Phaser.Scene {
       getTunnelTrainPhase(this.tunnelHazardState),
       this.waveIndex,
     )
+    this.enemyDropView?.update(
+      activeDeltaMs,
+      this.itemRuntime.pickups.filter((pickup) => pickup.id.startsWith('stage1-drop:')),
+    )
   }
 
   private processItemEdges(
@@ -732,7 +743,7 @@ export class CombatScene extends Phaser.Scene {
           player.mode,
           player.activeAttack?.phase ?? null,
           discardUse,
-          this.zonePhase === 'active',
+          this.zonePhase === 'active' || this.zonePhase === 'inter-wave',
         ))
         continue
       }
@@ -767,7 +778,7 @@ export class CombatScene extends Phaser.Scene {
 
   private canInteractUse(player: Readonly<CombatActor>): boolean {
     return (
-      this.zonePhase === 'active' &&
+      (this.zonePhase === 'active' || this.zonePhase === 'inter-wave') &&
       player.hp > 0 &&
       (player.mode === 'idle' || player.mode === 'moving' || player.mode === 'airborne')
     )
@@ -943,62 +954,6 @@ export class CombatScene extends Phaser.Scene {
       }
     }
     return [...merged.values()].sort((left, right) => left.actorId.localeCompare(right.actorId))
-  }
-
-  private resolvePlayerFacingAssist(command: Readonly<CombatCommand>): -1 | 1 | null {
-    if (!command.attackId || command.moveX !== 0 || command.actorId !== this.state.playerId) {
-      return null
-    }
-    const player = this.state.actors[this.state.playerId]
-    const target = Object.values(this.state.actors)
-      .filter((actor) => {
-        if (actor.id === player.id || actor.team === player.team || actor.mode === 'defeated') {
-          return false
-        }
-        return (
-          Math.abs(actor.position.x - player.position.x) <= 180 &&
-          Math.abs(actor.position.y - player.position.y) <= 60
-        )
-      })
-      .sort((left, right) => {
-        const leftX = left.position.x - player.position.x
-        const leftY = left.position.y - player.position.y
-        const rightX = right.position.x - player.position.x
-        const rightY = right.position.y - player.position.y
-        return leftX * leftX + leftY * leftY - (rightX * rightX + rightY * rightY) ||
-          (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
-      })[0]
-    if (!target || target.position.x === player.position.x) return null
-    return target.position.x < player.position.x ? -1 : 1
-  }
-
-  private reduceCombatWithFacingAssist(
-    commands: readonly Readonly<CombatCommand>[],
-  ): CombatState {
-    const preflight = combatReducer(this.state, commands, fixedStepMs)
-    const playerCommand = commands.find(
-      (command) => command.actorId === this.state.playerId,
-    )
-    if (!playerCommand?.attackId) return preflight
-
-    const facing = this.resolvePlayerFacingAssist(playerCommand)
-    const accepted = preflight.events.some(
-      (event) =>
-        event.type === 'attack-started' &&
-        event.actorId === this.state.playerId &&
-        event.attackId === playerCommand.attackId,
-    )
-    const player = this.state.actors[this.state.playerId]
-    if (!accepted || facing === null || facing === player.facing) return preflight
-
-    const assistedInput: CombatState = {
-      ...this.state,
-      actors: {
-        ...this.state.actors,
-        [player.id]: { ...player, facing },
-      },
-    }
-    return combatReducer(assistedInput, commands, fixedStepMs)
   }
 
   private stepUnmountedAdapter(): void {
@@ -1476,10 +1431,25 @@ export class CombatScene extends Phaser.Scene {
 
   private recordEnemyDefeats(enemyIds: readonly string[]): void {
     const uniqueEnemyIds = [...new Set(enemyIds)]
+    const drops = uniqueEnemyIds.flatMap((enemyId) => {
+      const actor = this.state.actors[enemyId]
+      if (!actor || !this.waveRuntime.wave.spawnedEnemyIds.includes(enemyId)) return []
+      const drop = createStageOneEnemyDropPickup(enemyId, {
+        x: actor.position.x,
+        y: actor.position.y,
+      })
+      return drop ? [drop] : []
+    })
     if (uniqueEnemyIds.length > 0) {
       this.itemRuntime = itemReducer(this.itemRuntime, {
         type: 'remove-targets',
         targetIds: uniqueEnemyIds,
+      }).state
+    }
+    if (drops.length > 0) {
+      this.itemRuntime = itemReducer(this.itemRuntime, {
+        type: 'spawn-pickups',
+        pickups: drops,
       }).state
     }
     for (const enemyId of uniqueEnemyIds) {
@@ -1538,7 +1508,9 @@ export class CombatScene extends Phaser.Scene {
     if (this.waveIndex < this.currentZone.waves.length - 1) {
       this.zonePhase = 'inter-wave'
       this.interWaveRemainingMs = this.currentZone.interWaveDelayMs
-      this.zoneClearText?.setText('GO  →').setVisible(true)
+      // Route guidance belongs to the protected HUD edge. Keep the combat
+      // frame clear while the player walks into the next authored section.
+      this.zoneClearText?.setVisible(false)
       return
     }
     this.clearEmpTimers()
@@ -1761,8 +1733,7 @@ export class CombatScene extends Phaser.Scene {
         lives: this.runState.lives,
         inventory: this.itemRuntime.inventory,
         encounter: this.encounterHudSnapshot(),
-        waveIndex: this.waveIndex,
-        waveTotal: this.currentZone.waves.length,
+        showAdvancePrompt: this.zonePhase === 'inter-wave',
       })
     }
     if (this.runState.status !== 'game-over') {
@@ -1920,6 +1891,7 @@ export class CombatScene extends Phaser.Scene {
     this.zoneRenderer?.reset()
     this.trainBackdrop?.reset(this.itemRuntime.pickups)
     this.tunnelBackdrop?.reset()
+    this.enemyDropView?.reset()
     this.hazardView?.reset()
     this.zoneClearText?.setVisible(false)
     this.configureSideScrollCamera(true)
@@ -2051,6 +2023,7 @@ export class CombatScene extends Phaser.Scene {
     this.trainBackdrop = null
     this.tunnelBackdrop?.dispose()
     this.tunnelBackdrop = null
+    this.enemyDropView?.reset()
     if (entry.zoneId === 'service-train') {
       this.trainBackdrop = new TrainBackdrop(
         this,
@@ -2257,6 +2230,8 @@ export class CombatScene extends Phaser.Scene {
     this.trainBackdrop = null
     this.tunnelBackdrop?.dispose()
     this.tunnelBackdrop = null
+    this.enemyDropView?.dispose()
+    this.enemyDropView = null
     this.hud?.dispose()
     this.hud = null
     this.inventoryHud = null

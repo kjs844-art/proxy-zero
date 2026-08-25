@@ -59,6 +59,10 @@ export interface CreateItemRuntimeOptions {
 export type ItemCommand =
   | { type: 'cycle-item' }
   | {
+      type: 'spawn-pickups'
+      pickups: readonly Readonly<ItemPickupSnapshot>[]
+    }
+  | {
       type: 'interact-use'
       player: Readonly<ItemPlayerSnapshot>
       targets: readonly Readonly<ItemTargetSnapshot>[]
@@ -187,6 +191,21 @@ const cycleItem = (state: ItemRuntimeState): void => {
   state.inventory.selectedItemId = held[(currentIndex + 1) % held.length]
 }
 
+const spawnPickups = (
+  state: ItemRuntimeState,
+  pickups: readonly Readonly<ItemPickupSnapshot>[],
+): void => {
+  const knownPickupIds = new Set(state.pickups.map((pickup) => pickup.id))
+  for (const pickup of pickups) {
+    if (knownPickupIds.has(pickup.id)) continue
+    state.pickups.push({
+      ...pickup,
+      position: { ...pickup.position },
+    })
+    knownPickupIds.add(pickup.id)
+  }
+}
+
 const tryPickup = (
   state: ItemRuntimeState,
   player: Readonly<ItemPlayerSnapshot>,
@@ -286,6 +305,8 @@ export const itemReducer = (
 
   if (command.type === 'cycle-item') {
     cycleItem(state)
+  } else if (command.type === 'spawn-pickups') {
+    spawnPickups(state, command.pickups)
   } else if (command.type === 'advance-time') {
     advanceTimers(state, command.deltaMs, effects)
   } else if (command.type === 'clear-emp') {

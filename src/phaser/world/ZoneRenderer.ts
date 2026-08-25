@@ -30,19 +30,10 @@ const normalizedSectionCount = (sectionCount: number): number =>
 const normalizedSectionStride = (sectionStride: number): number =>
   Number.isFinite(sectionStride) && sectionStride > 0 ? sectionStride : 640
 
-type GateEdge = 'front' | 'rear'
-
-interface SectionGate {
-  readonly edge: GateEdge
-  readonly object: Phaser.GameObjects.Rectangle
-  readonly sectionIndex: number
-}
-
 /** Owns the authored N-9 depot background and lightweight animated atmosphere. */
 export class ZoneRenderer {
   private readonly owned = new Set<Phaser.GameObjects.GameObject>()
   private readonly reflections: Phaser.GameObjects.Rectangle[] = []
-  private readonly gates: SectionGate[] = []
   private readonly rain: Phaser.GameObjects.Graphics[] = []
   private readonly sectionLandmarks: Phaser.GameObjects.Graphics[] = []
   private readonly sectionCount: number
@@ -118,8 +109,6 @@ export class ZoneRenderer {
 
       this.addSectionLandmark(sectionIndex, offsetX)
 
-      this.addGate(sectionIndex, 'rear', arena.minX - 7 + offsetX, centerY, height)
-      this.addGate(sectionIndex, 'front', arena.maxX + 7 + offsetX, centerY, height)
     }
 
     this.applyMotion()
@@ -174,7 +163,6 @@ export class ZoneRenderer {
     for (const object of this.owned) object.destroy()
     this.owned.clear()
     this.reflections.length = 0
-    this.gates.length = 0
     this.rain.length = 0
     this.sectionLandmarks.length = 0
   }
@@ -182,18 +170,6 @@ export class ZoneRenderer {
   private own<Value extends Phaser.GameObjects.GameObject>(object: Value): Value {
     this.owned.add(object)
     return object
-  }
-
-  private addGate(
-    sectionIndex: number,
-    edge: GateEdge,
-    x: number,
-    centerY: number,
-    height: number,
-  ): void {
-    const gate = this.own(this.scene.add.rectangle(x, centerY, 8, height + 22, 0xef4444, 0.68))
-      .setDepth(-180)
-    this.gates.push({ edge, object: gate, sectionIndex })
   }
 
   /**
@@ -205,21 +181,18 @@ export class ZoneRenderer {
     const variant = sectionIndex % 3
 
     if (variant === 0) {
-      // Inbound loading bay: a bolted, lit arrival board on physical supports.
-      landmark.fillStyle(0x334155, 0.92)
-      landmark.fillRect(56 + offsetX, 70, 180, 52)
+      // Compact wall plaque: the painted backdrop already carries the depot
+      // architecture, so this landmark must not read as a gameplay gate or
+      // cover the combat silhouettes below it.
+      landmark.fillStyle(0x334155, 0.86)
+      landmark.fillRect(72 + offsetX, 82, 116, 30)
       landmark.fillStyle(0x081521, 0.98)
-      landmark.fillRect(62 + offsetX, 76, 168, 40)
+      landmark.fillRect(77 + offsetX, 87, 106, 20)
       landmark.fillStyle(0x5f450e, 0.92)
-      landmark.fillRect(62 + offsetX, 76, 168, 6)
+      landmark.fillRect(77 + offsetX, 87, 106, 4)
       landmark.fillStyle(0xf6c76e, 0.9)
-      for (const x of [72, 96, 120, 144, 168, 192]) landmark.fillRect(x + offsetX, 94, 15, 3)
-      landmark.fillStyle(0x94a3b8, 0.86)
-      landmark.fillRect(76 + offsetX, 116, 12, 56)
-      landmark.fillRect(204 + offsetX, 116, 12, 56)
-      landmark.fillStyle(0x020617, 0.7)
-      landmark.fillRect(70 + offsetX, 168, 152, 6)
-      this.addPhysicalLabel('N-9  INBOUND', 72 + offsetX, 82, '#fde68a')
+      landmark.fillCircle(177 + offsetX, 100, 3)
+      this.addPhysicalLabel('N-9  INBOUND', 84 + offsetX, 95, '#fde68a')
     } else if (variant === 1) {
       // Cold-storage transfer bay: dense stack of sealed cases, not a panel.
       landmark.fillStyle(0x102333, 0.94)
@@ -287,31 +260,5 @@ export class ZoneRenderer {
     this.rain.forEach((rain, sectionIndex) => {
       rain.setPosition(sectionIndex * this.sectionStride, this.rainOffset)
     })
-    this.applyGateStates()
-  }
-
-  private applyGateStates(): void {
-    for (const gate of this.gates) {
-      if (gate.sectionIndex === this.activeSectionIndex && gate.edge === 'front') {
-        gate.object
-          .setAlpha(this.locked ? 0.92 : 0.42)
-          .setFillStyle(this.locked ? 0xef4444 : 0x22d3ee, this.locked ? 0.76 : 0.34)
-          .setStrokeStyle(2, this.locked ? 0xff6b6b : 0x67e8f9, this.locked ? 1 : 0.88)
-        continue
-      }
-
-      if (gate.sectionIndex === this.activeSectionIndex - 1 && gate.edge === 'rear') {
-        gate.object
-          .setAlpha(0.14)
-          .setFillStyle(0x1e293b, 0.12)
-          .setStrokeStyle(1, 0x67e8f9, 0.24)
-        continue
-      }
-
-      gate.object
-        .setAlpha(0.06)
-        .setFillStyle(0x0f172a, 0.08)
-        .setStrokeStyle(1, 0x475569, 0.16)
-    }
   }
 }

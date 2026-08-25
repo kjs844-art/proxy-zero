@@ -46,6 +46,7 @@ describe('Task 10 item scene presentation', () => {
     const initial = hud.snapshot()
 
     expect(initial.ownedObjectCount).toBe(4)
+    expect(initial.visible).toBe(true)
     expect(initial.slots).toHaveLength(2)
     for (const slot of initial.slots) {
       expect(slot.bounds.x).toBeGreaterThanOrEqual(8)
@@ -53,6 +54,8 @@ describe('Task 10 item scene presentation', () => {
       expect(slot.bounds.x + slot.bounds.width).toBeLessThanOrEqual(632)
       expect(slot.bounds.y + slot.bounds.height).toBeLessThanOrEqual(352)
     }
+    expect(initial.slots[0].bounds.x).toBe(initial.slots[1].bounds.x)
+    expect(initial.slots[1].bounds.y).toBeGreaterThan(initial.slots[0].bounds.y)
 
     hud.update(inventory(1, 1, 'repair-kit'))
     expect(objects).toHaveLength(4)

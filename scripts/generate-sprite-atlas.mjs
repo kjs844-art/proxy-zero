@@ -48,6 +48,39 @@ const playerAttackIds = {
   ],
 }
 
+/**
+ * Approved direct-limb art. Null slots are superseded generations retained in
+ * the source strip only to keep the authored spacing deterministic.
+ */
+const playerAttackSourceSpecs = {
+  han: [
+    {
+      source: 'han-limb-attacks-keyed.png',
+      poseNames: ['left-hand', null, 'left-foot-a', 'left-foot-b'],
+    },
+    { source: 'han-right-hand-keyed.png', poseNames: ['right-hand'] },
+    { source: 'han-right-foot-keyed.png', poseNames: ['right-foot'] },
+  ],
+  mina: [
+    {
+      source: 'mina-limb-attacks-keyed.png',
+      poseNames: ['left-hand', null, 'left-foot-a', 'left-foot-b', 'right-foot'],
+    },
+    { source: 'mina-right-hand-keyed.png', poseNames: ['right-hand'] },
+  ],
+  jin: [
+    {
+      source: 'jin-limb-attacks-keyed.png',
+      poseNames: ['left-hand', null, 'left-foot-a', 'left-foot-b', null],
+    },
+    { source: 'jin-right-hand-keyed.png', poseNames: ['right-hand'] },
+    {
+      source: 'jin-right-foot-and-charge-keyed.png',
+      poseNames: ['right-foot', 'shoulder-charge'],
+    },
+  ],
+}
+
 const enemyAttacks = {
   'scout-striker': [
     ['scout-striker-jab', 'han-right-hand'],
@@ -272,29 +305,6 @@ const normalizePose = (source, scale, cell) => {
   return result
 }
 
-/**
- * Produces an authored opposite-side silhouette without introducing a second
- * external asset. The source sheet faces right; the left-limb normal attacks
- * reuse the same pose mirrored at atlas-export time, so each key has a
- * distinct frame even before combat VFX is applied.
- */
-const mirrorPoseHorizontally = (source, offsetX = 0) => {
-  const result = new PNG({ width: source.width, height: source.height })
-  for (let y = 0; y < source.height; y += 1) {
-    for (let x = 0; x < source.width; x += 1) {
-      const from = pixelIndex(source.width, x, y)
-      const mirroredX = result.width - 1 - x + offsetX
-      if (mirroredX < 0 || mirroredX >= result.width) continue
-      const to = pixelIndex(result.width, mirroredX, y)
-      result.data[to] = source.data[from]
-      result.data[to + 1] = source.data[from + 1]
-      result.data[to + 2] = source.data[from + 2]
-      result.data[to + 3] = source.data[from + 3]
-    }
-  }
-  return result
-}
-
 const poseExtents = (pose, cell) => {
   const bounds = alphaBounds(pose)
   return {
@@ -303,40 +313,32 @@ const poseExtents = (pose, cell) => {
   }
 }
 
-/** Keeps a mirrored pose within the profile's pre-existing presentation envelope. */
-const mirrorOffsetWithinBounds = (pose, cell, envelope) => {
-  const extents = poseExtents(pose, cell)
-  const minimumOffset = Math.ceil(extents.right - envelope.left)
-  const maximumOffset = Math.floor(envelope.right - extents.left)
-  if (minimumOffset > maximumOffset) {
-    throw new Error('Mirrored pose cannot fit the actor presentation envelope.')
-  }
-  return Math.max(minimumOffset, Math.min(0, maximumOffset))
-}
+const basePoseKey = (index) => `base:${index}`
+const attackPoseKey = (name) => `attack:${name}`
 
-const clip = (profileId, id, state, poseIndices, extra = {}) => ({
+const clip = (profileId, id, state, poseKeys, extra = {}) => ({
   id,
   state,
   loop: state === 'idle' || state === 'walk',
-  frames: poseIndices.map((_, index) =>
+  frames: poseKeys.map((_, index) =>
     `${profileId}/${state === 'attack' || state === 'telegraph' ? `${state}/${id}` : id}/${String(index).padStart(2, '0')}`
   ),
-  poseIndices,
+  poseKeys,
   ...extra,
 })
 
-const isLeftLimbNormal = (attackId) => /-left-(hand|foot)$/.test(attackId)
-
 const buildClips = (profile) => {
   const clips = [
-    clip(profile.id, 'idle', 'idle', [0, 0]),
-    clip(profile.id, 'walk', 'walk', [0, 1, 0, 1]),
-    clip(profile.id, 'airborne', 'airborne', [2]),
-    clip(profile.id, 'hitstun', 'hitstun', [5]),
-    clip(profile.id, 'knocked-down', 'knocked-down', [6]),
-    clip(profile.id, 'getting-up', 'getting-up', [6, 0]),
-    clip(profile.id, 'pickup-use', 'pickup-use', [7, 7]),
-    clip(profile.id, 'defeated', 'defeated', [6]),
+    clip(profile.id, 'idle', 'idle', [basePoseKey(0), basePoseKey(0)]),
+    clip(profile.id, 'walk', 'walk', [
+      basePoseKey(0), basePoseKey(1), basePoseKey(0), basePoseKey(1),
+    ]),
+    clip(profile.id, 'airborne', 'airborne', [basePoseKey(2)]),
+    clip(profile.id, 'hitstun', 'hitstun', [basePoseKey(5)]),
+    clip(profile.id, 'knocked-down', 'knocked-down', [basePoseKey(6)]),
+    clip(profile.id, 'getting-up', 'getting-up', [basePoseKey(6), basePoseKey(0)]),
+    clip(profile.id, 'pickup-use', 'pickup-use', [basePoseKey(7), basePoseKey(7)]),
+    clip(profile.id, 'defeated', 'defeated', [basePoseKey(6)]),
   ]
   const attackEntries = playerAttackIds[profile.id]
     ? playerAttackIds[profile.id].map((id) => [id, id])
@@ -345,17 +347,32 @@ const buildClips = (profile) => {
     const isKick = /foot|kick|sweep|charge|rush|line/.test(authoredAttackId)
     const isJump = /jump|sky/.test(authoredAttackId)
     const actionPose = isKick ? 4 : 3
-    const poseIndices = [isJump ? 2 : 0, actionPose, actionPose]
-    const mirrorAttackPose = isLeftLimbNormal(authoredAttackId)
-    clips.push(clip(profile.id, authoredAttackId, 'attack', poseIndices, {
+    const directLimb = authoredAttackId.startsWith(`${profile.id}-`)
+      ? authoredAttackId.slice(profile.id.length + 1)
+      : ''
+    const directPoseKeys = {
+      'left-hand': [basePoseKey(0), attackPoseKey('left-hand'), attackPoseKey('left-hand')],
+      'right-hand': [basePoseKey(0), attackPoseKey('right-hand'), attackPoseKey('right-hand')],
+      'left-foot': [basePoseKey(0), attackPoseKey('left-foot-a'), attackPoseKey('left-foot-b')],
+      'right-foot': [basePoseKey(0), attackPoseKey('right-foot'), attackPoseKey('right-foot')],
+    }
+    const poseKeys = playerAttackIds[profile.id] && directPoseKeys[directLimb]
+      ? directPoseKeys[directLimb]
+      : profile.id === 'jin' && authoredAttackId === 'jin-anchor-blow'
+        ? [
+            basePoseKey(0),
+            attackPoseKey('shoulder-charge'),
+            attackPoseKey('shoulder-charge'),
+          ]
+        : [basePoseKey(isJump ? 2 : 0), basePoseKey(actionPose), basePoseKey(actionPose)]
+    clips.push(clip(profile.id, authoredAttackId, 'attack', poseKeys, {
       authoredAttackId,
       domainAttackId,
-      poseTransforms: poseIndices.map((poseIndex) =>
-        mirrorAttackPose && poseIndex === actionPose ? 'mirror' : 'normal'
-      ),
     }))
     if (!playerAttackIds[profile.id]) {
-      clips.push(clip(profile.id, authoredAttackId, 'telegraph', [7, actionPose], {
+      clips.push(clip(profile.id, authoredAttackId, 'telegraph', [
+        basePoseKey(7), basePoseKey(actionPose),
+      ], {
         authoredAttackId,
         domainAttackId,
       }))
@@ -366,12 +383,50 @@ const buildClips = (profile) => {
 
 const sourceCache = new Map()
 const matrixRowCache = new Map()
-const loadProfilePoses = async (profile) => {
-  let source = sourceCache.get(profile.source)
+const loadKeyedSource = async (name) => {
+  let source = sourceCache.get(name)
   if (!source) {
-    source = removeKeyBackground(await parseSource(profile.source))
-    sourceCache.set(profile.source, source)
+    source = removeKeyBackground(await parseSource(name))
+    sourceCache.set(name, source)
   }
+  return source
+}
+
+const splitHorizontalPoses = (source, segments) => {
+  if (segments === 1) {
+    return [retainActorComponents(crop(source, 0, 0, source.width, source.height))]
+  }
+  const average = source.width / segments
+  const boundaries = adaptiveBoundaries(
+    source,
+    'x',
+    segments,
+    Math.max(1, Math.floor(average * 0.6)),
+    Math.ceil(average * 1.4),
+  )
+  return Array.from({ length: segments }, (_, column) => retainActorComponents(crop(
+    source,
+    boundaries[column],
+    0,
+    boundaries[column + 1] - boundaries[column],
+    source.height,
+  )))
+}
+
+const loadPlayerAttackPoses = async (profile, poses, cell) => {
+  for (const spec of playerAttackSourceSpecs[profile.id] ?? []) {
+    const source = await loadKeyedSource(spec.source)
+    const authoredPoses = splitHorizontalPoses(source, spec.poseNames.length)
+    const scale = profile.targetHeight / alphaBounds(authoredPoses[0]).height
+    spec.poseNames.forEach((poseName, index) => {
+      if (!poseName) return
+      poses.set(attackPoseKey(poseName), normalizePose(authoredPoses[index], scale, cell))
+    })
+  }
+}
+
+const loadProfilePoses = async (profile) => {
+  const source = await loadKeyedSource(profile.source)
   let rowImage
   let columnBounds
   if (profile.row === null) {
@@ -389,7 +444,7 @@ const loadProfilePoses = async (profile) => {
     rowImage = rows[profile.row]
     columnBounds = adaptiveBoundaries(rowImage, 'x', 8, 130, 300)
   }
-  const poses = Array.from({ length: 8 }, (_, column) => {
+  const authoredPoses = Array.from({ length: 8 }, (_, column) => {
     const pose = crop(
       rowImage,
       columnBounds[column],
@@ -399,10 +454,15 @@ const loadProfilePoses = async (profile) => {
     )
     return retainActorComponents(pose, profile.sheet === 'players' && column === 6)
   })
-  const idleHeight = alphaBounds(poses[0]).height
+  const idleHeight = alphaBounds(authoredPoses[0]).height
   const scale = profile.targetHeight / idleHeight
   const cell = sheetSpecs[profile.sheet].cell
-  return poses.map((pose) => normalizePose(pose, scale, cell))
+  const poses = new Map(authoredPoses.map((pose, index) => [
+    basePoseKey(index),
+    normalizePose(pose, scale, cell),
+  ]))
+  await loadPlayerAttackPoses(profile, poses, cell)
+  return poses
 }
 
 const packSheet = (sheetId, entries) => {
@@ -437,9 +497,14 @@ for (const profile of profileSpecs) {
   const poses = await loadProfilePoses(profile)
   const clips = buildClips(profile)
   const cell = sheetSpecs[profile.sheet].cell
-  const usedPoseIndices = [...new Set(clips.flatMap((entry) => entry.poseIndices))]
-  const visibleBounds = usedPoseIndices.reduce((result, poseIndex) => {
-    const extents = poseExtents(poses[poseIndex], cell)
+  const poseFor = (poseKey) => {
+    const pose = poses.get(poseKey)
+    if (!pose) throw new Error(`Missing ${profile.id} pose: ${poseKey}`)
+    return pose
+  }
+  const usedPoseKeys = [...new Set(clips.flatMap((entry) => entry.poseKeys))]
+  const visibleBounds = usedPoseKeys.reduce((result, poseKey) => {
+    const extents = poseExtents(poseFor(poseKey), cell)
     return {
       left: Math.max(result.left, extents.left),
       right: Math.max(result.right, extents.right),
@@ -447,17 +512,14 @@ for (const profile of profileSpecs) {
   }, { left: 0, right: 0 })
   for (const entry of clips) {
     entry.frames.forEach((frame, index) => {
-      const pose = poses[entry.poseIndices[index]]
-      const transform = entry.poseTransforms?.[index]
+      const pose = poseFor(entry.poseKeys[index])
       sheetEntries[profile.sheet].push({
         frame,
-        pose: transform === 'mirror'
-          ? mirrorPoseHorizontally(pose, mirrorOffsetWithinBounds(pose, cell, visibleBounds))
-          : pose,
+        pose,
       })
     })
   }
-  const { poseIndices: _ignored, poseTransforms: _ignoredTransforms, ...firstClip } = clips[0]
+  const { poseKeys: _ignored, ...firstClip } = clips[0]
   void firstClip
   manifestProfiles.push({
     id: profile.id,
@@ -470,7 +532,7 @@ for (const profile of profileSpecs) {
       width: profile.sheet === 'boss' ? 84 : profile.sheet === 'enemies' ? 50 : 42,
       height: profile.sheet === 'boss' ? 14 : 10,
     },
-    clips: clips.map(({ poseIndices: _poseIndices, poseTransforms: _poseTransforms, ...entry }) => entry),
+    clips: clips.map(({ poseKeys: _poseKeys, ...entry }) => entry),
   })
 }
 

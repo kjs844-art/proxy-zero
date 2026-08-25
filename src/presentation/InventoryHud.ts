@@ -4,11 +4,11 @@ import { ITEM_ORDER } from '../content/items'
 import type { ItemInventory } from '../domain/items/itemReducer'
 import type { ItemId } from '../domain/items/types'
 
-const SLOT_WIDTH = 72
-const SLOT_HEIGHT = 32
-const SLOT_GAP = 8
-const SLOT_Y = 10
-const SLOT_START_X = 478
+const SLOT_WIDTH = 60
+const SLOT_HEIGHT = 50
+const SLOT_GAP = 7
+const SLOT_Y = 42
+const SLOT_START_X = 570
 const SELECTED_STROKE = 0x67e8f9
 const UNSELECTED_STROKE = 0x334155
 
@@ -61,7 +61,7 @@ const drawPixelLabel = (
   const width = [...text].reduce((total, character) => total + glyphAdvance(character), -1)
   const startX = Math.round(bounds.x + (bounds.width - width) / 2)
   const startY = Math.round(bounds.y + (bounds.height - 7) / 2)
-  graphics.clear().fillStyle(0xe8fbff, 1)
+  graphics.fillStyle(0xe8fbff, 1)
   let cursorX = startX
   for (const character of text) {
     const glyph = PIXEL_GLYPHS[character]
@@ -74,6 +74,48 @@ const drawPixelLabel = (
     }
     cursorX += glyphAdvance(character)
   }
+}
+
+const drawItemIcon = (
+  graphics: Phaser.GameObjects.Graphics,
+  bounds: Readonly<SlotView['bounds']>,
+  itemId: ItemId,
+  count: 0 | 1,
+): void => {
+  const centerX = Math.round(bounds.x + bounds.width / 2)
+  const top = bounds.y + 7
+  const activeAlpha = count === 1 ? 1 : 0.38
+
+  if (itemId === 'emp') {
+    graphics.fillStyle(0x67e8f9, activeAlpha)
+    graphics.fillRect(centerX - 4, top + 2, 9, 14)
+    graphics.fillRect(centerX - 2, top, 5, 2)
+    graphics.fillStyle(0x071018, 1)
+    graphics.fillRect(centerX - 2, top + 6, 5, 2)
+    graphics.fillStyle(0xe8fbff, activeAlpha)
+    graphics.fillRect(centerX, top + 3, 1, 11)
+    return
+  }
+
+  graphics.fillStyle(0x8b6a2f, activeAlpha)
+  graphics.fillRect(centerX - 10, top + 4, 20, 13)
+  graphics.fillRect(centerX - 5, top + 1, 10, 3)
+  graphics.fillStyle(0x4ade80, activeAlpha)
+  graphics.fillRect(centerX - 1, top + 6, 3, 9)
+  graphics.fillRect(centerX - 4, top + 9, 9, 3)
+}
+
+const drawSlotGraphic = (
+  graphics: Phaser.GameObjects.Graphics,
+  slot: Readonly<Pick<SlotView, 'bounds' | 'itemId' | 'count'>>,
+): void => {
+  graphics.clear()
+  drawItemIcon(graphics, slot.bounds, slot.itemId, slot.count)
+  drawPixelLabel(
+    graphics,
+    { ...slot.bounds, y: slot.bounds.y + 38, height: 7 },
+    `${INVENTORY_ITEM_LABELS[slot.itemId]} X${slot.count}`,
+  )
 }
 
 const setVisibleIfSupported = (
@@ -92,12 +134,12 @@ export class InventoryHud {
   constructor(scene: Phaser.Scene, inventory: Readonly<ItemInventory>, visible = true) {
     this.visible = visible
     this.slots = ITEM_ORDER.map((itemId, index) => {
-      const x = SLOT_START_X + index * (SLOT_WIDTH + SLOT_GAP)
-      const bounds = { x, y: SLOT_Y, width: SLOT_WIDTH, height: SLOT_HEIGHT }
+      const y = SLOT_Y + index * (SLOT_HEIGHT + SLOT_GAP)
+      const bounds = { x: SLOT_START_X, y, width: SLOT_WIDTH, height: SLOT_HEIGHT }
       const background = scene.add
         .rectangle(
-          x + SLOT_WIDTH / 2,
-          SLOT_Y + SLOT_HEIGHT / 2,
+          SLOT_START_X + SLOT_WIDTH / 2,
+          y + SLOT_HEIGHT / 2,
           SLOT_WIDTH,
           SLOT_HEIGHT,
           0x071018,
@@ -129,6 +171,7 @@ export class InventoryHud {
     for (const slot of this.slots) {
       slot.count = inventory.counts[slot.itemId]
       slot.selected = inventory.selectedItemId === slot.itemId && slot.count === 1
+      slot.background.setFillStyle(slot.count === 1 ? 0x0b1b27 : 0x071018, slot.count === 1 ? 0.96 : 0.82)
       slot.background.setStrokeStyle(
         slot.selected ? 3 : 1,
         slot.selected ? SELECTED_STROKE : UNSELECTED_STROKE,
@@ -137,7 +180,7 @@ export class InventoryHud {
       const nextLabel = `${INVENTORY_ITEM_LABELS[slot.itemId]}  ×${slot.count}`
       if (slot.renderedLabel !== nextLabel) {
         slot.renderedLabel = nextLabel
-        drawPixelLabel(slot.label, slot.bounds, `${INVENTORY_ITEM_LABELS[slot.itemId]} X${slot.count}`)
+        drawSlotGraphic(slot.label, slot)
       }
     }
   }

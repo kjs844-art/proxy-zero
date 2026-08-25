@@ -18,18 +18,44 @@ class FakeDisplay {
 }
 
 class FakeGraphics extends FakeDisplay {
+  readonly lineStyles: Array<{ width: number; color: number; alpha: number | undefined }> = []
+  readonly fillStyles: Array<{ color: number; alpha: number | undefined }> = []
+  readonly lineSegments: Array<{ x1: number; y1: number; x2: number; y2: number }> = []
+  lineSegmentCount = 0
+
   clear(): this { return this }
   fillCircle(_x: number, _y: number, _radius: number): this { return this }
   fillRect(_x: number, _y: number, _width: number, _height: number): this { return this }
-  fillStyle(_color: number, _alpha?: number): this { return this }
-  lineBetween(_x1: number, _y1: number, _x2: number, _y2: number): this { return this }
-  lineStyle(_width: number, _color: number, _alpha?: number): this { return this }
+  fillStyle(color: number, alpha?: number): this {
+    this.fillStyles.push({ color, alpha })
+    return this
+  }
+  lineBetween(x1: number, y1: number, x2: number, y2: number): this {
+    this.lineSegmentCount += 1
+    this.lineSegments.push({ x1, y1, x2, y2 })
+    return this
+  }
+  lineStyle(width: number, color: number, alpha?: number): this {
+    this.lineStyles.push({ width, color, alpha })
+    return this
+  }
 }
 
-const fakeScene = () => ({
-  add: { graphics: () => new FakeGraphics(), text: () => new FakeDisplay() },
-  cameras: { main: { scrollX: 0, scrollY: 0, setScroll: () => undefined } },
-})
+const fakeScene = () => {
+  const graphics: FakeGraphics[] = []
+  return {
+    add: {
+      graphics: () => {
+        const object = new FakeGraphics()
+        graphics.push(object)
+        return object
+      },
+      text: () => new FakeDisplay(),
+    },
+    cameras: { main: { scrollX: 0, scrollY: 0, setScroll: () => undefined } },
+    graphics,
+  }
+}
 
 const points: Readonly<Record<string, ActorPresentationPoint>> = {
   han: { x: 220, y: 220, facing: 1 },
@@ -39,6 +65,14 @@ const points: Readonly<Record<string, ActorPresentationPoint>> = {
 const hit = (strength: number, damage = 12): CombatEvent => ({
   type: 'hit-confirmed', atMs: 100, attackerId: 'han', targetId: 'enemy',
   attackId: 'han-right-hand', strength, damage,
+})
+
+const attackStarted = (attackId: string, strength = 1): CombatEvent => ({
+  type: 'attack-started',
+  atMs: 100,
+  actorId: 'han',
+  attackId,
+  strength,
 })
 
 describe('CombatVfx event planning', () => {
@@ -88,6 +122,64 @@ describe('CombatVfx event planning', () => {
     expect(low.confirmedHitCount).toBe(normal.confirmedHitCount)
   })
 
+  it('layers a finisher spark, impact ring, trail, restrained afterimage, and brief shake', () => {
+    const normal = planPresentationBatch({
+      events: [attackStarted('han-iron-tempest', 3), hit(3)],
+      itemEffects: [], warningIds: [], points, playerId: 'han', lowEffect: false,
+    })
+    const low = planPresentationBatch({
+      events: [attackStarted('han-iron-tempest', 3), hit(3)],
+      itemEffects: [], warningIds: [], points, playerId: 'han', lowEffect: true,
+    })
+
+    expect(normal.effects).toContainEqual(expect.objectContaining({
+      type: 'burst', strength: 3, particleCount: 12,
+    }))
+    expect(normal.effects).toContainEqual(expect.objectContaining({
+      type: 'ring', radius: 32, durationMs: 125,
+    }))
+    expect(normal.effects).toContainEqual(expect.objectContaining({
+      type: 'trail', strength: 3,
+    }))
+    expect(normal.effects).toContainEqual(expect.objectContaining({
+      type: 'afterimage', strength: 3, durationMs: 145,
+    }))
+    expect(normal.effects).toContainEqual(expect.objectContaining({
+      type: 'screen-flash', alpha: 0.14, durationMs: 55,
+    }))
+    expect(normal.effects).toContainEqual(expect.objectContaining({
+      type: 'shake', strength: 3, amplitude: 4.2, durationMs: 105,
+    }))
+
+    expect(low.effects.some((effect) => effect.type === 'afterimage')).toBe(false)
+    expect(low.effects).toContainEqual(expect.objectContaining({
+      type: 'screen-flash', alpha: 0.06,
+    }))
+    expect(low.effects).toContainEqual(expect.objectContaining({
+      type: 'shake', strength: 3, amplitude: 1.26, durationMs: 105,
+    }))
+  })
+
+  it('sends each anatomical limb cue toward the fighter-facing direction', () => {
+    const forward = planPresentationBatch({
+      events: [attackStarted('han-left-foot')],
+      itemEffects: [],
+      warningIds: [],
+      points: { han: { x: 220, y: 220, facing: 1 } },
+      lowEffect: false,
+    }).effects.find((effect) => effect.type === 'trail')
+    const backward = planPresentationBatch({
+      events: [attackStarted('han-right-hand')],
+      itemEffects: [],
+      warningIds: [],
+      points: { han: { x: 220, y: 220, facing: -1 } },
+      lowEffect: false,
+    }).effects.find((effect) => effect.type === 'trail')
+
+    expect(forward).toMatchObject({ type: 'trail', from: { x: 220 }, to: { x: 258 } })
+    expect(backward).toMatchObject({ type: 'trail', from: { x: 220 }, to: { x: 194 } })
+  })
+
   it('ignores duplicate or out-of-order presentation batch ids without resetting monotonicity', () => {
     const gate = new CombatVfxBatchGate()
     expect(gate.accept(1)).toBe(true)
@@ -128,6 +220,27 @@ describe('CombatVfx event planning', () => {
     expect(points).toEqual(beforePoints)
   })
 
+  it('renders hot-core spark layers and the finisher echo with graphics primitives', () => {
+    const scene = fakeScene()
+    const renderer = new CombatVfx(scene as never)
+    const plan = planPresentationBatch({
+      events: [attackStarted('han-iron-tempest', 3), hit(3)],
+      itemEffects: [], warningIds: [], points, playerId: 'han', lowEffect: false,
+    })
+
+    expect(renderer.consume(1, plan)).toBe(true)
+    renderer.update(16)
+
+    const world = scene.graphics[0]
+    expect(Math.max(...world.lineStyles.map((entry) => entry.width))).toBeGreaterThanOrEqual(6)
+    expect(world.lineStyles).toContainEqual(expect.objectContaining({ color: 0xffffff }))
+    expect(world.fillStyles).toContainEqual(expect.objectContaining({ color: 0xffffff }))
+    expect(world.lineSegmentCount).toBeGreaterThan(30)
+    expect(Math.max(...world.lineSegments.flatMap((segment) => [segment.y1, segment.y2]))).toBe(
+      points.han.y + 43,
+    )
+  })
+
   it('caps three overlapping strength-3 batches at 24 active spark particles', () => {
     const renderer = new CombatVfx(fakeScene() as never)
     const plan = planPresentationBatch({
@@ -142,6 +255,28 @@ describe('CombatVfx event planning', () => {
       activeBurstParticles: 24,
       activeTextCount: 3,
     })
+  })
+
+  it('caps active afterimages and total graphics effects during noisy batches', () => {
+    const renderer = new CombatVfx(fakeScene() as never)
+    const finisher = planPresentationBatch({
+      events: [attackStarted('han-iron-tempest', 3)],
+      itemEffects: [], warningIds: [], points, playerId: 'han', lowEffect: false,
+    })
+    for (let batchId = 1; batchId <= 5; batchId += 1) {
+      expect(renderer.consume(batchId, finisher)).toBe(true)
+    }
+    expect(renderer.snapshot()).toMatchObject({
+      activeAfterimageCount: 3,
+      activeTrailCount: 5,
+    })
+
+    const warningIds = Array.from({ length: 50 }, (): 'train-gap' => 'train-gap')
+    const noise = planPresentationBatch({
+      events: [], itemEffects: [], warningIds, points, playerId: 'han', lowEffect: false,
+    })
+    expect(renderer.consume(6, noise)).toBe(true)
+    expect(renderer.snapshot().activeEffectCount).toBe(32)
   })
 
   it('disposes safely after Phaser has already released the scene camera', () => {

@@ -237,4 +237,33 @@ describe('itemReducer', () => {
     expect(reset.state.pickups[0].consumed).toBe(false)
     expect(reset.state.empRemainingMsByTargetId).toEqual({})
   })
+
+  it('spawns runtime pickups idempotently without changing consumed state, inventory, or timers', () => {
+    const state = createItemRuntimeState({
+      inventory: inventory(1, 1, 'repair-kit'),
+      pickups: [{ ...pickup('already-consumed', 'repair-kit', 12), consumed: true }],
+      empRemainingMsByTargetId: { stunned: 725 },
+    })
+    const command = {
+      type: 'spawn-pickups' as const,
+      pickups: [
+        pickup('already-consumed', 'emp', 999),
+        pickup('enemy-drop', 'emp', 40, 52),
+        pickup('enemy-drop', 'repair-kit', 70, 80),
+      ],
+    }
+
+    const first = itemReducer(state, command)
+    const second = itemReducer(first.state, command)
+
+    expect(first.effects).toEqual([])
+    expect(first.state.inventory).toEqual(state.inventory)
+    expect(first.state.empRemainingMsByTargetId).toEqual({ stunned: 725 })
+    expect(first.state.pickups).toEqual([
+      { ...pickup('already-consumed', 'repair-kit', 12), consumed: true },
+      pickup('enemy-drop', 'emp', 40, 52),
+    ])
+    expect(second).toEqual({ state: first.state, effects: [] })
+    expect(state.pickups).toHaveLength(1)
+  })
 })

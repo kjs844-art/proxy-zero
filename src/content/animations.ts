@@ -137,8 +137,8 @@ const profileLayout: ReadonlyArray<{
   readonly visibleBounds: { readonly left: number; readonly right: number }
 }> = [
   { id: 'han', sheet: 'players', targetHeight: 120, visibleBounds: { left: 59, right: 59 } },
-  { id: 'mina', sheet: 'players', targetHeight: 114, visibleBounds: { left: 48, right: 47 } },
-  { id: 'jin', sheet: 'players', targetHeight: 124, visibleBounds: { left: 65, right: 65 } },
+  { id: 'mina', sheet: 'players', targetHeight: 114, visibleBounds: { left: 63, right: 63 } },
+  { id: 'jin', sheet: 'players', targetHeight: 124, visibleBounds: { left: 68, right: 67 } },
   { id: 'scout-striker', sheet: 'enemies', targetHeight: 104, visibleBounds: { left: 59, right: 59 } },
   { id: 'scout-patrol', sheet: 'enemies', targetHeight: 100, visibleBounds: { left: 55, right: 55 } },
   { id: 'bulwark-sentinel', sheet: 'enemies', targetHeight: 128, visibleBounds: { left: 74, right: 74 } },

@@ -10,8 +10,8 @@ const characters = ['han', 'mina', 'jin'] as const
 const expectedByLimb = {
   'left-hand': {
     kind: 'hand', side: 'left', color: 0x67e8f9,
-    arc: { direction: -1, startDegrees: -150, endDegrees: -38, radius: 26 },
-    dust: { direction: -1, particleCount: 2, lift: 5 },
+    arc: { direction: 1, startDegrees: -150, endDegrees: -38, radius: 26 },
+    dust: { direction: 1, particleCount: 2, lift: 5 },
   },
   'right-hand': {
     kind: 'hand', side: 'right', color: 0xfb7185,
@@ -20,8 +20,8 @@ const expectedByLimb = {
   },
   'left-foot': {
     kind: 'foot', side: 'left', color: 0xa78bfa,
-    arc: { direction: -1, startDegrees: 168, endDegrees: 28, radius: 38 },
-    dust: { direction: -1, particleCount: 5, lift: 2 },
+    arc: { direction: 1, startDegrees: 168, endDegrees: 28, radius: 38 },
+    dust: { direction: 1, particleCount: 5, lift: 2 },
   },
   'right-foot': {
     kind: 'foot', side: 'right', color: 0xfbbf24,

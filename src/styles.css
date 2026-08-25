@@ -22,11 +22,17 @@ body {
 }
 
 canvas {
-  /* Keep the authored sprite atlas sharp in Phaser, but let the browser
-     resample the finished canvas at non-integer viewport sizes. The former
-     forced nearest-neighbour rule made high-detail painted backgrounds look
-     unintentionally broken on many desktop displays. */
-  image-rendering: auto;
+  /* Phaser writes an inline `image-rendering: pixelated` declaration. The
+     desktop app frequently fits 640x360 into a non-integer viewport, where
+     nearest-neighbour stretching creates uneven 1/2 px columns. Override the
+     inline declaration so the finished high-detail frame is sampled evenly. */
+  image-rendering: auto !important;
+  backface-visibility: hidden;
+  transform: translateZ(0);
   max-height: 100%;
   max-width: 100%;
+}
+
+canvas[data-sampling='pixelated'] {
+  image-rendering: pixelated !important;
 }

@@ -134,6 +134,35 @@ describe('Task 13 deterministic actor presentation', () => {
     }))).toContain('/telegraph/boss-dredger-slam/')
   })
 
+  it('selects four direct limb clips, both left-foot actions, and JIN shoulder charge', () => {
+    const frameFor = (profileId: 'han' | 'mina' | 'jin', attackId: string, elapsedMs: number) =>
+      selectActorFrame(snapshot({
+        profileId,
+        actor: actor({
+          id: profileId,
+          mode: 'attacking',
+          activeAttack: { attackId, elapsedMs, phase: 'active', hitRecords: {} },
+        }),
+      }))
+
+    for (const profileId of ['han', 'mina', 'jin'] as const) {
+      const directAttackIds = [
+        `${profileId}-left-hand`,
+        `${profileId}-right-hand`,
+        `${profileId}-left-foot`,
+        `${profileId}-right-foot`,
+      ]
+      const actionFrames = directAttackIds.map((attackId) => frameFor(profileId, attackId, 100))
+      expect(new Set(actionFrames).size, `${profileId} direct clips`).toBe(4)
+      expect(frameFor(profileId, `${profileId}-left-foot`, 100)).toMatch(/\/01$/)
+      expect(frameFor(profileId, `${profileId}-left-foot`, 200)).toMatch(/\/02$/)
+    }
+
+    expect(frameFor('jin', 'jin-anchor-blow', 100)).toBe(
+      'jin/attack/jin-anchor-blow/01',
+    )
+  })
+
   it('keeps world-space sprite and shadow positions while preserving bottom origin and facing', () => {
     const shadow = new FakeDisplay()
     const image = new FakeDisplay()
@@ -162,4 +191,5 @@ describe('Task 13 deterministic actor presentation', () => {
     })
     expect({ x: shadow.x, y: shadow.y }).toEqual({ x: 640, y: 236 })
   })
+
 })

@@ -7,7 +7,7 @@ export type LimbCueKind = 'hand' | 'foot' | 'unknown'
 export type LimbCueSide = 'left' | 'right' | 'none'
 
 export interface LimbArcCue {
-  /** Local direction; a renderer can multiply this by the actor facing. */
+  /** Local forward direction; a renderer multiplies this by actor facing. */
   readonly direction: -1 | 1
   readonly startDegrees: number
   readonly endDegrees: number
@@ -15,7 +15,7 @@ export interface LimbArcCue {
 }
 
 export interface LimbDustCue {
-  /** Local direction; a renderer can multiply this by the actor facing. */
+  /** Local forward direction; a renderer multiplies this by actor facing. */
   readonly direction: -1 | 1
   readonly particleCount: number
   readonly lift: number
@@ -37,8 +37,8 @@ const limbProfiles: Readonly<Record<BasicLimbKey, Omit<AttackLimbCueProfile, 'ch
     kind: 'hand',
     side: 'left',
     color: 0x67e8f9,
-    arc: { direction: -1, startDegrees: -150, endDegrees: -38, radius: 26 },
-    dust: { direction: -1, particleCount: 2, lift: 5 },
+    arc: { direction: 1, startDegrees: -150, endDegrees: -38, radius: 26 },
+    dust: { direction: 1, particleCount: 2, lift: 5 },
   },
   'right-hand': {
     kind: 'hand',
@@ -51,8 +51,8 @@ const limbProfiles: Readonly<Record<BasicLimbKey, Omit<AttackLimbCueProfile, 'ch
     kind: 'foot',
     side: 'left',
     color: 0xa78bfa,
-    arc: { direction: -1, startDegrees: 168, endDegrees: 28, radius: 38 },
-    dust: { direction: -1, particleCount: 5, lift: 2 },
+    arc: { direction: 1, startDegrees: 168, endDegrees: 28, radius: 38 },
+    dust: { direction: 1, particleCount: 5, lift: 2 },
   },
   'right-foot': {
     kind: 'foot',

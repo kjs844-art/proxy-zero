@@ -113,6 +113,7 @@ import {
   type ZoneWaveRuntime,
 } from '../../src/domain/waves/waveDirector'
 import { HazardView } from '../../src/phaser/world/HazardView'
+import { EnemyDropView } from '../../src/phaser/world/EnemyDropView'
 import { ZoneRenderer } from '../../src/phaser/world/ZoneRenderer'
 import { TrainBackdrop } from '../../src/phaser/world/TrainBackdrop'
 import { CombatScene } from '../../src/phaser/scenes/CombatScene'
@@ -166,16 +167,19 @@ describe('N-9 Depot authored zone', () => {
     ).toEqual([
       [
         { id: 'entry-patrol', enemyVariantId: 'scout-patrol', delayMs: 0 },
-        { id: 'far-striker', enemyVariantId: 'scout-striker', delayMs: 6_000 },
+        { id: 'far-striker', enemyVariantId: 'scout-striker', delayMs: 450 },
+        { id: 'entry-flanker', enemyVariantId: 'scout-striker', delayMs: 900 },
       ],
       [
         { id: 'left-striker', enemyVariantId: 'scout-striker', delayMs: 0 },
-        { id: 'anchor-sentinel', enemyVariantId: 'bulwark-sentinel', delayMs: 6_500 },
+        { id: 'anchor-sentinel', enemyVariantId: 'bulwark-sentinel', delayMs: 550 },
+        { id: 'rear-patrol', enemyVariantId: 'scout-patrol', delayMs: 1_100 },
       ],
       [
         { id: 'near-patrol', enemyVariantId: 'scout-patrol', delayMs: 0 },
-        { id: 'far-striker', enemyVariantId: 'scout-striker', delayMs: 6_000 },
-        { id: 'gate-enforcer', enemyVariantId: 'bulwark-enforcer', delayMs: 12_000 },
+        { id: 'far-striker', enemyVariantId: 'scout-striker', delayMs: 450 },
+        { id: 'gate-enforcer', enemyVariantId: 'bulwark-enforcer', delayMs: 900 },
+        { id: 'upper-patrol', enemyVariantId: 'scout-patrol', delayMs: 1_350 },
       ],
     ])
     expect(n9DepotZone.waves.map((wave) => wave.seed)).toEqual([
@@ -183,7 +187,7 @@ describe('N-9 Depot authored zone', () => {
       0x29b3d5f2,
       0x39c4e603,
     ])
-    expect(n9DepotZone.waves.map((wave) => wave.orders.length)).toEqual([2, 2, 3])
+    expect(n9DepotZone.waves.map((wave) => wave.orders.length)).toEqual([3, 3, 4])
   })
 
   it('keeps arrival, lock timing, transition, and three-minute target as immutable data', () => {
@@ -256,7 +260,7 @@ describe('N-9 Depot Task 8 wave integration', () => {
       }),
     )
 
-    result = advance(state, 5_999, state.spawnedEnemyIds)
+    result = advance(state, 449, state.spawnedEnemyIds)
     state = result.state
     expect(result.events.some((event) => event.type === 'wave-cleared')).toBe(false)
     expect(state.emittedOrderIds).toEqual(['near-patrol'])
@@ -268,11 +272,23 @@ describe('N-9 Depot Task 8 wave integration', () => {
     )
     expect(state.emittedOrderIds).toEqual(['near-patrol', 'far-striker'])
 
-    result = advance(state, 6_000, state.spawnedEnemyIds)
+    result = advance(state, 450, state.spawnedEnemyIds)
+    state = result.state
+    expect(result.events).toContainEqual(
+      expect.objectContaining({ type: 'enemy-spawned', orderId: 'gate-enforcer' }),
+    )
+    expect(state.emittedOrderIds).toEqual([
+      'near-patrol',
+      'far-striker',
+      'gate-enforcer',
+    ])
+
+    result = advance(state, 450, state.spawnedEnemyIds)
     expect(result.state.emittedOrderIds).toEqual([
       'near-patrol',
       'far-striker',
       'gate-enforcer',
+      'upper-patrol',
     ])
     expect(result.events.some((event) => event.type === 'wave-cleared')).toBe(false)
 
@@ -551,6 +567,7 @@ describe('N-9 Depot owned presentation lifecycles', () => {
       hasWarningRed: true,
       sectionLandmarkCount: 1,
     })
+    expect(first.rectangles.some((rectangle) => rectangle.width === 8)).toBe(false)
     left.update(750)
     right.update(750)
     expect(left.snapshot()).toEqual(right.snapshot())
@@ -613,6 +630,7 @@ type CombatSceneHarness = {
   lastRecoveryPositions: Map<string, { x: number; y: number }>
   actorViews: Map<string, DisposableView>
   hazardView: HazardView | null
+  enemyDropView: EnemyDropView | null
   zoneRenderer: ZoneRenderer | null
   trainBackdrop: TrainBackdrop | null
   zoneClearText: { visible: boolean } | null
@@ -648,7 +666,6 @@ type CombatSceneHarness = {
   handlePlayerDefeat(): void
   handleZoneEntered(entry: { zoneId: 'service-train'; zoneStartWaveId: string }): void
   recordEnemyDefeats(enemyIds: readonly string[]): void
-  resolvePlayerFacingAssist(command: Readonly<CombatCommand>): -1 | 1 | null
   applyEnemyIntent(enemyId: string, intent: Readonly<EnemyIntent>): Partial<CombatCommand>
   applyEnemyGuardState(
     enemyId: string,
@@ -754,7 +771,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
     )
   })
 
-  it('consumes a neutral facing hint only when the reducer accepts the new attack', () => {
+  it('keeps the player-facing direction when a direct limb attack starts', () => {
     const { scene } = createLiveScene()
     scene.stepDomain()
     const player = scene.state.actors.han
@@ -776,64 +793,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
         attackId: 'han-right-foot',
       }),
     )
-    expect(scene.state.actors.han.facing).toBe(-1)
-  })
-
-  it('resolves neutral assist candidates by range, depth, movement, and stable ID', () => {
-    const { scene } = createLiveScene()
-    scene.stepDomain()
-    const player = scene.state.actors.han
-    const spawnedEnemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
-    const spawnedEnemy = scene.state.actors[spawnedEnemyId]
-    player.position = { x: 250, y: 248, z: 0 }
-    player.facing = 1
-    spawnedEnemy.position = { x: 200, y: 248, z: 0 }
-
-    expect(scene.resolvePlayerFacingAssist({
-      actorId: 'han',
-      moveX: 0,
-      moveY: 0,
-      attackId: 'han-right-foot',
-    })).toBe(-1)
-    expect(player.facing).toBe(1)
-
-    scene.state.actors['a-stable-tie'] = {
-      ...spawnedEnemy,
-      id: 'a-stable-tie',
-      position: { x: 300, y: 248, z: 0 },
-      velocity: { ...spawnedEnemy.velocity },
-      body: { ...spawnedEnemy.body },
-    }
-    expect(scene.resolvePlayerFacingAssist({
-      actorId: 'han',
-      moveX: 0,
-      moveY: 0,
-      attackId: 'han-right-foot',
-    })).toBe(1)
-
-    expect(scene.resolvePlayerFacingAssist({
-      actorId: 'han',
-      moveX: 1,
-      moveY: 0,
-      attackId: 'han-right-foot',
-    })).toBeNull()
-
-    spawnedEnemy.position = { x: 431, y: 248, z: 0 }
-    scene.state.actors['a-stable-tie'].mode = 'defeated'
-    expect(scene.resolvePlayerFacingAssist({
-      actorId: 'han',
-      moveX: 0,
-      moveY: 0,
-      attackId: 'han-right-foot',
-    })).toBeNull()
-
-    spawnedEnemy.position = { x: 300, y: 309, z: 0 }
-    expect(scene.resolvePlayerFacingAssist({
-      actorId: 'han',
-      moveX: 0,
-      moveY: 0,
-      attackId: 'han-right-foot',
-    })).toBeNull()
+    expect(scene.state.actors.han.facing).toBe(1)
   })
 
   it('preserves a telegraph and one-shot attack intent through a full hitstop tick', () => {
@@ -955,11 +915,16 @@ describe('CombatScene N-9 Depot orchestration', () => {
 
     clearCurrentWave(scene)
     expect(scene.zonePhase).toBe('inter-wave')
+    expect(scene.zoneClearText?.visible).toBe(false)
+    scene.update(0, 0)
+    expect(scene.hud?.snapshot().advancePromptVisible).toBe(true)
     expect(scene.zoneRenderer?.snapshot().locked).toBe(false)
     expect(services.completedRun).toBeNull()
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
 
     crossGateToNextWave(scene)
+    scene.update(0, 0)
+    expect(scene.hud?.snapshot().advancePromptVisible).toBe(false)
     expect(scene.runState).toMatchObject({
       ...invariantRunState,
       currentWaveId: 'n9-depot-wave-2',
@@ -1384,12 +1349,19 @@ describe('CombatScene N-9 Depot orchestration', () => {
 
     const enemyView = scene.actorViews.get(enemyId)
     const enemyDispose = vi.spyOn(enemyView as DisposableView, 'dispose')
+    const defeatedPosition = { ...scene.state.actors[enemyId].position }
     scene.recordEnemyDefeats([enemyId])
     expect(enemyDispose).toHaveBeenCalledOnce()
     expect(scene.actorViews.has(enemyId)).toBe(false)
     expect(scene.enemyBrains.has(enemyId)).toBe(false)
     expect(scene.enemyRngs.has(enemyId)).toBe(false)
     expect(scene.hazardView?.snapshot().telegraphCount).toBe(0)
+    expect(scene.itemRuntime.pickups).toContainEqual({
+      id: `stage1-drop:${enemyId}`,
+      itemId: 'repair-kit',
+      position: { x: defeatedPosition.x, y: defeatedPosition.y },
+      consumed: false,
+    })
 
     const playerView = scene.actorViews.get('han')
     const playerDispose = vi.spyOn(playerView as DisposableView, 'dispose')
@@ -1399,6 +1371,8 @@ describe('CombatScene N-9 Depot orchestration', () => {
     const rendererDispose = vi.spyOn(renderer as ZoneRenderer, 'dispose')
     const hazards = scene.hazardView
     const hazardDispose = vi.spyOn(hazards as HazardView, 'dispose')
+    const dropView = scene.enemyDropView
+    const dropViewDispose = vi.spyOn(dropView as EnemyDropView, 'dispose')
     const inventoryHud = scene.inventoryHud
     const inventoryHudDispose = vi.spyOn(inventoryHud as InventoryHud, 'dispose')
 
@@ -1407,6 +1381,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
     expect(inputDispose).toHaveBeenCalledOnce()
     expect(rendererDispose).toHaveBeenCalledOnce()
     expect(hazardDispose).toHaveBeenCalledOnce()
+    expect(dropViewDispose).toHaveBeenCalledOnce()
     expect(inventoryHudDispose).toHaveBeenCalledOnce()
     expect(scene.actorViews.size).toBe(0)
     expect(scene.enemyBrains.size).toBe(0)

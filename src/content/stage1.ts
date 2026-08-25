@@ -87,22 +87,25 @@ export const n9DepotZone: DepotZoneDefinition = deepFreeze({
       id: 'n9-depot-wave-1', seed: 0x19a2c4e1,
       orders: [
         spawn('entry-patrol', 'scout-patrol', 0, 454, 248),
-        spawn('far-striker', 'scout-striker', 6_000, 530, 210),
+        spawn('far-striker', 'scout-striker', 450, 530, 210),
+        spawn('entry-flanker', 'scout-striker', 900, 548, 286),
       ],
     },
     {
       id: 'n9-depot-wave-2', seed: 0x29b3d5f2,
       orders: [
         spawn('left-striker', 'scout-striker', 0, 488, 214),
-        spawn('anchor-sentinel', 'bulwark-sentinel', 6_500, 542, 288),
+        spawn('anchor-sentinel', 'bulwark-sentinel', 550, 542, 288),
+        spawn('rear-patrol', 'scout-patrol', 1_100, 560, 242),
       ],
     },
     {
       id: 'n9-depot-wave-3', seed: 0x39c4e603,
       orders: [
         spawn('near-patrol', 'scout-patrol', 0, 450, 276),
-        spawn('far-striker', 'scout-striker', 6_000, 524, 208),
-        spawn('gate-enforcer', 'bulwark-enforcer', 12_000, 552, 280),
+        spawn('far-striker', 'scout-striker', 450, 524, 208),
+        spawn('gate-enforcer', 'bulwark-enforcer', 900, 552, 280),
+        spawn('upper-patrol', 'scout-patrol', 1_350, 566, 224),
       ],
     },
   ],

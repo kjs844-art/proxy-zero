@@ -108,6 +108,17 @@ describe('character and attack content', () => {
     ).toBe(true)
   })
 
+  it('keeps hands quick and gives both direct feet the heavier impact tier', () => {
+    const attackById = new Map(attackCatalog.map((attack) => [attack.id, attack]))
+
+    for (const character of characters) {
+      expect(attackById.get(character.normalAttackIds['left-hand'])?.hit.strength).toBe(1)
+      expect(attackById.get(character.normalAttackIds['right-hand'])?.hit.strength).toBe(1)
+      expect(attackById.get(character.normalAttackIds['left-foot'])?.hit.strength).toBe(2)
+      expect(attackById.get(character.normalAttackIds['right-foot'])?.hit.strength).toBe(2)
+    }
+  })
+
   it('keeps scripted 10-second normal DPS within five percent of the mean', () => {
     const attackById = new Map(attackCatalog.map((attack) => [attack.id, attack]))
     const durationMs = 10_000

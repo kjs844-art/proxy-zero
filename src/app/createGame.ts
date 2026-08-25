@@ -5,6 +5,36 @@ import { GameServices } from './GameServices'
 export const GAME_WIDTH = 640
 export const GAME_HEIGHT = 360
 
+export type CanvasSamplingMode = 'auto' | 'pixelated'
+
+/**
+ * Preserve exact pixel edges at integer desktop zooms, but avoid uneven pixel
+ * columns when FIT has to use a fractional scale (common inside the Codex app).
+ */
+export const resolveCanvasSamplingMode = (
+  renderedWidth: number,
+  logicalWidth = GAME_WIDTH,
+): CanvasSamplingMode => {
+  if (!Number.isFinite(renderedWidth) || !Number.isFinite(logicalWidth) || logicalWidth <= 0) {
+    return 'auto'
+  }
+  const scale = renderedWidth / logicalWidth
+  return scale >= 1 && Math.abs(scale - Math.round(scale)) < 0.01 ? 'pixelated' : 'auto'
+}
+
+const installResponsiveCanvasSampling = (game: Phaser.Game): void => {
+  const applySampling = (): void => {
+    const mode = resolveCanvasSamplingMode(game.canvas.clientWidth)
+    game.canvas.style.setProperty('image-rendering', mode, 'important')
+    game.canvas.dataset.sampling = mode
+  }
+  applySampling()
+  if (typeof ResizeObserver === 'undefined') return
+  const observer = new ResizeObserver(applySampling)
+  observer.observe(game.canvas)
+  game.events.once('destroy', () => observer.disconnect())
+}
+
 export async function createGame(
   parent: string | HTMLElement,
   services = new GameServices(),
@@ -19,20 +49,27 @@ export async function createGame(
       import('../phaser/scenes/ResultsScene'),
     ])
 
-  return new Phaser.Game({
+  const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent,
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
-    pixelArt: true,
+    // The authored sprites are high-resolution pixel illustrations that are
+    // reduced to their in-game size. Linear texture filtering keeps diagonal
+    // limbs and the painted depot background clean at that reduction while
+    // roundPixels still prevents movement shimmer in the 640 x 360 world.
+    pixelArt: false,
     render: {
-      antialias: false,
+      antialias: true,
+      antialiasGL: true,
       roundPixels: true,
-      pixelArt: true,
+      pixelArt: false,
+      powerPreference: 'high-performance',
     },
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
+      autoRound: true,
       width: GAME_WIDTH,
       height: GAME_HEIGHT,
       zoom: 2,
@@ -45,4 +82,6 @@ export async function createGame(
       new ResultsScene(services),
     ],
   })
+  installResponsiveCanvasSampling(game)
+  return game
 }
