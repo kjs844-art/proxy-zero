@@ -73,11 +73,16 @@ vi.mock('phaser', () => {
 
 import { combatAttackCatalog } from '../../src/content/attacks'
 import { getEliteDefinition } from '../../src/content/elites'
-import { getPlayableStageOneZone, serviceTrainZone } from '../../src/content/stage1'
+import {
+  getPlayableStageOneZone,
+  serviceTrainZone,
+  type PlayableStageOneZoneDefinition,
+} from '../../src/content/stage1'
 import { GameServices, SCENE_KEYS } from '../../src/app/GameServices'
 import type { CombatState } from '../../src/domain/combat/combatReducer'
 import type { InputFrame } from '../../src/domain/combat/inputBuffer'
 import { fixedStepMs } from '../../src/domain/combat/tuning'
+import { SIDE_SCROLL_VIEWPORT_WIDTH } from '../../src/domain/world/sideScroll'
 import {
   createEliteBrainState,
   type EliteBrainState,
@@ -172,7 +177,7 @@ describe('service-train authored integration contracts', () => {
 type SceneHarness = {
   state: CombatState
   runState: RunState
-  currentZone: { readonly id: 'n9-depot' | 'service-train' | 'flooded-tunnel' }
+  currentZone: PlayableStageOneZoneDefinition
   waveRuntime: ZoneWaveRuntime
   waveIndex: number
   zonePhase: 'active' | 'inter-wave' | 'zone-clear' | 'zone-handoff'
@@ -252,6 +257,17 @@ const clearServiceWave = (scene: SceneHarness): void => {
   stepUntil(scene, () => scene.waveRuntime.wave.emittedOrderIds.length === authoredCount)
   scene.recordEnemyDefeats(scene.waveRuntime.wave.spawnedEnemyIds)
   scene.stepDomain()
+}
+
+const crossGateToNextWave = (scene: SceneHarness): void => {
+  const nextWaveIndex = scene.waveIndex + 1
+  stepUntil(scene, () => scene.interWaveRemainingMs === 0)
+  const player = scene.state.actors[scene.state.playerId]
+  if (!player || !scene.currentZone.waves[nextWaveIndex]) {
+    throw new Error('Expected a player and a next authored wave.')
+  }
+  player.position.x = scene.currentZone.arena.minX + nextWaveIndex * SIDE_SCROLL_VIEWPORT_WIDTH
+  stepUntil(scene, () => scene.waveIndex === nextWaveIndex && scene.zonePhase === 'active')
 }
 
 interface HanTimingSample {
@@ -336,7 +352,9 @@ const measureDeterministicHanRun = (): HanTimingSample => {
       }
     }
 
-    if (!nextPickup && edges.length === 0 && target) {
+    if (!nextPickup && edges.length === 0 && !target && scene.zonePhase === 'inter-wave') {
+      moveX = 1
+    } else if (!nextPickup && edges.length === 0 && target) {
       const deltaX = target.position.x - player.position.x
       if (Math.abs(deltaX) > 48) moveX = deltaX < 0 ? -1 : 1
       const playerActionable = player.mode === 'idle' || player.mode === 'moving'
@@ -400,9 +418,9 @@ describe('CombatScene service-train orchestration', () => {
 
     clearServiceWave(scene)
     expect(scene.zonePhase).toBe('inter-wave')
-    stepUntil(scene, () => scene.waveIndex === 1 && scene.zonePhase === 'active')
+    crossGateToNextWave(scene)
     clearServiceWave(scene)
-    stepUntil(scene, () => scene.waveIndex === 2 && scene.zonePhase === 'active')
+    crossGateToNextWave(scene)
     clearServiceWave(scene)
     expect(scene.zonePhase).toBe('zone-clear')
     expect(services.result).toBeNull()
@@ -661,8 +679,9 @@ describe('CombatScene service-train orchestration', () => {
     scene.stepDomain()
     const eliteId = scene.waveRuntime.wave.spawnedEnemyIds[0]
     const elite = scene.state.actors[eliteId]
-    scene.state.actors.han.position = { x: 450, y: 270, z: 0 }
-    elite.position = { x: 500, y: 270, z: 0 }
+    const eliteSectionOffset = 2 * SIDE_SCROLL_VIEWPORT_WIDTH
+    scene.state.actors.han.position = { x: 450 + eliteSectionOffset, y: 270, z: 0 }
+    elite.position = { x: 500 + eliteSectionOffset, y: 270, z: 0 }
 
     scene.stepDomain()
     expect(scene.eliteBrains.get(eliteId)).toMatchObject({
@@ -670,7 +689,7 @@ describe('CombatScene service-train orchestration', () => {
     })
 
     for (let step = 0; step < 38; step += 1) scene.stepDomain()
-    scene.state.actors.han.position = { x: 350, y: 270, z: 0 }
+    scene.state.actors.han.position = { x: 350 + eliteSectionOffset, y: 270, z: 0 }
     stepUntil(scene, () => scene.state.events.some(
       (event) => event.type === 'attack-started' && event.attackId === 'elite-rail-hammer',
     ), 4)
@@ -765,8 +784,8 @@ describe('CombatScene service-train orchestration', () => {
     ]
     expect(samples[1]).toEqual(samples[0])
     expect(samples[2]).toEqual(samples[0])
-    expect(samples[0].noTargetMs).toBeLessThanOrEqual(1_800 + 1e-6)
-    expect(samples[0].noTargetMs).toBeCloseTo(1_800, 6)
+    expect(samples[0].noTargetMs).toBeLessThanOrEqual(1_850 + 1e-6)
+    expect(samples[0].noTargetMs).toBeCloseTo(1_833.3333333333, 6)
     expect(samples[0].zoneActiveMs).toBeGreaterThan(0)
     expect(samples[0].eliteActiveMs).toBeGreaterThan(0)
     expect(samples[0].pickupsAcquired).toBe(2)

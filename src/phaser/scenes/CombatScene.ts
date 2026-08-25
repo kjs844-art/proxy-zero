@@ -80,6 +80,11 @@ import {
   type TunnelHazardState,
 } from '../../domain/world/tunnelHazard'
 import {
+  isPastGate,
+  resolveCameraFollowX,
+  SIDE_SCROLL_VIEWPORT_WIDTH,
+} from '../../domain/world/sideScroll'
+import {
   createTrainHazardState,
   getTrainHazardPhase,
   stepTrainHazard,
@@ -90,6 +95,7 @@ import {
   advanceWaveDirector,
   createZoneWaveRuntime,
   isInsideArena,
+  type ArenaBounds,
   type EnemyRecoveryObservation,
   type WaveDirectorEvent,
   type ZoneWaveRuntime,
@@ -254,21 +260,28 @@ const axisToward = (from: number, to: number): -1 | 0 | 1 =>
 const finiteDelta = (deltaMs: number): number =>
   Number.isFinite(deltaMs) ? Math.max(0, deltaMs) : 0
 
+const SECTION_STRIDE = SIDE_SCROLL_VIEWPORT_WIDTH
+const CAMERA_FORWARD_LEAD = 54
+const CAMERA_SMOOTHING_MS = 82
+
+const lerp = (from: number, to: number, alpha: number): number =>
+  from + (to - from) * alpha
+
 const distanceToArena = (
   point: Readonly<EnemyPoint>,
-  zone: Readonly<PlayableStageOneZoneDefinition>,
+  arena: Readonly<ArenaBounds>,
 ): number => {
   const deltaX =
-    point.x < zone.arena.minX
-      ? zone.arena.minX - point.x
-      : point.x > zone.arena.maxX
-        ? point.x - zone.arena.maxX
+    point.x < arena.minX
+      ? arena.minX - point.x
+      : point.x > arena.maxX
+        ? point.x - arena.maxX
         : 0
   const deltaY =
-    point.y < zone.arena.minY
-      ? zone.arena.minY - point.y
-      : point.y > zone.arena.maxY
-        ? point.y - zone.arena.maxY
+    point.y < arena.minY
+      ? arena.minY - point.y
+      : point.y > arena.maxY
+        ? point.y - arena.maxY
         : 0
   return Math.hypot(deltaX, deltaY)
 }
@@ -314,6 +327,7 @@ export class CombatScene extends Phaser.Scene {
   private zonePhase: ZonePhase = 'active'
   private interWaveRemainingMs = 0
   private transitionRemainingMs = 0
+  private cameraScrollX = 0
   private readonly pendingDefeatedEnemyIds = new Set<string>()
   private readonly enemyBrains = new Map<string, EnemyBrainState>()
   private readonly eliteBrains = new Map<string, EliteBrainState>()
@@ -375,8 +389,14 @@ export class CombatScene extends Phaser.Scene {
     this.documentVisible = true
     this.performanceGovernor.resetSampling()
     this.initializeZoneRuntime()
+    this.configureSideScrollCamera(true)
 
-    this.zoneRenderer = new ZoneRenderer(this, this.currentZone.arena)
+    this.zoneRenderer = new ZoneRenderer(
+      this,
+      this.currentZone.arena,
+      this.currentZone.waves.length,
+      SECTION_STRIDE,
+    )
     this.trainBackdrop = null
     this.tunnelBackdrop = null
     this.hazardView = new HazardView(this)
@@ -402,6 +422,7 @@ export class CombatScene extends Phaser.Scene {
       })
       .setDepth(201)
       .setOrigin(0.5)
+      .setScrollFactor(0)
       .setVisible(false)
     this.zoneClearText = this.add
       .text(320, 144, 'N-9 DEPOT\nZONE CLEAR', {
@@ -415,6 +436,7 @@ export class CombatScene extends Phaser.Scene {
       })
       .setDepth(220)
       .setOrigin(0.5)
+      .setScrollFactor(0)
       .setVisible(false)
 
     const canvas = this.game.canvas
@@ -458,9 +480,10 @@ export class CombatScene extends Phaser.Scene {
     const renderDeltaMs = finiteDelta(deltaMs)
     this.performanceGovernor.sample(renderDeltaMs)
     this.runner?.advance(renderDeltaMs)
+    this.updateSideScrollCamera(renderDeltaMs)
     this.combatVfx?.update(renderDeltaMs)
     this.hud?.advance(renderDeltaMs)
-    if (!this.finished) this.syncPresentation()
+    if (!this.finished) this.syncPresentation(renderDeltaMs)
   }
 
   private readonly stepDomain = (): void => {
@@ -508,33 +531,44 @@ export class CombatScene extends Phaser.Scene {
         this.advanceWaveRuntime(activeDeltaMs)
         if (this.currentZone.id === 'service-train' && this.zonePhase === 'active') {
           const player = this.state.actors[this.state.playerId]
+          const sectionOffsetX = this.currentSegmentOffsetX()
           const hazard = stepTrainHazard(this.trainHazardState, {
             activeDeltaMs,
             player: {
-              x: player.position.x,
+              x: player.position.x - sectionOffsetX,
               y: player.position.y,
               grounded: player.position.z === 0,
             },
           })
           this.trainHazardState = hazard.state
           player.position.x += hazard.carryDeltaX
-          fallEffect = hazard.effects[0] ?? null
+          const localFallEffect = hazard.effects[0]
+          fallEffect = localFallEffect
+            ? {
+                ...localFallEffect,
+                recoveryPosition: {
+                  ...localFallEffect.recoveryPosition,
+                  x: localFallEffect.recoveryPosition.x + sectionOffsetX,
+                },
+              }
+            : null
         } else if (this.currentZone.id === 'flooded-tunnel' && this.zonePhase === 'active') {
           const player = this.state.actors[this.state.playerId]
+          const sectionOffsetX = this.currentSegmentOffsetX()
           const hazard = stepTunnelHazard(this.tunnelHazardState, {
             activeDeltaMs,
             player: {
               id: player.id,
-              x: player.position.x,
+              x: player.position.x - sectionOffsetX,
               y: player.position.y,
               grounded: player.position.z === 0,
             },
             bosses: [...this.bossBrains.keys()].sort().flatMap((bossId) => {
               const boss = this.state.actors[bossId]
               return boss && boss.mode !== 'defeated'
-                ? [{
+                  ? [{
                     id: boss.id,
-                    x: boss.position.x,
+                    x: boss.position.x - sectionOffsetX,
                     y: boss.position.y,
                     grounded: boss.position.z === 0,
                   }]
@@ -542,7 +576,13 @@ export class CombatScene extends Phaser.Scene {
             }),
           })
           this.tunnelHazardState = hazard.state
-          tunnelEffects = hazard.effects
+          tunnelEffects = hazard.effects.map((effect) => ({
+            ...effect,
+            recoveryPosition: {
+              ...effect.recoveryPosition,
+              x: effect.recoveryPosition.x + sectionOffsetX,
+            },
+          }))
         }
       } else {
         this.advanceZoneClock(activeDeltaMs)
@@ -620,7 +660,11 @@ export class CombatScene extends Phaser.Scene {
     this.state = this.reduceCombatWithFacingAssist(commands)
     this.acceptEliteAttackStarts()
     this.acceptBossAttackStarts()
-    if (this.zonePhase === 'active') this.clampLivingActors()
+    if (this.zonePhase === 'active') {
+      this.clampLivingActors()
+    } else if (this.zonePhase === 'inter-wave') {
+      this.clampTraversalPlayer()
+    }
     this.runState = runReducer(this.runState, {
       type: 'player-hp-changed',
       hp: this.state.actors[this.state.playerId].hp,
@@ -657,11 +701,13 @@ export class CombatScene extends Phaser.Scene {
       getTrainHazardPhase(this.trainHazardState),
       this.trainHazardState.platformCenterX,
       this.itemRuntime.pickups,
+      this.waveIndex,
     )
     this.tunnelBackdrop?.update(
       activeDeltaMs,
       getPuddlePhase(this.tunnelHazardState),
       getTunnelTrainPhase(this.tunnelHazardState),
+      this.waveIndex,
     )
   }
 
@@ -816,6 +862,7 @@ export class CombatScene extends Phaser.Scene {
       points: this.captureActorPresentationPoints(),
       playerId: this.state.playerId,
       lowEffect: this.performanceGovernor.mode === 'low-effect' || this.prefersReducedMotion(),
+      worldOffsetX: this.currentSegmentOffsetX(),
     })
     this.presentationBatchId += 1
     this.combatVfx?.consume(this.presentationBatchId, plan)
@@ -978,11 +1025,12 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private advanceWaveRuntime(deltaMs: number): void {
+    const arena = this.currentSegmentArena()
     const result = advanceWaveDirector(this.waveRuntime.wave, {
       deltaMs,
       defeatedEnemyIds: [...this.pendingDefeatedEnemyIds],
       activeEnemies: this.activeEnemyObservations(),
-      arena: this.currentZone.arena,
+      arena,
       playerPosition: {
         x: this.state.actors[this.state.playerId].position.x,
         y: this.state.actors[this.state.playerId].position.y,
@@ -996,12 +1044,13 @@ export class CombatScene extends Phaser.Scene {
 
   private activeEnemyObservations(): EnemyRecoveryObservation[] {
     const observations: EnemyRecoveryObservation[] = []
+    const arena = this.currentSegmentArena()
     for (const enemyId of this.waveRuntime.wave.spawnedEnemyIds) {
       const actor = this.state.actors[enemyId]
       if (!actor || actor.mode === 'defeated') continue
       const prior = this.lastRecoveryPositions.get(enemyId)
       const position = { x: actor.position.x, y: actor.position.y }
-      if (isInsideArena(position, this.currentZone.arena)) {
+      if (isInsideArena(position, arena)) {
         this.returningEnemyIds.delete(enemyId)
       }
       observations.push({
@@ -1010,8 +1059,8 @@ export class CombatScene extends Phaser.Scene {
         down: actor.mode === 'knocked-down' || actor.mode === 'getting-up',
         madeRecoveryProgress:
           prior !== undefined &&
-          distanceToArena(position, this.currentZone) <
-            distanceToArena(prior, this.currentZone),
+          distanceToArena(position, arena) <
+            distanceToArena(prior, arena),
       })
       this.lastRecoveryPositions.set(enemyId, position)
     }
@@ -1051,11 +1100,15 @@ export class CombatScene extends Phaser.Scene {
     const variant = getWaveVariant(enemyVariantId)
     const body = getWaveBaseBody(runtime.baseBodyId)
     const player = this.state.actors[this.state.playerId]
+    const spawnPosition = {
+      x: order.position.x + this.currentSegmentOffsetX(),
+      y: order.position.y,
+    }
     const actor = makeActor({
       id: enemyId,
       team: 'enemies',
-      position: { ...order.position, z: 0 },
-      facing: order.position.x < player.position.x ? 1 : -1,
+      position: { ...spawnPosition, z: 0 },
+      facing: spawnPosition.x < player.position.x ? 1 : -1,
       body: {
         halfWidth: body.radius,
         halfDepth: Math.max(12, body.radius * 0.7),
@@ -1084,7 +1137,7 @@ export class CombatScene extends Phaser.Scene {
       enemyId,
       bossDefinition?.targetClass ?? eliteDefinition?.targetClass ?? 'normal',
     )
-    this.lastRecoveryPositions.set(enemyId, { ...order.position })
+    this.lastRecoveryPositions.set(enemyId, { ...spawnPosition })
     this.actorViews.set(
       enemyId,
       new ActorView(this, actor, enemyVariantId),
@@ -1123,8 +1176,8 @@ export class CombatScene extends Phaser.Scene {
           ...this.applyEnemyIntent(enemyId, {
             type: 'move',
             target: {
-              x: (this.currentZone.arena.minX + this.currentZone.arena.maxX) / 2,
-              y: (this.currentZone.arena.minY + this.currentZone.arena.maxY) / 2,
+              x: (this.currentSegmentArena().minX + this.currentSegmentArena().maxX) / 2,
+              y: (this.currentSegmentArena().minY + this.currentSegmentArena().maxY) / 2,
             },
             speed: variant.moveSpeed,
           }),
@@ -1182,11 +1235,11 @@ export class CombatScene extends Phaser.Scene {
           ...command,
           moveX: axisToward(
             actor.position.x,
-            (this.currentZone.arena.minX + this.currentZone.arena.maxX) / 2,
+            (this.currentSegmentArena().minX + this.currentSegmentArena().maxX) / 2,
           ),
           moveY: axisToward(
             actor.position.y,
-            (this.currentZone.arena.minY + this.currentZone.arena.maxY) / 2,
+            (this.currentSegmentArena().minY + this.currentSegmentArena().maxY) / 2,
           ),
         }
       } else {
@@ -1286,11 +1339,11 @@ export class CombatScene extends Phaser.Scene {
           ...command,
           moveX: axisToward(
             actor.position.x,
-            (this.currentZone.arena.minX + this.currentZone.arena.maxX) / 2,
+            (this.currentSegmentArena().minX + this.currentSegmentArena().maxX) / 2,
           ),
           moveY: axisToward(
             actor.position.y,
-            (this.currentZone.arena.minY + this.currentZone.arena.maxY) / 2,
+            (this.currentSegmentArena().minY + this.currentSegmentArena().maxY) / 2,
           ),
         }
       } else {
@@ -1485,6 +1538,7 @@ export class CombatScene extends Phaser.Scene {
     if (this.waveIndex < this.currentZone.waves.length - 1) {
       this.zonePhase = 'inter-wave'
       this.interWaveRemainingMs = this.currentZone.interWaveDelayMs
+      this.zoneClearText?.setText('GO  →').setVisible(true)
       return
     }
     this.clearEmpTimers()
@@ -1503,14 +1557,15 @@ export class CombatScene extends Phaser.Scene {
   private advanceZoneClock(deltaMs: number): void {
     const elapsed = finiteDelta(deltaMs)
     if (this.zonePhase === 'inter-wave') {
-      const interWaveElapsed = Math.min(this.interWaveRemainingMs, elapsed)
-      this.interWaveRemainingMs -= interWaveElapsed
-      if (this.interWaveRemainingMs === 0) {
-        const priorWaveIndex = this.waveIndex
+      this.interWaveRemainingMs = Math.max(0, this.interWaveRemainingMs - elapsed)
+      const player = this.state.actors[this.state.playerId]
+      const nextArena = this.currentSegmentArena(this.waveIndex + 1)
+      if (
+        this.interWaveRemainingMs === 0 &&
+        player &&
+        isPastGate(player.position.x, nextArena.minX)
+      ) {
         this.startNextWave()
-        if (this.waveIndex !== priorWaveIndex) {
-          this.advanceWaveRuntime(elapsed - interWaveElapsed)
-        }
       }
       return
     }
@@ -1532,21 +1587,103 @@ export class CombatScene extends Phaser.Scene {
     this.lastRecoveryPositions.clear()
     this.clearEmpTimers()
     this.hazardView?.reset()
+    this.zoneRenderer?.setActiveSection(nextIndex)
     this.zoneRenderer?.setLocked(true)
+    this.zoneClearText?.setVisible(false)
   }
 
   private clampLivingActors(): void {
+    const arena = this.currentSegmentArena()
     for (const actor of Object.values(this.state.actors)) {
       if (actor.mode === 'defeated') continue
       actor.position.x = Math.min(
-        this.currentZone.arena.maxX,
-        Math.max(this.currentZone.arena.minX, actor.position.x),
+        arena.maxX,
+        Math.max(arena.minX, actor.position.x),
       )
       actor.position.y = Math.min(
-        this.currentZone.arena.maxY,
-        Math.max(this.currentZone.arena.minY, actor.position.y),
+        arena.maxY,
+        Math.max(arena.minY, actor.position.y),
       )
     }
+  }
+
+  private clampTraversalPlayer(): void {
+    const player = this.state.actors[this.state.playerId]
+    if (!player || player.mode === 'defeated') return
+    const currentArena = this.currentSegmentArena()
+    const nextArena = this.currentSegmentArena(this.waveIndex + 1)
+    player.position.x = Math.min(
+      nextArena.minX,
+      Math.max(currentArena.minX, player.position.x),
+    )
+    player.position.y = Math.min(
+      currentArena.maxY,
+      Math.max(currentArena.minY, player.position.y),
+    )
+  }
+
+  private currentSegmentOffsetX(index = this.waveIndex): number {
+    const normalizedIndex = Math.min(
+      Math.max(0, this.currentZone.waves.length - 1),
+      Math.max(0, Math.trunc(Number.isFinite(index) ? index : 0)),
+    )
+    return normalizedIndex * SECTION_STRIDE
+  }
+
+  private currentSegmentArena(index = this.waveIndex): ArenaBounds {
+    const offsetX = this.currentSegmentOffsetX(index)
+    return {
+      minX: this.currentZone.arena.minX + offsetX,
+      maxX: this.currentZone.arena.maxX + offsetX,
+      minY: this.currentZone.arena.minY,
+      maxY: this.currentZone.arena.maxY,
+    }
+  }
+
+  private zoneWorldBounds(): ArenaBounds {
+    return {
+      minX: 0,
+      maxX: Math.max(SECTION_STRIDE, this.currentZone.waves.length * SECTION_STRIDE),
+      minY: 0,
+      maxY: 360,
+    }
+  }
+
+  private configureSideScrollCamera(snap: boolean): void {
+    const camera = this.cameras?.main as (Phaser.Cameras.Scene2D.Camera & {
+      setBounds?: (x: number, y: number, width: number, height: number) => unknown
+      setScroll?: (x: number, y: number) => unknown
+    }) | undefined
+    const world = this.zoneWorldBounds()
+    camera?.setBounds?.(world.minX, world.minY, world.maxX - world.minX, world.maxY - world.minY)
+    const playerX = this.state.actors[this.state.playerId]?.position.x ?? 0
+    const desired = resolveCameraFollowX(
+      playerX,
+      world,
+      SIDE_SCROLL_VIEWPORT_WIDTH,
+      CAMERA_FORWARD_LEAD,
+    )
+    if (snap || !Number.isFinite(this.cameraScrollX)) this.cameraScrollX = desired
+    camera?.setScroll?.(this.cameraScrollX, 0)
+    this.combatVfx?.setBaseCameraScroll(this.cameraScrollX, 0)
+  }
+
+  private updateSideScrollCamera(renderDeltaMs: number): void {
+    const player = this.state.actors[this.state.playerId]
+    if (!player) return
+    const desired = resolveCameraFollowX(
+      player.position.x,
+      this.zoneWorldBounds(),
+      SIDE_SCROLL_VIEWPORT_WIDTH,
+      CAMERA_FORWARD_LEAD,
+    )
+    const alpha = 1 - Math.exp(-finiteDelta(renderDeltaMs) / CAMERA_SMOOTHING_MS)
+    this.cameraScrollX = lerp(this.cameraScrollX, desired, alpha)
+    const camera = this.cameras?.main as (Phaser.Cameras.Scene2D.Camera & {
+      setScroll?: (x: number, y: number) => unknown
+    }) | undefined
+    camera?.setScroll?.(this.cameraScrollX, 0)
+    this.combatVfx?.setBaseCameraScroll(this.cameraScrollX, 0)
   }
 
   private resolveBufferedAttack(
@@ -1601,12 +1738,13 @@ export class CombatScene extends Phaser.Scene {
     )
   }
 
-  private syncPresentation(): void {
+  private syncPresentation(renderDeltaMs = 0): void {
     for (const [actorId, view] of this.actorViews) {
       const actor = this.state.actors[actorId]
       if (!actor) continue
       view.update(actor, {
         domainTimeMs: this.state.elapsedMs,
+        renderDeltaMs,
         telegraph: this.telegraphFor(actorId),
         itemUse: actorId === this.state.playerId && this.playerItemUseStartedAtMs !== null
           ? { startedAtMs: this.playerItemUseStartedAtMs, durationMs: 400 }
@@ -1623,6 +1761,8 @@ export class CombatScene extends Phaser.Scene {
         lives: this.runState.lives,
         inventory: this.itemRuntime.inventory,
         encounter: this.encounterHudSnapshot(),
+        waveIndex: this.waveIndex,
+        waveTotal: this.currentZone.waves.length,
       })
     }
     if (this.runState.status !== 'game-over') {
@@ -1782,6 +1922,7 @@ export class CombatScene extends Phaser.Scene {
     this.tunnelBackdrop?.reset()
     this.hazardView?.reset()
     this.zoneClearText?.setVisible(false)
+    this.configureSideScrollCamera(true)
     this.replaceInventoryHud()
     this.syncPresentation()
   }
@@ -1911,10 +2052,20 @@ export class CombatScene extends Phaser.Scene {
     this.tunnelBackdrop?.dispose()
     this.tunnelBackdrop = null
     if (entry.zoneId === 'service-train') {
-      this.trainBackdrop = new TrainBackdrop(this, this.itemRuntime.pickups)
+      this.trainBackdrop = new TrainBackdrop(
+        this,
+        this.itemRuntime.pickups,
+        this.currentZone.waves.length,
+        SECTION_STRIDE,
+      )
     } else if (entry.zoneId === 'flooded-tunnel') {
-      this.tunnelBackdrop = new TunnelBackdrop(this)
+      this.tunnelBackdrop = new TunnelBackdrop(
+        this,
+        this.currentZone.waves.length,
+        SECTION_STRIDE,
+      )
     }
+    this.configureSideScrollCamera(true)
     this.hazardView?.reset()
     this.zoneClearText
       ?.setText(
@@ -2005,8 +2156,15 @@ export class CombatScene extends Phaser.Scene {
     if (!this.presentationPaused) return
     this.presentationPaused = false
     this.runner?.resume()
+    // A paused renderer can leave the camera a few sub-frames behind the
+    // already-frozen combat state. Re-anchor before consuming live deltas so
+    // focus recovery never turns that tiny correction into a full-screen pan.
+    this.configureSideScrollCamera(true)
     void this.audioBus?.resume()
     this.performanceGovernor.resetSampling()
+    // Ignore one focus-recovery frame. Browsers can deliver a stale frame
+    // delta after backgrounding, which otherwise makes the whole scrolling
+    // world lurch forward before the player can see the resumed input state.
     this.discardNextRenderDelta = true
   }
 

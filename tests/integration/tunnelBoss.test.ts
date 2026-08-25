@@ -81,6 +81,7 @@ import {
 } from '../../src/content/stage1'
 import type { CombatState } from '../../src/domain/combat/combatReducer'
 import { fixedStepMs } from '../../src/domain/combat/tuning'
+import { SIDE_SCROLL_VIEWPORT_WIDTH } from '../../src/domain/world/sideScroll'
 import { createBossBrainState, type BossBrainState } from '../../src/domain/enemies/bossBrain'
 import {
   createItemRuntimeState,
@@ -177,6 +178,7 @@ type SceneHarness = {
   waveRuntime: ZoneWaveRuntime
   waveIndex: number
   zonePhase: 'active' | 'inter-wave' | 'zone-clear' | 'zone-handoff'
+  interWaveRemainingMs: number
   transitionRemainingMs: number
   itemRuntime: ItemRuntimeState
   itemTargetClasses: Map<string, 'normal' | 'elite' | 'boss'>
@@ -259,10 +261,21 @@ const clearCurrentWave = (scene: SceneHarness): void => {
   scene.stepDomain()
 }
 
+const crossGateToNextWave = (scene: SceneHarness): void => {
+  const nextWaveIndex = scene.waveIndex + 1
+  stepUntil(scene, () => scene.interWaveRemainingMs === 0)
+  const player = scene.state.actors[scene.state.playerId]
+  if (!player || !scene.currentZone.waves[nextWaveIndex]) {
+    throw new Error('Expected a player and a next authored wave.')
+  }
+  player.position.x = scene.currentZone.arena.minX + nextWaveIndex * SIDE_SCROLL_VIEWPORT_WIDTH
+  stepUntil(scene, () => scene.waveIndex === nextWaveIndex && scene.zonePhase === 'active')
+}
+
 const enterBossWave = (scene: SceneHarness): string => {
   clearCurrentWave(scene)
   expect(scene.zonePhase).toBe('inter-wave')
-  stepUntil(scene, () => scene.waveIndex === 1 && scene.zonePhase === 'active')
+  crossGateToNextWave(scene)
   stepUntil(scene, () => scene.waveRuntime.wave.spawnedEnemyIds.length === 1)
   return scene.waveRuntime.wave.spawnedEnemyIds[0]
 }
@@ -360,8 +373,9 @@ describe('CombatScene flooded-tunnel orchestration', () => {
     const completeRun = vi.spyOn(services, 'completeRun')
     enterFloodedTunnel(scene)
     const bossId = enterBossWave(scene)
-    scene.state.actors.han.position = { x: 300, y: 264, z: 0 }
-    scene.state.actors[bossId].position = { x: 500, y: 220, z: 0 }
+    const bossSectionOffset = SIDE_SCROLL_VIEWPORT_WIDTH
+    scene.state.actors.han.position = { x: 300 + bossSectionOffset, y: 264, z: 0 }
+    scene.state.actors[bossId].position = { x: 500 + bossSectionOffset, y: 220, z: 0 }
     scene.state.actors[bossId].hp = 60
     scene.tunnelHazardState = {
       elapsedMs: 12_500,
@@ -438,10 +452,11 @@ describe('CombatScene flooded-tunnel orchestration', () => {
     const bossId = enterBossWave(scene)
     const player = scene.state.actors.han
     const boss = scene.state.actors[bossId]
-    player.position = { x: 300, y: 220, z: 0 }
+    const bossSectionOffset = SIDE_SCROLL_VIEWPORT_WIDTH
+    player.position = { x: 300 + bossSectionOffset, y: 220, z: 0 }
     player.hp = 24
     player.mode = 'idle'
-    boss.position = { x: 400, y: 220, z: 0 }
+    boss.position = { x: 400 + bossSectionOffset, y: 220, z: 0 }
     boss.hp = 60
     boss.mode = 'idle'
     scene.runState = { ...scene.runState, hp: 24, lives: 1 }
@@ -661,25 +676,61 @@ describe('CombatScene flooded-tunnel orchestration', () => {
 })
 
 describe('TunnelBackdrop ownership', () => {
-  it('updates, resets, snapshots, and disposes deterministically without combat input', () => {
+  it('repeats static tunnel sections and moves only dynamic hazards to the active section', () => {
     const { scene } = createLiveScene()
-    const backdrop = new TunnelBackdrop(scene as never)
+    const defaultBackdrop = new TunnelBackdrop(scene as never)
+    const backdrop = new TunnelBackdrop(scene as never, 3)
+    const defaultSnapshot = defaultBackdrop.snapshot()
     const owned = backdrop.snapshot().ownedObjectCount
-    expect(owned).toBeGreaterThan(0)
-    backdrop.update(500, 'live', 'warning')
+    expect(defaultSnapshot).toMatchObject({
+      sectionCount: 1,
+      sectionStride: 640,
+      activeSectionIndex: 0,
+      ownedObjectCount: 12,
+      sectionLandmarkCount: 1,
+    })
+    expect(owned).toBe(defaultSnapshot.ownedObjectCount + 14)
+
+    backdrop.update(500, 'live', 'warning', 2)
     expect(backdrop.snapshot()).toMatchObject({
       elapsedMs: 500,
+      sectionCount: 3,
+      sectionStride: 640,
+      activeSectionIndex: 2,
+      sectionLandmarkCount: 3,
       puddleLiveVisible: true,
       trainWarningVisible: true,
     })
+    const dynamic = backdrop as unknown as {
+      puddle: { x: number, y: number }
+      safeLane: { x: number, y: number }
+      trainWarning: { x: number, y: number }
+      trainWarningStripes: { x: number, y: number }
+      runoff: { x: number, y: number }
+    }
+    expect(dynamic.puddle).toMatchObject({ x: 1_600, y: 283 })
+    expect(dynamic.safeLane).toMatchObject({ x: 1_600, y: 214 })
+    expect(dynamic.trainWarning).toMatchObject({ x: 1_600, y: 216 })
+    expect(dynamic.trainWarningStripes).toMatchObject({ x: 1_280, y: 0 })
+    expect(dynamic.runoff.x).toBe(1_280)
+    expect(dynamic.runoff.y).toBeCloseTo(12.5)
+
     backdrop.reset()
     expect(backdrop.snapshot()).toMatchObject({
       elapsedMs: 0,
+      activeSectionIndex: 0,
       puddlePhase: 'safe',
       trainPhase: 'idle',
       puddleLiveVisible: false,
       trainWarningVisible: false,
     })
+    expect(dynamic.puddle).toMatchObject({ x: 320, y: 283 })
+    expect(dynamic.safeLane).toMatchObject({ x: 320, y: 214 })
+    expect(dynamic.trainWarning).toMatchObject({ x: 320, y: 216 })
+    expect(dynamic.trainWarningStripes).toMatchObject({ x: 0, y: 0 })
+    expect(dynamic.runoff).toMatchObject({ x: 0, y: 0 })
+
+    defaultBackdrop.dispose()
     backdrop.dispose()
     backdrop.dispose()
     expect(backdrop.snapshot().ownedObjectCount).toBe(0)

@@ -5,6 +5,7 @@ import {
   HUD_LAYOUT,
   HudController,
   deriveHudModel,
+  formatWaveText,
 } from '../../src/presentation/HudController'
 
 class FakeDisplay {
@@ -37,6 +38,36 @@ const fakeScene = () => ({
 })
 
 describe('Task 14 unified HUD contract', () => {
+  it('keeps the combat frame free of persistent HP and item modules', () => {
+    // Regression target: bringing back the full-width health chrome or the
+    // permanent EMP/REPAIR cards would cover the playfield again.
+    expect(HUD_LAYOUT).not.toHaveProperty('player')
+    expect(HUD_LAYOUT).not.toHaveProperty('hp')
+    expect(HUD_LAYOUT).not.toHaveProperty('meter')
+    expect(HUD_LAYOUT).not.toHaveProperty('inventory')
+
+    const model = deriveHudModel({
+      characterId: 'mina',
+      hp: 85,
+      maxHp: 85,
+      meter: 0,
+      lives: 2,
+      inventory: { counts: { emp: 0, 'repair-kit': 0 }, selectedItemId: null },
+      combo: 0,
+      encounter: null,
+      waveIndex: 1,
+      waveTotal: 3,
+    } as never) as unknown as { waveText?: string }
+    expect(model.waveText).toBe('WAVE 2 / 3')
+    expect(formatWaveText(0, 3)).toBe('WAVE 1 / 3')
+
+    const hud = new HudController(fakeScene() as never, 'mina', {
+      counts: { emp: 0, 'repair-kit': 0 },
+      selectedItemId: null,
+    })
+    expect(hud.snapshot().inventory).toMatchObject({ visible: false })
+  })
+
   it('spells out the item control semantics instead of binding keys to item names', () => {
     expect(HUD_CONTROLS_TEXT).toContain('J L.HAND')
     expect(HUD_CONTROLS_TEXT).toContain('K R.HAND')
@@ -48,18 +79,16 @@ describe('Task 14 unified HUD contract', () => {
     expect(HUD_CONTROLS_TEXT).not.toContain('Q/E ITEM')
   })
 
-  it('keeps the exact 640x360 modules inside protected HUD bands', () => {
+  it('keeps the compact status and wave readouts inside protected HUD edges', () => {
     expect(HUD_LAYOUT).toMatchObject({
-      player: { x: 8, y: 6, width: 366, height: 42 },
-      hp: { x: 75, y: 9, width: 228, height: 12 },
-      meter: { x: 75, y: 27, width: 228, height: 7 },
-      inventory: { x: 476, y: 6, width: 156, height: 42 },
-      combo: { x: 624, y: 72 },
+      status: { x: 12, y: 10 },
+      wave: { x: 628, y: 10 },
+      combo: { x: 12, y: 72 },
       encounter: { x: 144, y: 52, width: 352, height: 16 },
       controls: { x: 12, y: 330 },
     })
-    expect(HUD_LAYOUT.player.y + HUD_LAYOUT.player.height).toBeLessThanOrEqual(48)
-    expect(HUD_LAYOUT.inventory.x + HUD_LAYOUT.inventory.width).toBe(632)
+    expect(HUD_LAYOUT.status.y).toBeLessThanOrEqual(16)
+    expect(HUD_LAYOUT.wave.x).toBeLessThanOrEqual(632)
     expect(HUD_LAYOUT.controls.y).toBeGreaterThanOrEqual(330)
   })
 

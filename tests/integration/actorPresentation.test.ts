@@ -134,7 +134,7 @@ describe('Task 13 deterministic actor presentation', () => {
     }))).toContain('/telegraph/boss-dredger-slam/')
   })
 
-  it('clamps the rendered sprite and shadow while preserving bottom origin and facing', () => {
+  it('keeps world-space sprite and shadow positions while preserving bottom origin and facing', () => {
     const shadow = new FakeDisplay()
     const image = new FakeDisplay()
     const scene = {
@@ -150,16 +150,16 @@ describe('Task 13 deterministic actor presentation', () => {
     )
     expect(image.origin).toEqual({ x: 0.5, y: 1 })
     expect({ x: image.x, y: image.y, flipX: image.flipX }).toEqual({
-      x: 157, y: 240, flipX: true,
+      x: 0, y: 240, flipX: true,
     })
-    expect({ x: shadow.x, y: shadow.y }).toEqual({ x: 157, y: 240 })
+    expect({ x: shadow.x, y: shadow.y }).toEqual({ x: 0, y: 240 })
 
     view.update(actor({
       id: 'boss', team: 'enemies', position: { x: 640, y: 236, z: 4 }, facing: 1,
     }))
     expect({ x: image.x, y: image.y, flipX: image.flipX }).toEqual({
-      x: 483, y: 232, flipX: false,
+      x: 640, y: 232, flipX: false,
     })
-    expect({ x: shadow.x, y: shadow.y }).toEqual({ x: 483, y: 236 })
+    expect({ x: shadow.x, y: shadow.y }).toEqual({ x: 640, y: 236 })
   })
 })

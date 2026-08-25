@@ -22,6 +22,11 @@ body {
 }
 
 canvas {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+  /* Keep the authored sprite atlas sharp in Phaser, but let the browser
+     resample the finished canvas at non-integer viewport sizes. The former
+     forced nearest-neighbour rule made high-detail painted backgrounds look
+     unintentionally broken on many desktop displays. */
+  image-rendering: auto;
+  max-height: 100%;
+  max-width: 100%;
 }

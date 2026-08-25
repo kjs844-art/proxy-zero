@@ -2,7 +2,6 @@ import Phaser from 'phaser'
 
 import {
   ACTOR_ATLAS_KEY,
-  clampActorPresentationX,
   getActorVisualProfile,
   selectActorFrame,
   type ActorItemUseSnapshot,
@@ -10,12 +9,24 @@ import {
 } from '../../content/animations'
 import type { CombatActor } from '../../domain/combat/combatReducer'
 
-const LOGICAL_VIEWPORT_WIDTH = 640
+const POSITION_SMOOTHING_MS = 46
+const TELEPORT_SNAP_DISTANCE = 180
+
+const finiteDelta = (value: number | undefined): number =>
+  Number.isFinite(value) ? Math.max(0, value ?? 0) : 0
+
+const halfPixel = (value: number): number => Math.round(value * 2) / 2
+
+const lerp = (from: number, to: number, alpha: number): number =>
+  from + (to - from) * alpha
 
 export interface ActorViewPresentation {
   readonly domainTimeMs: number
   readonly telegraph: Readonly<ActorTelegraphSnapshot> | null
   readonly itemUse: Readonly<ActorItemUseSnapshot> | null
+  /** Render-only delta. Omit it in deterministic projection tests to snap. */
+  readonly renderDeltaMs?: number
+  readonly snap?: boolean
 }
 
 const defaultPresentation: ActorViewPresentation = {
@@ -28,6 +39,10 @@ const defaultPresentation: ActorViewPresentation = {
 export class ActorView {
   private readonly shadow: Phaser.GameObjects.Ellipse
   private readonly image: Phaser.GameObjects.Image
+  private visualX: number | null = null
+  private visualY: number | null = null
+  private visualGroundY: number | null = null
+  private lastDomainTimeMs = 0
 
   constructor(
     scene: Phaser.Scene,
@@ -53,12 +68,34 @@ export class ActorView {
     actor: Readonly<CombatActor>,
     presentation: Readonly<ActorViewPresentation> = defaultPresentation,
   ): void {
-    const screenX = clampActorPresentationX(
-      this.profileId,
-      actor.position.x,
-      LOGICAL_VIEWPORT_WIDTH,
-    )
-    const screenY = Math.round(actor.position.y - actor.position.z)
+    const targetX = actor.position.x
+    const targetY = actor.position.y - actor.position.z
+    const targetGroundY = actor.position.y
+    const renderDeltaMs = finiteDelta(presentation.renderDeltaMs)
+    const distance = this.visualX === null || this.visualY === null
+      ? Number.POSITIVE_INFINITY
+      : Math.hypot(targetX - this.visualX, targetY - this.visualY)
+    const shouldSnap =
+      presentation.snap === true ||
+      presentation.renderDeltaMs === undefined ||
+      presentation.domainTimeMs < this.lastDomainTimeMs ||
+      distance >= TELEPORT_SNAP_DISTANCE ||
+      this.visualGroundY === null
+    const alpha = shouldSnap
+      ? 1
+      : 1 - Math.exp(-renderDeltaMs / POSITION_SMOOTHING_MS)
+
+    this.visualX = this.visualX === null ? targetX : lerp(this.visualX, targetX, alpha)
+    this.visualY = this.visualY === null ? targetY : lerp(this.visualY, targetY, alpha)
+    this.visualGroundY = this.visualGroundY === null
+      ? targetGroundY
+      : lerp(this.visualGroundY, targetGroundY, alpha)
+    this.lastDomainTimeMs = presentation.domainTimeMs
+
+    // Half-logical-pixel alignment maps to whole pixels in the 2x render target.
+    const worldX = halfPixel(this.visualX)
+    const worldY = halfPixel(this.visualY)
+    const groundY = halfPixel(this.visualGroundY)
     const depth = Math.round(actor.position.y)
     const frame = selectActorFrame({
       profileId: this.profileId,
@@ -69,12 +106,12 @@ export class ActorView {
     })
 
     this.shadow
-      .setPosition(screenX, Math.round(actor.position.y))
+      .setPosition(worldX, groundY)
       .setDepth(depth - 1)
       .setVisible(actor.mode !== 'defeated')
     this.image
       .setFrame(frame)
-      .setPosition(screenX, screenY)
+      .setPosition(worldX, worldY)
       .setDepth(depth)
       .setFlipX(actor.facing === -1)
       .setAlpha(1)

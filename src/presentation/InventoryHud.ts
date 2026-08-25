@@ -24,6 +24,7 @@ interface SlotView {
 
 export interface InventoryHudSnapshot {
   ownedObjectCount: number
+  visible: boolean
   slots: Array<{
     itemId: ItemId
     count: 0 | 1
@@ -75,12 +76,21 @@ const drawPixelLabel = (
   }
 }
 
-/** Always-visible, presentation-only two-slot inventory HUD. */
+const setVisibleIfSupported = (
+  object: { setVisible?: (visible: boolean) => unknown },
+  visible: boolean,
+): void => {
+  object.setVisible?.(visible)
+}
+
+/** Presentation-only two-slot inventory HUD; CombatScene keeps it hidden by default. */
 export class InventoryHud {
   private readonly slots: SlotView[]
+  private readonly visible: boolean
   private disposed = false
 
-  constructor(scene: Phaser.Scene, inventory: Readonly<ItemInventory>) {
+  constructor(scene: Phaser.Scene, inventory: Readonly<ItemInventory>, visible = true) {
+    this.visible = visible
     this.slots = ITEM_ORDER.map((itemId, index) => {
       const x = SLOT_START_X + index * (SLOT_WIDTH + SLOT_GAP)
       const bounds = { x, y: SLOT_Y, width: SLOT_WIDTH, height: SLOT_HEIGHT }
@@ -95,10 +105,12 @@ export class InventoryHud {
         )
         .setDepth(10_001)
         .setScrollFactor(0)
+      setVisibleIfSupported(background, visible)
       const label = scene.add
         .graphics()
         .setDepth(10_005)
         .setScrollFactor(0)
+      setVisibleIfSupported(label, visible)
       return {
         itemId,
         bounds,
@@ -133,6 +145,7 @@ export class InventoryHud {
   snapshot(): InventoryHudSnapshot {
     return {
       ownedObjectCount: this.disposed ? 0 : this.slots.length * 2,
+      visible: !this.disposed && this.visible,
       slots: this.slots.map((slot) => ({
         itemId: slot.itemId,
         count: slot.count,

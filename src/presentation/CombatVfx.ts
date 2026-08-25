@@ -3,6 +3,7 @@ import type Phaser from 'phaser'
 import type { CombatEvent } from '../domain/combat/combatReducer'
 import type { ItemEffect } from '../domain/items/itemReducer'
 import type { AudioCueId } from './AudioBus'
+import { resolveAttackLimbCueProfile } from './AttackLimbCueProfile'
 
 export interface ActorPresentationPoint {
   readonly x: number
@@ -40,6 +41,7 @@ export interface PresentationBatchInput {
   readonly points: Readonly<Record<string, ActorPresentationPoint>>
   readonly lowEffect: boolean
   readonly playerId?: string
+  readonly worldOffsetX?: number
 }
 
 const color = Object.freeze({
@@ -113,8 +115,45 @@ export const planPresentationBatch = (
     if (event.type === 'attack-started') {
       const point = input.points[event.actorId] ?? fallbackPoint
       const strength = strengthIndex(event.strength)
+      const limbCue = resolveAttackLimbCueProfile(event.attackId)
       cues.push(cueFor('attack', strength))
-      if (strength >= 2) {
+      if (limbCue.kind !== 'unknown') {
+        const foot = limbCue.kind === 'foot'
+        const verticalDirection = limbCue.side === 'left' ? -1 : 1
+        const from = {
+          ...point,
+          y: point.y + (foot ? 17 : -7),
+        }
+        effects.push({
+          type: 'trail',
+          from,
+          to: {
+            x: point.x + point.facing * limbCue.arc.radius,
+            y: from.y + verticalDirection * (foot ? 15 : 9),
+            facing: point.facing,
+          },
+          color: limbCue.color,
+          durationMs: foot ? 125 : 92,
+          seed: hashText(event.attackId),
+        })
+        if (foot) {
+          effects.push({
+            type: 'burst',
+            point: {
+              x: point.x - point.facing * limbCue.dust.direction * 10,
+              y: point.y + 24,
+              facing: point.facing,
+            },
+            particleCount: input.lowEffect
+              ? 2
+              : limbCue.dust.particleCount,
+            color: limbCue.color,
+            strength: 1,
+            durationMs: 105,
+            seed: hashText(`${event.attackId}:dust`),
+          })
+        }
+      } else if (strength >= 2) {
         effects.push({
           type: 'trail',
           from: point,
@@ -196,9 +235,10 @@ export const planPresentationBatch = (
   }
 
   for (const warningId of input.warningIds) {
+    const worldOffsetX = Number.isFinite(input.worldOffsetX) ? input.worldOffsetX ?? 0 : 0
     const point = warningId === 'electric-puddle'
-      ? { x: 320, y: 280, facing: 1 as const }
-      : { x: 320, y: 220, facing: 1 as const }
+      ? { x: 320 + worldOffsetX, y: 280, facing: 1 as const }
+      : { x: 320 + worldOffsetX, y: 220, facing: 1 as const }
     effects.push({ type: 'warning', point, warningId, color: color.warning, durationMs: 500, seed: hashText(warningId) })
     cues.push('hazard-warning')
   }
@@ -248,8 +288,8 @@ export class CombatVfx {
   private readonly overlayGraphics: Phaser.GameObjects.Graphics
   private readonly activeEffects: ActiveEffect[] = []
   private readonly activeTexts: ActiveText[] = []
-  private readonly baseScrollX: number
-  private readonly baseScrollY: number
+  private baseScrollX: number
+  private baseScrollY: number
   private disposed = false
 
   constructor(private readonly scene: Phaser.Scene) {
@@ -302,6 +342,12 @@ export class CombatVfx {
       }
     }
     return true
+  }
+
+  /** Updates the authored camera position; transient shake remains additive. */
+  setBaseCameraScroll(x: number, y = 0): void {
+    if (Number.isFinite(x)) this.baseScrollX = x
+    if (Number.isFinite(y)) this.baseScrollY = y
   }
 
   update(requestedDeltaMs: number): void {

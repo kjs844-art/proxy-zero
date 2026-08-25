@@ -87,7 +87,7 @@ import { attackCatalog } from '../../src/content/attacks'
 import { GameServices, SCENE_KEYS } from '../../src/app/GameServices'
 import { characters } from '../../src/content/characters'
 import { getEnemyBaseBody, getEnemyVariant } from '../../src/content/enemies'
-import { n9DepotZone } from '../../src/content/stage1'
+import { n9DepotZone, type PlayableStageOneZoneDefinition } from '../../src/content/stage1'
 import {
   combatReducer,
   type CombatCommand,
@@ -95,6 +95,7 @@ import {
   type CombatState,
 } from '../../src/domain/combat/combatReducer'
 import { fixedStepMs } from '../../src/domain/combat/tuning'
+import { SIDE_SCROLL_VIEWPORT_WIDTH } from '../../src/domain/world/sideScroll'
 import type { InputFrame } from '../../src/domain/combat/inputBuffer'
 import { createEnemyBrainState, type EnemyIntent } from '../../src/domain/enemies/enemyBrain'
 import type { EnemyBrainState, EnemyBrainResult } from '../../src/domain/enemies/enemyBrain'
@@ -424,7 +425,9 @@ class FakeDisplayObject {
   alpha = 1
   destroyed = false
   fillColor = 0
+  height = 0
   visible = true
+  width = 0
   x = 0
   y = 0
 
@@ -482,18 +485,49 @@ class FakeGraphics extends FakeDisplayObject {
 
 const fakeScene = () => {
   const objects: FakeDisplayObject[] = []
+  const ellipses: FakeDisplayObject[] = []
+  const graphics: FakeGraphics[] = []
+  const images: FakeDisplayObject[] = []
+  const rectangles: FakeDisplayObject[] = []
   const own = <Value extends FakeDisplayObject>(value: Value): Value => {
     objects.push(value)
     return value
   }
+  const positioned = <Value extends FakeDisplayObject>(value: Value, x: number, y: number): Value =>
+    value.setPosition(x, y)
+  const sized = <Value extends FakeDisplayObject>(value: Value, width: number, height: number): Value => {
+    value.width = width
+    value.height = height
+    return value
+  }
   return {
+    ellipses,
+    graphics,
+    images,
     objects,
+    rectangles,
     scene: {
       add: {
-        ellipse: () => own(new FakeDisplayObject()),
-        graphics: () => own(new FakeGraphics()),
-        image: () => own(new FakeDisplayObject()),
-        rectangle: () => own(new FakeDisplayObject()),
+        ellipse: (x: number, y: number, width: number, height: number) => {
+          const ellipse = sized(positioned(own(new FakeDisplayObject()), x, y), width, height)
+          ellipses.push(ellipse)
+          return ellipse
+        },
+        graphics: () => {
+          const graphic = own(new FakeGraphics())
+          graphics.push(graphic)
+          return graphic
+        },
+        image: (x: number, y: number) => {
+          const image = positioned(own(new FakeDisplayObject()), x, y)
+          images.push(image)
+          return image
+        },
+        rectangle: (x: number, y: number, width: number, height: number) => {
+          const rectangle = sized(positioned(own(new FakeDisplayObject()), x, y), width, height)
+          rectangles.push(rectangle)
+          return rectangle
+        },
       },
     },
   }
@@ -515,6 +549,7 @@ describe('N-9 Depot owned presentation lifecycles', () => {
       hasTungstenPools: true,
       hasCyanReflections: true,
       hasWarningRed: true,
+      sectionLandmarkCount: 1,
     })
     left.update(750)
     right.update(750)
@@ -564,6 +599,7 @@ type DisposableView = { dispose(): void }
 type CombatSceneHarness = {
   state: CombatState
   runState: RunState
+  currentZone: PlayableStageOneZoneDefinition
   waveRuntime: ZoneWaveRuntime
   waveIndex: number
   zonePhase: 'active' | 'inter-wave' | 'zone-clear' | 'zone-handoff'
@@ -668,6 +704,17 @@ const clearCurrentWave = (scene: CombatSceneHarness): void => {
   )
   scene.recordEnemyDefeats(scene.waveRuntime.wave.spawnedEnemyIds)
   scene.stepDomain()
+}
+
+const crossGateToNextWave = (scene: CombatSceneHarness): void => {
+  const nextWaveIndex = scene.waveIndex + 1
+  stepUntil(scene, () => scene.interWaveRemainingMs === 0)
+  const player = scene.state.actors[scene.state.playerId]
+  if (!player || !scene.currentZone.waves[nextWaveIndex]) {
+    throw new Error('Expected a player and a next authored wave.')
+  }
+  player.position.x = scene.currentZone.arena.minX + nextWaveIndex * SIDE_SCROLL_VIEWPORT_WIDTH
+  stepUntil(scene, () => scene.waveIndex === nextWaveIndex && scene.zonePhase === 'active')
 }
 
 describe('CombatScene N-9 Depot orchestration', () => {
@@ -912,7 +959,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
     expect(services.completedRun).toBeNull()
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
 
-    stepUntil(scene, () => scene.waveIndex === 1 && scene.zonePhase === 'active')
+    crossGateToNextWave(scene)
     expect(scene.runState).toMatchObject({
       ...invariantRunState,
       currentWaveId: 'n9-depot-wave-2',
@@ -924,7 +971,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
     expect(services.completedRun).toBeNull()
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
 
-    stepUntil(scene, () => scene.waveIndex === 2 && scene.zonePhase === 'active')
+    crossGateToNextWave(scene)
     clearCurrentWave(scene)
     expect(scene.zonePhase).toBe('zone-clear')
     expect(scene.transitionRemainingMs).toBe(n9DepotZone.transitionDurationMs)
@@ -948,7 +995,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
   })
 
-  it('clamps living actors while locked and releases the combat clamp between waves', () => {
+  it('locks combat to a section, then waits for the player to cross the next gate', () => {
     const { scene } = createLiveScene()
     scene.stepDomain()
     scene.state.actors.han.position.x = 900
@@ -957,9 +1004,16 @@ describe('CombatScene N-9 Depot orchestration', () => {
 
     clearCurrentWave(scene)
     expect(scene.zonePhase).toBe('inter-wave')
+    for (let step = 0; step <= Math.ceil(n9DepotZone.interWaveDelayMs / fixedStepMs); step += 1) {
+      scene.stepDomain()
+    }
+    expect(scene.zonePhase).toBe('inter-wave')
+    expect(scene.waveIndex).toBe(0)
     scene.state.actors.han.position.x = 900
     scene.stepDomain()
-    expect(scene.state.actors.han.position.x).toBeGreaterThan(n9DepotZone.arena.maxX)
+    expect(scene.state.actors.han.position.x).toBe(900)
+    expect(scene.waveIndex).toBe(1)
+    expect(scene.zonePhase).toBe('active')
   })
 
   it('keeps terminal Game Over above a same-tick final-enemy defeat', () => {

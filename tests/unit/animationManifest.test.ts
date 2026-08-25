@@ -296,6 +296,31 @@ describe('Task 13 actor animation manifest', () => {
         }
       }
       expect(playerSilhouettes.size).toBe(3)
+
+      // Direct limb controls must not collapse into the same static pose.
+      // The exporter mirrors the action frame for left-side inputs while the
+      // right-side inputs retain the authored facing-right pose.
+      for (const profileId of ['han', 'mina', 'jin']) {
+        const profile = animations.profiles.find((entry) => entry.id === profileId)
+        const runtime = getActorVisualProfile(profileId)
+        const image = sheetImageById[runtime.sheet]
+        const png = pngsByImage.get(image)
+        expect(profile, profileId).toBeDefined()
+        expect(png, image).toBeDefined()
+        if (!profile || !png) continue
+        const attackHash = (id: string): string => {
+          const clip = profile.clips.find((entry) => entry.id === id)
+          const frame = frameByName.get(clip?.frames[1] ?? '')
+          expect(frame, `${profileId}/${id}`).toBeDefined()
+          return frame ? alphaBounds(png, frame).hash : ''
+        }
+        expect(attackHash(`${profileId}-right-hand`), `${profileId} hands`).not.toBe(
+          attackHash(`${profileId}-left-hand`),
+        )
+        expect(attackHash(`${profileId}-right-foot`), `${profileId} feet`).not.toBe(
+          attackHash(`${profileId}-left-foot`),
+        )
+      }
     } finally {
       rmSync(first, { recursive: true, force: true })
       rmSync(second, { recursive: true, force: true })

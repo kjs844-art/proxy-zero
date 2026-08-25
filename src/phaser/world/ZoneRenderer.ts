@@ -5,6 +5,7 @@ import type { ArenaBounds } from '../../domain/waves/waveDirector'
 export const N9_DEPOT_BACKGROUND_KEY = 'n9-depot-background-v2' as const
 
 export interface ZoneRendererSnapshot {
+  readonly activeSectionIndex: number
   readonly depthLayerCount: number
   readonly elapsedMs: number
   readonly hasCyanReflections: boolean
@@ -16,17 +17,37 @@ export interface ZoneRendererSnapshot {
   readonly ownedObjectCount: number
   readonly rainOffset: number
   readonly reflectionAlpha: number
+  readonly sectionLandmarkCount: number
+  readonly sectionCount: number
 }
 
 const finiteDelta = (deltaMs: number): number =>
   Number.isFinite(deltaMs) ? Math.max(0, deltaMs) : 0
 
+const normalizedSectionCount = (sectionCount: number): number =>
+  Number.isFinite(sectionCount) ? Math.max(1, Math.trunc(sectionCount)) : 1
+
+const normalizedSectionStride = (sectionStride: number): number =>
+  Number.isFinite(sectionStride) && sectionStride > 0 ? sectionStride : 640
+
+type GateEdge = 'front' | 'rear'
+
+interface SectionGate {
+  readonly edge: GateEdge
+  readonly object: Phaser.GameObjects.Rectangle
+  readonly sectionIndex: number
+}
+
 /** Owns the authored N-9 depot background and lightweight animated atmosphere. */
 export class ZoneRenderer {
   private readonly owned = new Set<Phaser.GameObjects.GameObject>()
   private readonly reflections: Phaser.GameObjects.Rectangle[] = []
-  private readonly gates: Phaser.GameObjects.Rectangle[] = []
-  private readonly rain: Phaser.GameObjects.Graphics
+  private readonly gates: SectionGate[] = []
+  private readonly rain: Phaser.GameObjects.Graphics[] = []
+  private readonly sectionLandmarks: Phaser.GameObjects.Graphics[] = []
+  private readonly sectionCount: number
+  private readonly sectionStride: number
+  private activeSectionIndex = 0
   private elapsedMs = 0
   private locked = true
   private reflectionAlpha = 0.34
@@ -35,52 +56,70 @@ export class ZoneRenderer {
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly arena: Readonly<ArenaBounds>,
+    sectionCount = 1,
+    sectionStride = 640,
   ) {
+    this.sectionCount = normalizedSectionCount(sectionCount)
+    this.sectionStride = normalizedSectionStride(sectionStride)
+
     const centerX = (arena.minX + arena.maxX) / 2
     const centerY = (arena.minY + arena.maxY) / 2
     const width = arena.maxX - arena.minX
     const height = arena.maxY - arena.minY
 
-    this.own(
-      scene.add
-        .image(320, 180, N9_DEPOT_BACKGROUND_KEY)
-        .setDisplaySize(640, 360),
-    ).setDepth(-400)
+    for (let sectionIndex = 0; sectionIndex < this.sectionCount; sectionIndex += 1) {
+      const offsetX = sectionIndex * this.sectionStride
 
-    // A very light floor wash keeps the playable lane readable without
-    // flattening the authored puddles and surface wear in the background art.
-    this.own(scene.add.rectangle(centerX, centerY + 16, width, height - 20, 0x07131c, 0.08))
-      .setDepth(-300)
-      .setStrokeStyle(1, 0x67e8f9, 0.1)
+      this.own(
+        scene.add
+          .image(320 + offsetX, 180, N9_DEPOT_BACKGROUND_KEY)
+          .setDisplaySize(640, 360),
+      ).setDepth(-400)
 
-    for (const x of [154, 320, 486]) {
-      this.own(scene.add.ellipse(x, 202, 124, 44, 0xf6c76e, 0.07)).setDepth(-260)
-    }
+      // A very light floor wash keeps the playable lane readable without
+      // flattening the authored puddles and surface wear in the background art.
+      this.own(
+        scene.add.rectangle(centerX + offsetX, centerY + 16, width, height - 20, 0x07131c, 0.08),
+      )
+        .setDepth(-300)
+        .setStrokeStyle(1, 0x67e8f9, 0.1)
 
-    for (const [x, y, reflectionWidth] of [
-      [142, 246, 96],
-      [318, 304, 142],
-      [506, 238, 86],
-    ] as const) {
-      const reflection = this.own(
-        scene.add.rectangle(x, y, reflectionWidth, 3, 0x22d3ee, this.reflectionAlpha * 0.58),
-      ).setDepth(-240)
-      this.reflections.push(reflection)
-    }
-
-    this.rain = this.own(scene.add.graphics()).setDepth(-220)
-    this.rain.lineStyle(1, 0x9be7f1, 0.18)
-    for (let y = -46; y <= 406; y += 46) {
-      for (let x = 14; x < 672; x += 43) {
-        this.rain.lineBetween(x, y, x - 9, y + 24)
+      for (const x of [154, 320, 486]) {
+        this.own(scene.add.ellipse(x + offsetX, 202, 124, 44, 0xf6c76e, 0.07)).setDepth(-260)
       }
-    }
 
-    for (const x of [arena.minX - 7, arena.maxX + 7]) {
-      const gate = this.own(scene.add.rectangle(x, centerY, 8, height + 22, 0xef4444, 0.68))
-        .setDepth(-180)
-        .setStrokeStyle(2, 0xff6b6b, 1)
-      this.gates.push(gate)
+      for (const [x, y, reflectionWidth] of [
+        [142, 246, 96],
+        [318, 304, 142],
+        [506, 238, 86],
+      ] as const) {
+        const reflection = this.own(
+          scene.add.rectangle(
+            x + offsetX,
+            y,
+            reflectionWidth,
+            3,
+            0x22d3ee,
+            this.reflectionAlpha * 0.58,
+          ),
+        ).setDepth(-240)
+        this.reflections.push(reflection)
+      }
+
+      const rain = this.own(scene.add.graphics()).setDepth(-220)
+      rain.lineStyle(1, 0x9be7f1, 0.18)
+      for (let y = -46; y <= 406; y += 46) {
+        for (let x = 14; x < 672; x += 43) {
+          rain.lineBetween(x, y, x - 9, y + 24)
+        }
+      }
+      rain.setPosition(offsetX, 0)
+      this.rain.push(rain)
+
+      this.addSectionLandmark(sectionIndex, offsetX)
+
+      this.addGate(sectionIndex, 'rear', arena.minX - 7 + offsetX, centerY, height)
+      this.addGate(sectionIndex, 'front', arena.maxX + 7 + offsetX, centerY, height)
     }
 
     this.applyMotion()
@@ -96,7 +135,17 @@ export class ZoneRenderer {
     this.applyMotion()
   }
 
+  setActiveSection(index: number): void {
+    const normalizedIndex = Number.isFinite(index) ? Math.trunc(index) : 0
+    this.activeSectionIndex = Math.min(
+      this.sectionCount - 1,
+      Math.max(0, normalizedIndex),
+    )
+    this.applyMotion()
+  }
+
   reset(): void {
+    this.activeSectionIndex = 0
     this.elapsedMs = 0
     this.locked = true
     this.applyMotion()
@@ -104,6 +153,7 @@ export class ZoneRenderer {
 
   snapshot(): ZoneRendererSnapshot {
     return {
+      activeSectionIndex: this.activeSectionIndex,
       depthLayerCount: 5,
       elapsedMs: this.elapsedMs,
       hasCyanReflections: true,
@@ -115,6 +165,8 @@ export class ZoneRenderer {
       ownedObjectCount: this.owned.size,
       rainOffset: this.rainOffset,
       reflectionAlpha: this.reflectionAlpha,
+      sectionLandmarkCount: this.sectionLandmarks.length,
+      sectionCount: this.sectionCount,
     }
   }
 
@@ -123,11 +175,107 @@ export class ZoneRenderer {
     this.owned.clear()
     this.reflections.length = 0
     this.gates.length = 0
+    this.rain.length = 0
+    this.sectionLandmarks.length = 0
   }
 
   private own<Value extends Phaser.GameObjects.GameObject>(object: Value): Value {
     this.owned.add(object)
     return object
+  }
+
+  private addGate(
+    sectionIndex: number,
+    edge: GateEdge,
+    x: number,
+    centerY: number,
+    height: number,
+  ): void {
+    const gate = this.own(this.scene.add.rectangle(x, centerY, 8, height + 22, 0xef4444, 0.68))
+      .setDepth(-180)
+    this.gates.push({ edge, object: gate, sectionIndex })
+  }
+
+  /**
+   * Gives each scrolling depot block an authored purpose without creating a
+   * second ruleset. These objects deliberately remain behind the combat lane.
+   */
+  private addSectionLandmark(sectionIndex: number, offsetX: number): void {
+    const landmark = this.own(this.scene.add.graphics()).setDepth(-275)
+    const variant = sectionIndex % 3
+
+    if (variant === 0) {
+      // Inbound loading bay: a bolted, lit arrival board on physical supports.
+      landmark.fillStyle(0x334155, 0.92)
+      landmark.fillRect(56 + offsetX, 70, 180, 52)
+      landmark.fillStyle(0x081521, 0.98)
+      landmark.fillRect(62 + offsetX, 76, 168, 40)
+      landmark.fillStyle(0x5f450e, 0.92)
+      landmark.fillRect(62 + offsetX, 76, 168, 6)
+      landmark.fillStyle(0xf6c76e, 0.9)
+      for (const x of [72, 96, 120, 144, 168, 192]) landmark.fillRect(x + offsetX, 94, 15, 3)
+      landmark.fillStyle(0x94a3b8, 0.86)
+      landmark.fillRect(76 + offsetX, 116, 12, 56)
+      landmark.fillRect(204 + offsetX, 116, 12, 56)
+      landmark.fillStyle(0x020617, 0.7)
+      landmark.fillRect(70 + offsetX, 168, 152, 6)
+      this.addPhysicalLabel('N-9  INBOUND', 72 + offsetX, 82, '#fde68a')
+    } else if (variant === 1) {
+      // Cold-storage transfer bay: dense stack of sealed cases, not a panel.
+      landmark.fillStyle(0x102333, 0.94)
+      landmark.fillRect(402 + offsetX, 194, 156, 14)
+      for (const [x, y, width] of [[408, 162, 46], [456, 150, 58], [516, 170, 34], [408, 132, 72]] as const) {
+        landmark.fillStyle(0x173a50, 0.96)
+        landmark.fillRect(x + offsetX, y, width, 30)
+        landmark.fillStyle(0x2563eb, 0.44)
+        landmark.fillRect(x + offsetX + 4, y + 5, width - 8, 5)
+        landmark.fillStyle(0x93c5fd, 0.68)
+        landmark.fillRect(x + offsetX + 7, y + 20, 7, 4)
+        landmark.fillRect(x + offsetX + width - 14, y + 20, 7, 4)
+      }
+      landmark.fillStyle(0x22d3ee, 0.16)
+      landmark.fillCircle(122 + offsetX, 126, 34)
+      landmark.fillStyle(0x67e8f9, 0.96)
+      landmark.fillCircle(122 + offsetX, 126, 5)
+      landmark.fillStyle(0x334155, 0.88)
+      landmark.fillRect(118 + offsetX, 78, 8, 44)
+      this.addPhysicalLabel('COLD  TRANSFER', 412 + offsetX, 118, '#a5f3fc')
+    } else {
+      // Security cut-through: solid scanner pylons with a glowing sensor core.
+      landmark.fillStyle(0x1e293b, 0.96)
+      landmark.fillRect(270 + offsetX, 102, 18, 102)
+      landmark.fillRect(352 + offsetX, 102, 18, 102)
+      landmark.fillStyle(0x334155, 0.96)
+      landmark.fillRect(270 + offsetX, 96, 100, 16)
+      landmark.fillStyle(0x020617, 0.94)
+      landmark.fillRect(286 + offsetX, 112, 68, 12)
+      landmark.fillStyle(0x67e8f9, 0.86)
+      landmark.fillRect(292 + offsetX, 116, 56, 3)
+      landmark.fillStyle(0x475569, 0.86)
+      landmark.fillRect(276 + offsetX, 196, 12, 8)
+      landmark.fillRect(352 + offsetX, 196, 12, 8)
+      landmark.fillStyle(0xef4444, 0.2)
+      landmark.fillCircle(320 + offsetX, 130, 26)
+      landmark.fillStyle(0xfb7185, 0.94)
+      landmark.fillCircle(320 + offsetX, 130, 4)
+      landmark.lineStyle(2, 0xf97316, 0.64)
+      for (let x = 74; x < 196; x += 22) landmark.lineBetween(x + offsetX, 214, x + offsetX + 14, 202)
+      this.addPhysicalLabel('SECURITY  CHECK', 280 + offsetX, 82, '#fda4af')
+    }
+
+    this.sectionLandmarks.push(landmark)
+  }
+
+  private addPhysicalLabel(label: string, x: number, y: number, color: string): void {
+    // Test scenes intentionally omit text; the live Phaser factory always has it.
+    if (typeof this.scene.add.text !== 'function') return
+    this.own(this.scene.add.text(x, y, label, {
+      color,
+      fontFamily: 'monospace',
+      fontSize: '8px',
+      stroke: '#020617',
+      strokeThickness: 1,
+    })).setDepth(-274).setAlpha(0.92)
   }
 
   private applyMotion(): void {
@@ -136,7 +284,34 @@ export class ZoneRenderer {
     this.reflections.forEach((reflection, index) => {
       reflection.setAlpha(this.reflectionAlpha + index * 0.025)
     })
-    this.rain.setPosition(0, this.rainOffset)
-    for (const gate of this.gates) gate.setAlpha(this.locked ? 0.86 : 0.16)
+    this.rain.forEach((rain, sectionIndex) => {
+      rain.setPosition(sectionIndex * this.sectionStride, this.rainOffset)
+    })
+    this.applyGateStates()
+  }
+
+  private applyGateStates(): void {
+    for (const gate of this.gates) {
+      if (gate.sectionIndex === this.activeSectionIndex && gate.edge === 'front') {
+        gate.object
+          .setAlpha(this.locked ? 0.92 : 0.42)
+          .setFillStyle(this.locked ? 0xef4444 : 0x22d3ee, this.locked ? 0.76 : 0.34)
+          .setStrokeStyle(2, this.locked ? 0xff6b6b : 0x67e8f9, this.locked ? 1 : 0.88)
+        continue
+      }
+
+      if (gate.sectionIndex === this.activeSectionIndex - 1 && gate.edge === 'rear') {
+        gate.object
+          .setAlpha(0.14)
+          .setFillStyle(0x1e293b, 0.12)
+          .setStrokeStyle(1, 0x67e8f9, 0.24)
+        continue
+      }
+
+      gate.object
+        .setAlpha(0.06)
+        .setFillStyle(0x0f172a, 0.08)
+        .setStrokeStyle(1, 0x475569, 0.16)
+    }
   }
 }

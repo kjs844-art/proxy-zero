@@ -272,6 +272,48 @@ const normalizePose = (source, scale, cell) => {
   return result
 }
 
+/**
+ * Produces an authored opposite-side silhouette without introducing a second
+ * external asset. The source sheet faces right; the left-limb normal attacks
+ * reuse the same pose mirrored at atlas-export time, so each key has a
+ * distinct frame even before combat VFX is applied.
+ */
+const mirrorPoseHorizontally = (source, offsetX = 0) => {
+  const result = new PNG({ width: source.width, height: source.height })
+  for (let y = 0; y < source.height; y += 1) {
+    for (let x = 0; x < source.width; x += 1) {
+      const from = pixelIndex(source.width, x, y)
+      const mirroredX = result.width - 1 - x + offsetX
+      if (mirroredX < 0 || mirroredX >= result.width) continue
+      const to = pixelIndex(result.width, mirroredX, y)
+      result.data[to] = source.data[from]
+      result.data[to + 1] = source.data[from + 1]
+      result.data[to + 2] = source.data[from + 2]
+      result.data[to + 3] = source.data[from + 3]
+    }
+  }
+  return result
+}
+
+const poseExtents = (pose, cell) => {
+  const bounds = alphaBounds(pose)
+  return {
+    left: cell.width / 2 - bounds.x,
+    right: bounds.x + bounds.width - cell.width / 2,
+  }
+}
+
+/** Keeps a mirrored pose within the profile's pre-existing presentation envelope. */
+const mirrorOffsetWithinBounds = (pose, cell, envelope) => {
+  const extents = poseExtents(pose, cell)
+  const minimumOffset = Math.ceil(extents.right - envelope.left)
+  const maximumOffset = Math.floor(envelope.right - extents.left)
+  if (minimumOffset > maximumOffset) {
+    throw new Error('Mirrored pose cannot fit the actor presentation envelope.')
+  }
+  return Math.max(minimumOffset, Math.min(0, maximumOffset))
+}
+
 const clip = (profileId, id, state, poseIndices, extra = {}) => ({
   id,
   state,
@@ -282,6 +324,8 @@ const clip = (profileId, id, state, poseIndices, extra = {}) => ({
   poseIndices,
   ...extra,
 })
+
+const isLeftLimbNormal = (attackId) => /-left-(hand|foot)$/.test(attackId)
 
 const buildClips = (profile) => {
   const clips = [
@@ -301,9 +345,14 @@ const buildClips = (profile) => {
     const isKick = /foot|kick|sweep|charge|rush|line/.test(authoredAttackId)
     const isJump = /jump|sky/.test(authoredAttackId)
     const actionPose = isKick ? 4 : 3
-    clips.push(clip(profile.id, authoredAttackId, 'attack', [isJump ? 2 : 0, actionPose, actionPose], {
+    const poseIndices = [isJump ? 2 : 0, actionPose, actionPose]
+    const mirrorAttackPose = isLeftLimbNormal(authoredAttackId)
+    clips.push(clip(profile.id, authoredAttackId, 'attack', poseIndices, {
       authoredAttackId,
       domainAttackId,
+      poseTransforms: poseIndices.map((poseIndex) =>
+        mirrorAttackPose && poseIndex === actionPose ? 'mirror' : 'normal'
+      ),
     }))
     if (!playerAttackIds[profile.id]) {
       clips.push(clip(profile.id, authoredAttackId, 'telegraph', [7, actionPose], {
@@ -387,23 +436,29 @@ const manifestProfiles = []
 for (const profile of profileSpecs) {
   const poses = await loadProfilePoses(profile)
   const clips = buildClips(profile)
-  for (const entry of clips) {
-    entry.frames.forEach((frame, index) => {
-      sheetEntries[profile.sheet].push({ frame, pose: poses[entry.poseIndices[index]] })
-    })
-  }
-  const { poseIndices: _ignored, ...firstClip } = clips[0]
-  void firstClip
   const cell = sheetSpecs[profile.sheet].cell
   const usedPoseIndices = [...new Set(clips.flatMap((entry) => entry.poseIndices))]
   const visibleBounds = usedPoseIndices.reduce((result, poseIndex) => {
-    const pose = poses[poseIndex]
-    const bounds = alphaBounds(pose)
+    const extents = poseExtents(poses[poseIndex], cell)
     return {
-      left: Math.max(result.left, cell.width / 2 - bounds.x),
-      right: Math.max(result.right, bounds.x + bounds.width - cell.width / 2),
+      left: Math.max(result.left, extents.left),
+      right: Math.max(result.right, extents.right),
     }
   }, { left: 0, right: 0 })
+  for (const entry of clips) {
+    entry.frames.forEach((frame, index) => {
+      const pose = poses[entry.poseIndices[index]]
+      const transform = entry.poseTransforms?.[index]
+      sheetEntries[profile.sheet].push({
+        frame,
+        pose: transform === 'mirror'
+          ? mirrorPoseHorizontally(pose, mirrorOffsetWithinBounds(pose, cell, visibleBounds))
+          : pose,
+      })
+    })
+  }
+  const { poseIndices: _ignored, poseTransforms: _ignoredTransforms, ...firstClip } = clips[0]
+  void firstClip
   manifestProfiles.push({
     id: profile.id,
     sheet: profile.sheet,
@@ -415,7 +470,7 @@ for (const profile of profileSpecs) {
       width: profile.sheet === 'boss' ? 84 : profile.sheet === 'enemies' ? 50 : 42,
       height: profile.sheet === 'boss' ? 14 : 10,
     },
-    clips: clips.map(({ poseIndices: _poseIndices, ...entry }) => entry),
+    clips: clips.map(({ poseIndices: _poseIndices, poseTransforms: _poseTransforms, ...entry }) => entry),
   })
 }
 
