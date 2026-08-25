@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const phaserMocks = vi.hoisted(() => ({
   text: vi.fn(),
+  image: vi.fn(),
+  rectangle: vi.fn(),
 }))
 
 vi.mock('phaser', () => {
@@ -22,11 +24,22 @@ vi.mock('phaser', () => {
   }
 
   const textObject = () => ({
+    setAlpha: vi.fn().mockReturnThis(),
     setOrigin: vi.fn().mockReturnThis(),
+  })
+  const displayObject = () => ({
+    setDisplaySize: vi.fn().mockReturnThis(),
+    setAlpha: vi.fn().mockReturnThis(),
+    setTint: vi.fn().mockReturnThis(),
+    setStrokeStyle: vi.fn().mockReturnThis(),
   })
 
   class Scene {
-    readonly add = { text: phaserMocks.text }
+    readonly add = {
+      text: phaserMocks.text,
+      image: phaserMocks.image,
+      rectangle: phaserMocks.rectangle,
+    }
     readonly cameras = { main: { setBackgroundColor: vi.fn() } }
     readonly events = { once: vi.fn() }
     readonly game = { canvas: new Canvas() }
@@ -41,6 +54,8 @@ vi.mock('phaser', () => {
   }
 
   phaserMocks.text.mockImplementation(textObject)
+  phaserMocks.image.mockImplementation(displayObject)
+  phaserMocks.rectangle.mockImplementation(displayObject)
 
   return {
     default: {
@@ -81,6 +96,8 @@ const createTitle = (mobile: boolean): TitleHarness => {
 describe('TitleScene keyboard requirement', () => {
   beforeEach(() => {
     phaserMocks.text.mockClear()
+    phaserMocks.image.mockClear()
+    phaserMocks.rectangle.mockClear()
   })
 
   it('shows an explicit keyboard-required notice to mobile clients', () => {
@@ -114,6 +131,14 @@ describe('TitleScene keyboard requirement', () => {
   it('shows every supported keyboard start key', () => {
     createTitle(false)
     expect(phaserMocks.text.mock.calls.some((call) => call[2] === TITLE_CONTROLS_TEXT)).toBe(true)
+  })
+
+  it('uses the preloaded N-9 depot art and arcade framing on the title', () => {
+    createTitle(false)
+
+    expect(phaserMocks.image).toHaveBeenCalledWith(320, 180, 'n9-depot-background-v2')
+    expect(phaserMocks.rectangle).toHaveBeenCalledWith(320, 180, 640, 360, 0x050a12, 0.68)
+    expect(phaserMocks.text.mock.calls.filter((call) => call[2] === 'PROXY ZERO')).toHaveLength(3)
   })
 
   it('classifies a coarse pointer as mobile for the title notice contract', () => {

@@ -8,10 +8,10 @@ import {
 const movementCodes = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD'])
 
 const actionEdgesByCode: Readonly<Record<string, ActionEdge>> = {
-  KeyJ: { type: 'attack', limb: 'right-hand' },
-  KeyK: { type: 'attack', limb: 'left-hand' },
-  KeyL: { type: 'attack', limb: 'right-foot' },
-  Semicolon: { type: 'attack', limb: 'left-foot' },
+  KeyJ: { type: 'attack', limb: 'left-hand' },
+  KeyK: { type: 'attack', limb: 'right-hand' },
+  KeyL: { type: 'attack', limb: 'left-foot' },
+  Semicolon: { type: 'attack', limb: 'right-foot' },
   Space: { type: 'jump' },
   KeyQ: { type: 'cycle-item' },
   KeyE: { type: 'interact-use' },

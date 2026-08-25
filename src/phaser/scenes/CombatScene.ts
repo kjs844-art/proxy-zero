@@ -96,6 +96,11 @@ import {
 } from '../../domain/waves/waveDirector'
 import { HudController } from '../../presentation/HudController'
 import { InventoryHud } from '../../presentation/InventoryHud'
+import {
+  deriveBlockedItemFeedback,
+  deriveCycleItemFeedback,
+  deriveItemInteractionFeedback,
+} from '../../presentation/ItemActionFeedback'
 import { AudioBus, type AudioBackend } from '../../presentation/AudioBus'
 import {
   CombatVfx,
@@ -668,23 +673,45 @@ export class CombatScene extends Phaser.Scene {
     let requestedHeal = 0
     for (const edge of frame.edges) {
       if (edge.type === 'cycle-item') {
+        const before = this.itemRuntime.inventory
         this.itemRuntime = itemReducer(this.itemRuntime, { type: 'cycle-item' }).state
+        this.hud?.showActionFeedback(
+          deriveCycleItemFeedback(before, this.itemRuntime.inventory),
+        )
         continue
       }
-      if (edge.type !== 'interact-use' || discardUse || !this.canInteractUse(player)) continue
+      if (edge.type !== 'interact-use') continue
+      if (discardUse || !this.canInteractUse(player)) {
+        this.hud?.showActionFeedback(deriveBlockedItemFeedback(
+          player.mode,
+          player.activeAttack?.phase ?? null,
+          discardUse,
+          this.zonePhase === 'active',
+        ))
+        continue
+      }
 
+      const stateBefore = this.itemRuntime
+      const targets = this.itemTargets()
+      const playerSnapshot = {
+        position: { x: player.position.x, y: player.position.y },
+        hp: player.hp,
+        maxHp: player.maxHp,
+        living: player.hp > 0 && player.mode !== 'defeated',
+      }
       const result = itemReducer(this.itemRuntime, {
         type: 'interact-use',
-        player: {
-          position: { x: player.position.x, y: player.position.y },
-          hp: player.hp,
-          maxHp: player.maxHp,
-          living: player.hp > 0 && player.mode !== 'defeated',
-        },
-        targets: this.itemTargets(),
+        player: playerSnapshot,
+        targets,
       })
       this.itemRuntime = result.state
       this.applyItemPresentationEffects(result.effects)
+      this.hud?.showActionFeedback(deriveItemInteractionFeedback({
+        stateBefore,
+        player: playerSnapshot,
+        targets,
+        effects: result.effects,
+      }))
       for (const effect of result.effects) {
         if (effect.type === 'repair-requested') requestedHeal += effect.amount
       }

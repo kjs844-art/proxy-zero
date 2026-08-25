@@ -67,9 +67,9 @@ describe('KeyboardInputAdapter', () => {
     expect(adapter.readFrame()).toEqual({
       moveX: 1,
       moveY: -1,
-      edges: [{ type: 'attack', limb: 'right-hand' }],
+      edges: [{ type: 'attack', limb: 'left-hand' }],
     })
-    expect(buffer.consume(100)).toMatchObject({ edge: { type: 'attack', limb: 'right-hand' } })
+    expect(buffer.consume(100)).toMatchObject({ edge: { type: 'attack', limb: 'left-hand' } })
   })
 
   it('ignores repeated keydowns and never combines simultaneous keys into a technique', () => {
@@ -79,8 +79,8 @@ describe('KeyboardInputAdapter', () => {
     events.dispatch('keydown', new FakeKeyboardEvent('KeyJ', true))
 
     expect(adapter.readFrame().edges).toEqual([
-      { type: 'attack', limb: 'right-hand' },
       { type: 'attack', limb: 'left-hand' },
+      { type: 'attack', limb: 'right-hand' },
     ])
     expect(buffer.size).toBe(2)
   })
@@ -92,10 +92,10 @@ describe('KeyboardInputAdapter', () => {
     }
 
     expect(adapter.readFrame().edges).toEqual([
-      { type: 'attack', limb: 'right-hand' },
       { type: 'attack', limb: 'left-hand' },
-      { type: 'attack', limb: 'right-foot' },
+      { type: 'attack', limb: 'right-hand' },
       { type: 'attack', limb: 'left-foot' },
+      { type: 'attack', limb: 'right-foot' },
       { type: 'jump' },
       { type: 'cycle-item' },
       { type: 'interact-use' },

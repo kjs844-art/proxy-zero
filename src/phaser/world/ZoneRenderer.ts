@@ -2,6 +2,8 @@ import Phaser from 'phaser'
 
 import type { ArenaBounds } from '../../domain/waves/waveDirector'
 
+export const N9_DEPOT_BACKGROUND_KEY = 'n9-depot-background-v2' as const
+
 export interface ZoneRendererSnapshot {
   readonly depthLayerCount: number
   readonly elapsedMs: number
@@ -19,7 +21,7 @@ export interface ZoneRendererSnapshot {
 const finiteDelta = (deltaMs: number): number =>
   Number.isFinite(deltaMs) ? Math.max(0, deltaMs) : 0
 
-/** Owns the procedural, asset-free visual projection of the N-9 rail-yard arena. */
+/** Owns the authored N-9 depot background and lightweight animated atmosphere. */
 export class ZoneRenderer {
   private readonly owned = new Set<Phaser.GameObjects.GameObject>()
   private readonly reflections: Phaser.GameObjects.Rectangle[] = []
@@ -39,57 +41,20 @@ export class ZoneRenderer {
     const width = arena.maxX - arena.minX
     const height = arena.maxY - arena.minY
 
-    this.own(scene.add.rectangle(320, 180, 640, 360, 0x050a12)).setDepth(-400)
+    this.own(
+      scene.add
+        .image(320, 180, N9_DEPOT_BACKGROUND_KEY)
+        .setDisplaySize(640, 360),
+    ).setDepth(-400)
 
-    const skyline = this.own(scene.add.graphics()).setDepth(-390)
-    skyline.fillStyle(0x0b1d29, 1)
-    skyline.fillRect(0, 76, 640, 116)
-    skyline.fillStyle(0x153243, 1)
-    for (let x = 18; x < 640; x += 78) skyline.fillRect(x, 92, 48, 100)
-    skyline.fillStyle(0x1e4153, 0.9)
-    for (const x of [64, 228, 402, 566]) {
-      skyline.fillRect(x, 62, 18, 130)
-      skyline.fillRect(x - 12, 78, 42, 8)
-    }
-    skyline.lineStyle(2, 0x254b5e, 0.7)
-    skyline.lineBetween(0, 128, 640, 96)
-    skyline.lineBetween(0, 154, 640, 122)
-
-    this.own(scene.add.rectangle(centerX, centerY, width, height, 0x102634))
+    // A very light floor wash keeps the playable lane readable without
+    // flattening the authored puddles and surface wear in the background art.
+    this.own(scene.add.rectangle(centerX, centerY + 16, width, height - 20, 0x07131c, 0.08))
       .setDepth(-300)
-      .setStrokeStyle(1, 0x1f5068, 0.24)
-
-    const yardDepth = this.own(scene.add.graphics()).setDepth(-290)
-    yardDepth.lineStyle(1, 0x245064, 0.7)
-    for (const x of [64, 132, 200, 268, 372, 440, 508, 576]) {
-      const horizonX = 320 + (x - 320) * 0.2
-      yardDepth.lineBetween(x, arena.maxY, horizonX, arena.minY)
-    }
-    for (const y of [218, 246, 276, 304]) {
-      yardDepth.lineBetween(arena.minX, y, arena.maxX, y)
-    }
-    yardDepth.fillStyle(0x0a1722, 0.92)
-    yardDepth.fillRect(56, 184, 96, 20)
-    yardDepth.fillRect(480, 184, 96, 20)
-    yardDepth.fillStyle(0x1f4252, 0.9)
-    for (const x of [62, 92, 122, 486, 516, 546]) yardDepth.fillRect(x, 188, 24, 12)
-    yardDepth.lineStyle(3, 0x315b66, 0.85)
-    yardDepth.lineBetween(80, 190, 80, 112)
-    yardDepth.lineBetween(80, 112, 194, 84)
-    yardDepth.lineBetween(560, 190, 560, 124)
-    yardDepth.lineBetween(560, 124, 456, 92)
-
-    const rails = this.own(scene.add.graphics()).setDepth(-280)
-    rails.lineStyle(4, 0x52606a, 0.95)
-    rails.lineBetween(arena.minX, 220, arena.maxX, 220)
-    rails.lineBetween(arena.minX, 282, arena.maxX, 282)
-    rails.lineStyle(2, 0x19242d, 0.95)
-    for (let x = arena.minX; x <= arena.maxX; x += 24) {
-      rails.lineBetween(x, 202, x + 6, 300)
-    }
+      .setStrokeStyle(1, 0x67e8f9, 0.1)
 
     for (const x of [154, 320, 486]) {
-      this.own(scene.add.ellipse(x, 202, 124, 44, 0xf6c76e, 0.12)).setDepth(-260)
+      this.own(scene.add.ellipse(x, 202, 124, 44, 0xf6c76e, 0.07)).setDepth(-260)
     }
 
     for (const [x, y, reflectionWidth] of [
@@ -98,26 +63,13 @@ export class ZoneRenderer {
       [506, 238, 86],
     ] as const) {
       const reflection = this.own(
-        scene.add.rectangle(x, y, reflectionWidth, 4, 0x22d3ee, this.reflectionAlpha),
+        scene.add.rectangle(x, y, reflectionWidth, 3, 0x22d3ee, this.reflectionAlpha * 0.58),
       ).setDepth(-240)
       this.reflections.push(reflection)
     }
 
-    const signalLights = this.own(scene.add.graphics()).setDepth(-235)
-    for (const [x, y, color] of [
-      [82, 156, 0x22d3ee],
-      [174, 142, 0xfacc15],
-      [466, 150, 0x22d3ee],
-      [556, 136, 0xef4444],
-    ] as const) {
-      signalLights.fillStyle(color, 0.18)
-      signalLights.fillCircle(x, y, 10)
-      signalLights.fillStyle(color, 0.95)
-      signalLights.fillCircle(x, y, 3)
-    }
-
     this.rain = this.own(scene.add.graphics()).setDepth(-220)
-    this.rain.lineStyle(1, 0x9be7f1, 0.22)
+    this.rain.lineStyle(1, 0x9be7f1, 0.18)
     for (let y = -46; y <= 406; y += 46) {
       for (let x = 14; x < 672; x += 43) {
         this.rain.lineBetween(x, y, x - 9, y + 24)
@@ -125,7 +77,7 @@ export class ZoneRenderer {
     }
 
     for (const x of [arena.minX - 7, arena.maxX + 7]) {
-      const gate = this.own(scene.add.rectangle(x, centerY, 10, height + 22, 0xef4444, 0.85))
+      const gate = this.own(scene.add.rectangle(x, centerY, 8, height + 22, 0xef4444, 0.68))
         .setDepth(-180)
         .setStrokeStyle(2, 0xff6b6b, 1)
       this.gates.push(gate)
@@ -179,7 +131,7 @@ export class ZoneRenderer {
   }
 
   private applyMotion(): void {
-    this.reflectionAlpha = 0.34 + Math.sin(this.elapsedMs / 420) * 0.08
+    this.reflectionAlpha = 0.22 + Math.sin(this.elapsedMs / 420) * 0.06
     this.rainOffset = (this.elapsedMs / 24) % 46
     this.reflections.forEach((reflection, index) => {
       reflection.setAlpha(this.reflectionAlpha + index * 0.025)

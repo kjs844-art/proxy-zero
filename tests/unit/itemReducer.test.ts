@@ -81,15 +81,34 @@ describe('itemReducer', () => {
     )
   })
 
-  it('gives pickup handling priority over use and leaves a full-slot pickup in place', () => {
+  it('does not let a full-slot pickup swallow use of the selected item', () => {
     const state = createItemRuntimeState({
       inventory: inventory(1, 1, 'repair-kit'),
       pickups: [pickup('near-emp', 'emp', ITEM_PICKUP_RADIUS_PX)],
     })
     const result = itemReducer(state, use(50, 100))
 
-    expect(result.state).toEqual(state)
-    expect(result.effects).toEqual([])
+    expect(result.state.inventory).toEqual(inventory(1, 0, 'emp'))
+    expect(result.state.pickups).toEqual(state.pickups)
+    expect(result.effects).toEqual([{ type: 'repair-requested', amount: 45 }])
+  })
+
+  it('skips a nearer full-slot pickup and acquires the nearest available item', () => {
+    const state = createItemRuntimeState({
+      inventory: inventory(1, 0, 'emp'),
+      pickups: [
+        pickup('near-full-emp', 'emp', 10),
+        pickup('available-repair', 'repair-kit', 20),
+      ],
+    })
+    const result = itemReducer(state, use(100, 100))
+
+    expect(result.state.inventory).toEqual(inventory(1, 1, 'emp'))
+    expect(result.state.pickups[0].consumed).toBe(false)
+    expect(result.state.pickups[1].consumed).toBe(true)
+    expect(result.effects).toEqual([
+      { type: 'pickup-acquired', pickupId: 'available-repair', itemId: 'repair-kit' },
+    ])
   })
 
   it('acquires a nearby pickup instead of using the currently selected item on the same E edge', () => {

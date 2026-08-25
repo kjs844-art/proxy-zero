@@ -150,12 +150,15 @@ const squaredDistance = (left: Readonly<ItemPoint>, right: Readonly<ItemPoint>):
 const nearestPickup = (
   pickups: readonly Readonly<ItemPickupSnapshot>[],
   playerPosition: Readonly<ItemPoint>,
+  inventory: Readonly<ItemInventory>,
 ): Readonly<ItemPickupSnapshot> | undefined => {
   const maximumSquared = ITEM_PICKUP_RADIUS_PX * ITEM_PICKUP_RADIUS_PX
   return pickups
     .filter(
       (entry) =>
-        !entry.consumed && squaredDistance(entry.position, playerPosition) <= maximumSquared,
+        !entry.consumed &&
+        inventory.counts[entry.itemId] === 0 &&
+        squaredDistance(entry.position, playerPosition) <= maximumSquared,
     )
     .sort((left, right) => {
       const distanceDifference =
@@ -189,10 +192,9 @@ const tryPickup = (
   player: Readonly<ItemPlayerSnapshot>,
   effects: ItemEffect[],
 ): boolean => {
-  const selectedPickup = nearestPickup(state.pickups, player.position)
+  const selectedPickup = nearestPickup(state.pickups, player.position, state.inventory)
   if (!selectedPickup) return false
 
-  if (state.inventory.counts[selectedPickup.itemId] === 1) return true
   state.inventory.counts[selectedPickup.itemId] = 1
   if (!hasValidSelection(state.inventory)) {
     state.inventory.selectedItemId = selectedPickup.itemId

@@ -38,8 +38,13 @@ const fakeScene = () => ({
 
 describe('Task 14 unified HUD contract', () => {
   it('spells out the item control semantics instead of binding keys to item names', () => {
-    expect(HUD_CONTROLS_TEXT).toContain('Q SELECT ITEM')
-    expect(HUD_CONTROLS_TEXT).toContain('E PICKUP-USE')
+    expect(HUD_CONTROLS_TEXT).toContain('J L.HAND')
+    expect(HUD_CONTROLS_TEXT).toContain('K R.HAND')
+    expect(HUD_CONTROLS_TEXT).toContain('L L.FOOT')
+    expect(HUD_CONTROLS_TEXT).toContain('; R.FOOT')
+    expect(HUD_CONTROLS_TEXT).toContain('Q ITEM')
+    expect(HUD_CONTROLS_TEXT).toContain('E PICKUP/USE')
+    expect(HUD_CONTROLS_TEXT.split('\n')).toHaveLength(2)
     expect(HUD_CONTROLS_TEXT).not.toContain('Q/E ITEM')
   })
 
@@ -94,5 +99,29 @@ describe('Task 14 unified HUD contract', () => {
     expect(controlsHud.snapshot().controlsAlpha).toBe(0.5)
     controlsHud.advance(500)
     expect(controlsHud.snapshot().controlsAlpha).toBe(0)
+  })
+
+  it('shows action feedback for one second and clears it with other transients', () => {
+    const emptyInventory = {
+      counts: { emp: 0 as const, 'repair-kit': 0 as const },
+      selectedItemId: null,
+    }
+    const hud = new HudController(fakeScene() as never, 'jin', emptyInventory)
+    hud.showActionFeedback('NO ITEM')
+    expect(hud.snapshot()).toMatchObject({
+      actionFeedbackText: 'NO ITEM',
+      actionFeedbackRemainingMs: 1_000,
+    })
+    hud.advance(999)
+    expect(hud.snapshot().actionFeedbackText).toBe('NO ITEM')
+    hud.advance(1)
+    expect(hud.snapshot()).toMatchObject({
+      actionFeedbackText: '',
+      actionFeedbackRemainingMs: 0,
+    })
+
+    hud.showActionFeedback('HP FULL')
+    hud.resetTransient()
+    expect(hud.snapshot().actionFeedbackText).toBe('')
   })
 })

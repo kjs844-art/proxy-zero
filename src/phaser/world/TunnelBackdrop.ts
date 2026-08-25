@@ -5,6 +5,8 @@ import type {
   TunnelTrainPhase,
 } from '../../domain/world/tunnelHazard'
 
+export const FLOODED_TUNNEL_BACKGROUND_KEY = 'flooded-tunnel-background-v2' as const
+
 export interface TunnelBackdropSnapshot {
   readonly elapsedMs: number
   readonly ownedObjectCount: number
@@ -21,9 +23,9 @@ const finiteDelta = (deltaMs: number): number =>
 /** Presentation-only flooded-tunnel projection. It never reads or mutates combat HP. */
 export class TunnelBackdrop {
   private readonly owned = new Set<Phaser.GameObjects.GameObject>()
-  private readonly puddle: Phaser.GameObjects.Rectangle
-  private readonly safeLane: Phaser.GameObjects.Rectangle
-  private readonly trainWarning: Phaser.GameObjects.Rectangle
+  private readonly puddle: Phaser.GameObjects.Graphics
+  private readonly safeLane: Phaser.GameObjects.Graphics
+  private readonly trainWarning: Phaser.GameObjects.Graphics
   private readonly trainWarningStripes: Phaser.GameObjects.Graphics
   private readonly runoff: Phaser.GameObjects.Graphics
   private elapsedMs = 0
@@ -33,31 +35,28 @@ export class TunnelBackdrop {
   private trainWarningVisible = false
 
   constructor(scene: Phaser.Scene) {
-    this.own(scene.add.rectangle(320, 180, 640, 360, 0x050b10)).setDepth(-400)
-    this.own(scene.add.rectangle(320, 254, 544, 132, 0x10232b))
+    this.own(
+      scene.add
+        .image(320, 180, FLOODED_TUNNEL_BACKGROUND_KEY)
+        .setDisplaySize(640, 360),
+    ).setDepth(-400)
+    this.own(scene.add.rectangle(320, 254, 544, 132, 0x07131c, 0.08))
       .setDepth(-300)
-      .setStrokeStyle(1, 0x315b66, 0.22)
+      .setStrokeStyle(1, 0x315b66, 0.16)
 
-    // These ribs sit just above the arena floor projection so their lower legs
-    // remain visible instead of disappearing behind the shared arena rectangle.
+    // The background already carries the tunnel structure. These are restrained
+    // glints only, leaving its arches, pipes, and wet floor fully readable.
     const tunnelShell = this.own(scene.add.graphics()).setDepth(-292)
-    tunnelShell.fillStyle(0x0b1922, 1)
-    tunnelShell.fillRect(0, 72, 640, 122)
-    tunnelShell.fillStyle(0x0c2028, 1)
-    tunnelShell.fillRect(0, 170, 52, 150)
-    tunnelShell.fillRect(588, 170, 52, 150)
-    tunnelShell.lineStyle(2, 0x3d6872, 0.9)
+    tunnelShell.lineStyle(2, 0x3d6872, 0.2)
     tunnelShell.lineBetween(56, 110, 584, 110)
     tunnelShell.lineBetween(48, 164, 592, 164)
-    tunnelShell.lineStyle(1, 0x67e8f9, 0.25)
+    tunnelShell.lineStyle(1, 0x67e8f9, 0.12)
     tunnelShell.lineBetween(74, 88, 566, 88)
 
     const pipes = this.own(scene.add.graphics()).setDepth(-286)
-    pipes.fillStyle(0x152f38, 1)
-    pipes.fillRect(0, 78, 640, 92)
-    pipes.lineStyle(8, 0x34515a, 0.9)
+    pipes.lineStyle(3, 0x34515a, 0.2)
     pipes.lineBetween(18, 118, 622, 118)
-    pipes.lineStyle(3, 0xf97316, 0.55)
+    pipes.lineStyle(2, 0xf97316, 0.28)
     for (let x = 42; x < 620; x += 72) pipes.lineBetween(x, 102, x, 136)
 
     const wallLights = this.own(scene.add.graphics()).setDepth(-280)
@@ -70,7 +69,7 @@ export class TunnelBackdrop {
 
     const archRibs = this.own(scene.add.graphics()).setDepth(-278)
     const drawArch = (centerY: number, radiusX: number, radiusY: number, color: number): void => {
-      archRibs.lineStyle(4, color, 0.88)
+      archRibs.lineStyle(2, color, 0.24)
       const shoulderY = 220
       const floorY = 312
       const shoulderAngle = Math.asin((centerY - shoulderY) / radiusY)
@@ -93,26 +92,73 @@ export class TunnelBackdrop {
     drawArch(316, 272, 194, 0x315b66)
     drawArch(316, 232, 156, 0x244b59)
 
-    this.safeLane = this.own(scene.add.rectangle(320, 214, 544, 52, 0x164e63, 0.22))
-      .setDepth(-250)
-      .setStrokeStyle(1, 0x67e8f9, 0.45)
-    this.puddle = this.own(scene.add.rectangle(320, 283, 480, 74, 0x0e7490, 0.34))
-      .setDepth(-245)
-      .setStrokeStyle(2, 0x22d3ee, 0.6)
-    this.trainWarning = this.own(scene.add.rectangle(320, 216, 544, 56, 0xef4444, 0.08))
-      .setDepth(-230)
-      .setStrokeStyle(2, 0xfb7185, 0.8)
+    // These props preserve the authored hazard rectangles while expressing
+    // them as built tunnel infrastructure: a raised dry route, a shallow
+    // flooded trench, and a pair of signal rails. Their visibility still
+    // comes only from the deterministic domain phases below.
+    this.safeLane = this.own(scene.add.graphics()).setDepth(-250)
+    this.safeLane.setPosition(320, 214)
+    this.safeLane.fillStyle(0x06131a, 0.52)
+    this.safeLane.fillRect(-272, -26, 544, 52)
+    this.safeLane.lineStyle(1, 0x315b66, 0.86)
+    this.safeLane.lineBetween(-272, -26, 272, -26)
+    this.safeLane.lineBetween(-272, 26, 272, 26)
+    this.safeLane.lineStyle(1, 0x67e8f9, 0.45)
+    for (let x = -252; x < 252; x += 48) {
+      this.safeLane.lineBetween(x, -18, x + 26, -18)
+      this.safeLane.lineBetween(x + 6, 18, x + 32, 18)
+    }
+    this.safeLane.lineStyle(1, 0x0e7490, 0.58)
+    for (let x = -224; x <= 224; x += 56) this.safeLane.lineBetween(x, -22, x, 22)
+
+    this.puddle = this.own(scene.add.graphics()).setDepth(-245)
+    this.puddle.setPosition(320, 283)
+    this.puddle.fillStyle(0x082f49, 0.44)
+    this.puddle.fillRect(-240, -37, 480, 74)
+    this.puddle.lineStyle(2, 0x164e63, 0.82)
+    this.puddle.lineBetween(-240, -37, 240, -37)
+    this.puddle.lineBetween(-240, 37, 240, 37)
+    this.puddle.lineStyle(1, 0x22d3ee, 0.48)
+    for (let x = -220; x <= 196; x += 52) {
+      this.puddle.lineBetween(x, -22, x + 30, -22)
+      this.puddle.lineBetween(x + 12, 4, x + 46, 4)
+      this.puddle.lineBetween(x - 10, 24, x + 18, 24)
+    }
+    this.puddle.fillStyle(0x67e8f9, 0.26)
+    for (const x of [-176, -64, 72, 184]) {
+      this.puddle.fillCircle(x, -7, 3)
+      this.puddle.fillCircle(x + 10, 18, 2)
+    }
+
+    this.trainWarning = this.own(scene.add.graphics()).setDepth(-230)
+    this.trainWarning.setPosition(320, 216)
+    this.trainWarning.fillStyle(0x450a0a, 0.32)
+    this.trainWarning.fillRect(-272, -28, 544, 56)
+    this.trainWarning.lineStyle(2, 0xef4444, 0.88)
+    this.trainWarning.lineBetween(-272, -25, 272, -25)
+    this.trainWarning.lineBetween(-272, 25, 272, 25)
+    this.trainWarning.lineStyle(1, 0xfb7185, 0.72)
+    for (let x = -248; x <= 232; x += 48) {
+      this.trainWarning.lineBetween(x, -19, x + 16, -19)
+      this.trainWarning.lineBetween(x + 8, 19, x + 24, 19)
+    }
     this.trainWarningStripes = this.own(scene.add.graphics()).setDepth(-229)
-    this.trainWarningStripes.lineStyle(2, 0xfb7185, 0.58)
-    for (let x = 40; x < 640; x += 28) {
-      this.trainWarningStripes.lineBetween(x, 242, x + 32, 190)
+    this.trainWarningStripes.lineStyle(2, 0xf97316, 0.78)
+    for (let x = 40; x < 640; x += 36) {
+      this.trainWarningStripes.lineBetween(x, 239, x + 18, 193)
+      this.trainWarningStripes.lineBetween(x + 18, 193, x + 25, 211)
     }
 
     this.runoff = this.own(scene.add.graphics()).setDepth(-220)
-    this.runoff.lineStyle(2, 0x67e8f9, 0.3)
-    for (let y = 226; y <= 308; y += 22) {
-      for (let x = 74; x <= 568; x += 56) this.runoff.lineBetween(x, y, x + 22, y + 5)
+    this.runoff.lineStyle(1, 0x67e8f9, 0.28)
+    for (let y = 228; y <= 300; y += 24) {
+      for (let x = 72; x <= 556; x += 72) {
+        this.runoff.lineBetween(x, y, x + 26, y + 3)
+        this.runoff.lineBetween(x + 38, y + 3, x + 52, y + 1)
+      }
     }
+    this.runoff.lineStyle(1, 0xf97316, 0.2)
+    for (let x = 92; x < 560; x += 92) this.runoff.lineBetween(x, 314, x + 34, 314)
     this.applyPhases()
   }
 

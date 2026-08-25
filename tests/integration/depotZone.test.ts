@@ -9,6 +9,7 @@ vi.mock('phaser', () => {
     setBackgroundColor(_value: string): this { return this }
     setColor(_value: string): this { return this }
     setDepth(_value: number): this { return this }
+    setDisplaySize(_width: number, _height: number): this { return this }
     setFillStyle(_color: number, _alpha?: number): this { return this }
     setFrame(_frame: string): this { return this }
     setFlipX(_value: boolean): this { return this }
@@ -436,6 +437,10 @@ class FakeDisplayObject {
     return this
   }
 
+  setDisplaySize(_width: number, _height: number): this {
+    return this
+  }
+
   setFillStyle(color: number, _alpha?: number): this {
     this.fillColor = color
     return this
@@ -487,6 +492,7 @@ const fakeScene = () => {
       add: {
         ellipse: () => own(new FakeDisplayObject()),
         graphics: () => own(new FakeGraphics()),
+        image: () => own(new FakeDisplayObject()),
         rectangle: () => own(new FakeDisplayObject()),
       },
     },

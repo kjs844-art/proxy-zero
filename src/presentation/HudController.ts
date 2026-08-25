@@ -12,6 +12,7 @@ export const HUD_LAYOUT = Object.freeze({
   combo: Object.freeze({ x: 624, y: 72 }),
   encounter: Object.freeze({ x: 144, y: 52, width: 352, height: 16 }),
   controls: Object.freeze({ x: 12, y: 330 }),
+  actionFeedback: Object.freeze({ x: 320, y: 302 }),
 })
 
 const palette = Object.freeze({
@@ -29,7 +30,7 @@ const controlsHoldMs = 8_000
 const controlsFadeMs = 1_000
 
 export const HUD_CONTROLS_TEXT =
-  'WASD MOVE  SPACE JUMP  J/K/L/; ATTACK  Q SELECT ITEM  E PICKUP-USE'
+  'J L.HAND  K R.HAND  L L.FOOT  ; R.FOOT\nWASD MOVE  SPACE JUMP  Q ITEM  E PICKUP/USE'
 
 export interface EncounterHudSnapshot {
   readonly label: string
@@ -64,6 +65,8 @@ export interface HudControllerSnapshot {
   readonly combo: number
   readonly controlsElapsedMs: number
   readonly controlsAlpha: number
+  readonly actionFeedbackText: string
+  readonly actionFeedbackRemainingMs: number
   readonly inventory: InventoryHudSnapshot
 }
 
@@ -103,10 +106,13 @@ export class HudController {
   private readonly comboText: Phaser.GameObjects.Text
   private readonly encounterText: Phaser.GameObjects.Text
   private readonly controlsText: Phaser.GameObjects.Text
+  private readonly actionFeedbackText: Phaser.GameObjects.Text
   private controlsElapsedMs = 0
   private comboElapsedMs = 0
   private combo = 0
   private controlsAlpha = 1
+  private actionFeedbackValue = ''
+  private actionFeedbackRemainingMs = 0
   private disposed = false
 
   constructor(scene: Phaser.Scene, characterId: CharacterId, inventory: Readonly<ItemInventory>) {
@@ -132,9 +138,34 @@ export class HudController {
     this.controlsText = scene.add.text(HUD_LAYOUT.controls.x, HUD_LAYOUT.controls.y, HUD_CONTROLS_TEXT, {
       ...textStyle('10px', palette.secondary),
       backgroundColor: '#071018d9',
+      lineSpacing: 1,
       padding: { x: 6, y: 3 },
     }).setOrigin(0, 0).setDepth(10_004).setScrollFactor(0)
+    this.actionFeedbackText = scene.add.text(
+      HUD_LAYOUT.actionFeedback.x,
+      HUD_LAYOUT.actionFeedback.y,
+      '',
+      {
+        ...textStyle('11px', '#f6c76e'),
+        backgroundColor: '#071018e8',
+        padding: { x: 8, y: 4 },
+      },
+    ).setOrigin(0.5, 0.5).setDepth(10_006).setScrollFactor(0).setVisible(false)
     this.inventoryHud = new InventoryHud(scene, inventory)
+  }
+
+  showActionFeedback(message: string, durationMs = 1_000): void {
+    if (this.disposed) return
+    const normalizedMessage = message.trim()
+    if (normalizedMessage.length === 0) return
+    this.actionFeedbackValue = normalizedMessage
+    this.actionFeedbackRemainingMs = Number.isFinite(durationMs)
+      ? Math.max(1, durationMs)
+      : 1_000
+    this.actionFeedbackText
+      .setText(this.actionFeedbackValue)
+      .setAlpha(1)
+      .setVisible(true)
   }
 
   registerConfirmedHits(count: number): void {
@@ -149,6 +180,11 @@ export class HudController {
     const deltaMs = Number.isFinite(requestedDeltaMs) ? Math.max(0, requestedDeltaMs) : 0
     this.controlsElapsedMs += deltaMs
     this.comboElapsedMs += deltaMs
+    this.actionFeedbackRemainingMs = Math.max(0, this.actionFeedbackRemainingMs - deltaMs)
+    if (this.actionFeedbackRemainingMs === 0 && this.actionFeedbackValue.length > 0) {
+      this.actionFeedbackValue = ''
+      this.actionFeedbackText.setText('').setVisible(false)
+    }
     if (this.comboElapsedMs >= 850) this.combo = 0
     this.controlsAlpha = this.controlsElapsedMs <= controlsHoldMs
       ? 1
@@ -191,6 +227,9 @@ export class HudController {
 
   resetTransient(): void {
     this.resetCombo()
+    this.actionFeedbackValue = ''
+    this.actionFeedbackRemainingMs = 0
+    this.actionFeedbackText.setText('').setVisible(false)
   }
 
   snapshot(): HudControllerSnapshot {
@@ -199,6 +238,8 @@ export class HudController {
       combo: this.combo,
       controlsElapsedMs: this.controlsElapsedMs,
       controlsAlpha: this.controlsAlpha,
+      actionFeedbackText: this.actionFeedbackValue,
+      actionFeedbackRemainingMs: this.actionFeedbackRemainingMs,
       inventory: this.inventoryHud.snapshot(),
     }
   }
@@ -216,5 +257,6 @@ export class HudController {
     this.comboText.destroy()
     this.encounterText.destroy()
     this.controlsText.destroy()
+    this.actionFeedbackText.destroy()
   }
 }

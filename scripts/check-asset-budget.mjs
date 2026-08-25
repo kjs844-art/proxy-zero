@@ -9,6 +9,11 @@ export const DIST_RAW_LIMIT_BYTES = 40_000_000
 
 const BOOT_ATLAS_PATH = 'assets/sprites/actors.multiatlas.json'
 const BOOT_AUDIO_DIRECTORY = 'assets/audio/'
+const BOOT_ENVIRONMENT_PATHS = Object.freeze([
+  'assets/environment/n9-depot-v2.png',
+  'assets/environment/service-train-v2.png',
+  'assets/environment/flooded-tunnel-v2.png',
+])
 
 const toPosixPath = (value) => value.split(sep).join('/')
 
@@ -137,6 +142,13 @@ const collectBootPreloadPaths = async (fileByRelativePath) => {
     throw new Error(`Boot-preloaded audio is missing from ${BOOT_AUDIO_DIRECTORY}`)
   }
   for (const audioPath of audioPaths) bootPaths.add(audioPath)
+
+  for (const environmentPath of BOOT_ENVIRONMENT_PATHS) {
+    if (!fileByRelativePath.has(environmentPath)) {
+      throw new Error(`Boot-preloaded environment asset is missing: ${environmentPath}`)
+    }
+    bootPaths.add(environmentPath)
+  }
 
   return bootPaths
 }

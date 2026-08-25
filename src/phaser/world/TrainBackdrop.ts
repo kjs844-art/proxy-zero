@@ -3,6 +3,8 @@ import Phaser from 'phaser'
 import type { ItemPickupSnapshot } from '../../domain/items/itemReducer'
 import type { TrainHazardPhase } from '../../domain/world/trainHazard'
 
+export const SERVICE_TRAIN_BACKGROUND_KEY = 'service-train-background-v2' as const
+
 export interface TrainBackdropSnapshot {
   readonly offset: number
   readonly ownedObjectCount: number
@@ -14,85 +16,103 @@ export interface TrainBackdropSnapshot {
 /** Presentation-only service-train projection. Gameplay decisions stay in pure domains. */
 export class TrainBackdrop {
   private readonly owned = new Set<Phaser.GameObjects.GameObject>()
-  private readonly warningStrips: Phaser.GameObjects.Rectangle[] = []
-  private readonly warningBeacons: Phaser.GameObjects.Ellipse[] = []
-  private readonly pickupObjects = new Map<string, Phaser.GameObjects.Ellipse>()
+  private readonly warningStrips: Phaser.GameObjects.Graphics[] = []
+  private readonly warningBeacons: Phaser.GameObjects.Graphics[] = []
+  private readonly pickupObjects = new Map<string, Phaser.GameObjects.Graphics>()
   private readonly parallax: Phaser.GameObjects.Graphics
-  private readonly platform: Phaser.GameObjects.Rectangle
+  private readonly platform: Phaser.GameObjects.Graphics
   private offset = 0
   private platformCenterX = 278
   private warningVisible = false
 
   constructor(scene: Phaser.Scene, pickups: readonly Readonly<ItemPickupSnapshot>[]) {
-    this.own(scene.add.rectangle(320, 180, 640, 360, 0x060913)).setDepth(-400)
+    this.own(
+      scene.add
+        .image(320, 180, SERVICE_TRAIN_BACKGROUND_KEY)
+        .setDisplaySize(640, 360),
+    ).setDepth(-400)
+
+    // The authored car interior owns the room. This stays as a thin moving
+    // reflection only, so it gives motion without painting over the art.
     this.parallax = this.own(scene.add.graphics()).setDepth(-390)
-    this.parallax.fillStyle(0x08111e, 1)
-    this.parallax.fillRect(-128, 64, 896, 134)
-    this.parallax.lineStyle(3, 0x31475e, 0.95)
-    this.parallax.lineBetween(-128, 176, 768, 176)
-    this.parallax.lineStyle(1, 0x71d8e8, 0.35)
-    this.parallax.lineBetween(-128, 184, 768, 184)
-    for (let carX = -168; carX < 800; carX += 224) {
-      this.parallax.fillStyle(0x13253a, 1)
-      this.parallax.fillRect(carX, 86, 198, 84)
-      this.parallax.fillStyle(0x284761, 1)
-      this.parallax.fillRect(carX + 8, 96, 182, 62)
-      this.parallax.fillStyle(0x0b1726, 1)
-      this.parallax.fillRect(carX + 88, 100, 32, 58)
-      this.parallax.lineStyle(2, 0x6d8da1, 0.8)
-      this.parallax.lineBetween(carX + 104, 102, carX + 104, 156)
-      for (const windowOffset of [20, 54, 132, 164]) {
-        this.parallax.fillStyle(0x67e8f9, 0.4)
-        this.parallax.fillRect(carX + windowOffset, 108, 22, 19)
-        this.parallax.fillStyle(0xa5f3fc, 0.9)
-        this.parallax.fillRect(carX + windowOffset + 3, 111, 16, 5)
-      }
-      this.parallax.fillStyle(0x020617, 1)
-      this.parallax.fillCircle(carX + 42, 172, 11)
-      this.parallax.fillCircle(carX + 158, 172, 11)
-      this.parallax.fillStyle(0x94a3b8, 0.8)
-      this.parallax.fillCircle(carX + 42, 172, 4)
-      this.parallax.fillCircle(carX + 158, 172, 4)
+    this.parallax.lineStyle(1, 0x67e8f9, 0.12)
+    for (let x = -160; x < 800; x += 224) {
+      this.parallax.lineBetween(x, 228, x + 96, 228)
+      this.parallax.lineBetween(x + 34, 240, x + 174, 240)
     }
 
     const railbed = this.own(scene.add.graphics()).setDepth(-340)
-    railbed.fillStyle(0x0b1726, 0.96)
-    railbed.fillRect(42, 238, 556, 72)
-    railbed.lineStyle(3, 0x64748b, 0.9)
+    railbed.lineStyle(2, 0x64748b, 0.18)
     railbed.lineBetween(48, 250, 592, 250)
     railbed.lineBetween(48, 302, 592, 302)
-    railbed.lineStyle(2, 0x243447, 1)
+    railbed.lineStyle(1, 0x243447, 0.24)
     for (let x = 54; x < 592; x += 28) railbed.lineBetween(x, 244, x + 12, 308)
 
-    this.own(scene.add.rectangle(320, 254, 544, 132, 0x172033))
+    // Keep a low-opacity lane wash: it improves fighter contrast but preserves
+    // the authored floor reflections and panel detail beneath it.
+    this.own(scene.add.rectangle(320, 254, 544, 132, 0x07131c, 0.1))
       .setDepth(-300)
-      .setStrokeStyle(1, 0x64748b, 0.22)
-    this.own(scene.add.rectangle(320, 286, 148, 68, 0x020617, 0.9))
-      .setDepth(-260)
-      .setStrokeStyle(2, 0xfacc15, 0.45)
+      .setStrokeStyle(1, 0x64748b, 0.16)
+    // A recessed maintenance hatch marks the moving-platform danger lane. It
+    // deliberately has the same footprint as the old outline, but reads as a
+    // physical piece of train hardware instead of a debug rectangle.
+    const maintenanceHatch = this.own(scene.add.graphics()).setDepth(-260)
+    maintenanceHatch.setPosition(320, 286)
+    maintenanceHatch.fillStyle(0x020617, 0.68)
+    maintenanceHatch.fillRect(-74, -34, 148, 68)
+    maintenanceHatch.lineStyle(2, 0x9a6b18, 0.72)
+    maintenanceHatch.strokeRect(-74, -34, 148, 68)
+    maintenanceHatch.lineStyle(1, 0xfacc15, 0.38)
+    maintenanceHatch.strokeRect(-66, -26, 132, 52)
+    maintenanceHatch.lineStyle(2, 0x5f450e, 0.75)
+    for (let x = -58; x <= 48; x += 26) {
+      maintenanceHatch.lineBetween(x, -22, x + 18, -4)
+      maintenanceHatch.lineBetween(x, 22, x + 18, 4)
+    }
+    maintenanceHatch.lineStyle(1, 0x67e8f9, 0.26)
+    maintenanceHatch.lineBetween(-54, 0, 54, 0)
 
     for (let x = 252; x <= 388; x += 24) {
-      const strip = this.own(scene.add.rectangle(x, 254, 12, 6, 0xfacc15, 0.35))
-        .setDepth(-210)
+      const strip = this.own(scene.add.graphics()).setDepth(-210)
+      strip.setPosition(x, 254)
+      strip.fillStyle(0x4a3208, 0.88)
+      strip.fillRect(-8, -4, 16, 8)
+      strip.lineStyle(1, 0xfacc15, 0.95)
+      strip.lineBetween(-6, 3, 1, -3)
+      strip.lineBetween(0, 3, 7, -3)
       this.warningStrips.push(strip)
     }
     for (const x of [76, 564]) {
-      const beacon = this.own(scene.add.ellipse(x, 202, 18, 18, 0xef4444, 0.12))
-        .setDepth(-175)
-        .setStrokeStyle(2, 0xfb7185, 0.82)
+      const beacon = this.own(scene.add.graphics()).setDepth(-175)
+      beacon.setPosition(x, 202)
+      beacon.fillStyle(0x080d16, 0.94)
+      beacon.fillRect(-8, -9, 16, 18)
+      beacon.lineStyle(1, 0x9f1239, 0.8)
+      beacon.strokeRect(-8, -9, 16, 18)
+      beacon.fillStyle(0xef4444, 0.9)
+      beacon.fillCircle(0, -3, 4)
+      beacon.lineStyle(1, 0xfb7185, 0.72)
+      beacon.lineBetween(-5, 5, 5, 5)
       this.warningBeacons.push(beacon)
     }
-    this.platform = this.own(scene.add.rectangle(278, 286, 112, 14, 0x22d3ee, 0.75))
-      .setDepth(-180)
-      .setStrokeStyle(2, 0xa5f3fc, 1)
+    this.platform = this.own(scene.add.graphics()).setDepth(-180)
+    this.platform.fillStyle(0x071923, 0.95)
+    this.platform.fillRect(-56, -7, 112, 14)
+    this.platform.lineStyle(2, 0x67e8f9, 0.92)
+    this.platform.strokeRect(-56, -7, 112, 14)
+    this.platform.lineStyle(1, 0xa5f3fc, 0.86)
+    this.platform.lineBetween(-48, -3, 48, -3)
+    this.platform.lineStyle(2, 0x0e7490, 0.92)
+    for (let x = -40; x <= 32; x += 24) this.platform.lineBetween(x, 3, x + 14, 3)
+    this.platform.fillStyle(0x22d3ee, 0.7)
+    this.platform.fillCircle(-46, 0, 2)
+    this.platform.fillCircle(46, 0, 2)
 
     for (const pickup of pickups) {
-      const color = pickup.itemId === 'repair-kit' ? 0x4ade80 : 0x60a5fa
-      const object = this.own(
-        scene.add.ellipse(pickup.position.x, pickup.position.y - 8, 18, 18, color, 0.9),
-      )
+      const object = this.own(scene.add.graphics())
+        .setPosition(pickup.position.x, pickup.position.y - 8)
         .setDepth(pickup.position.y + 2)
-        .setStrokeStyle(2, 0xf8fafc, 0.9)
+      this.drawPickupProp(object, pickup.itemId)
       this.pickupObjects.set(pickup.id, object)
     }
     this.applyMotion('safe', pickups)
@@ -163,5 +183,32 @@ export class TrainBackdrop {
     for (const pickup of pickups) {
       this.pickupObjects.get(pickup.id)?.setVisible(!pickup.consumed)
     }
+  }
+
+  private drawPickupProp(
+    object: Phaser.GameObjects.Graphics,
+    itemId: ItemPickupSnapshot['itemId'],
+  ): void {
+    const accent = itemId === 'repair-kit' ? 0x4ade80 : 0x60a5fa
+    const darkAccent = itemId === 'repair-kit' ? 0x166534 : 0x1d4ed8
+
+    object.fillStyle(0x020617, 0.56)
+    object.fillRect(-12, 7, 24, 4)
+    object.fillStyle(0x0f172a, 0.98)
+    object.fillRect(-11, -8, 22, 15)
+    object.lineStyle(1, accent, 0.96)
+    object.strokeRect(-11, -8, 22, 15)
+    object.fillStyle(darkAccent, 0.94)
+    object.fillRect(-8, -5, 16, 8)
+    object.lineStyle(1, 0xf8fafc, 0.64)
+    object.lineBetween(-5, -2, 5, -2)
+    object.lineStyle(2, accent, 0.9)
+    object.lineBetween(-4, 5, 4, 5)
+    object.fillStyle(accent, 0.88)
+    object.fillCircle(0, 1, 2)
+    object.lineStyle(1, 0xcbd5e1, 0.7)
+    object.lineBetween(-5, -10, 5, -10)
+    object.lineBetween(-5, -10, -5, -7)
+    object.lineBetween(5, -10, 5, -7)
   }
 }

@@ -20,6 +20,7 @@ const writeFixtureDist = async () => {
   const root = await makeTemporaryDirectory()
   await mkdir(join(root, 'assets', 'sprites'), { recursive: true })
   await mkdir(join(root, 'assets', 'audio'), { recursive: true })
+  await mkdir(join(root, 'assets', 'environment'), { recursive: true })
   await writeFile(join(root, 'index.html'), '<script src="./assets/app.js"></script>')
   await writeFile(join(root, 'assets', 'app.js'), 'console.log("ready")')
   await writeFile(join(root, 'assets', 'app.css'), 'body{margin:0}')
@@ -29,6 +30,18 @@ const writeFixtureDist = async () => {
   )
   await writeFile(join(root, 'assets', 'sprites', 'actors.png'), Buffer.from([1, 2, 3]))
   await writeFile(join(root, 'assets', 'audio', 'hit.wav'), Buffer.from([4, 5, 6]))
+  await writeFile(
+    join(root, 'assets', 'environment', 'n9-depot-v2.png'),
+    Buffer.from([7, 8, 9]),
+  )
+  await writeFile(
+    join(root, 'assets', 'environment', 'service-train-v2.png'),
+    Buffer.from([10, 11, 12]),
+  )
+  await writeFile(
+    join(root, 'assets', 'environment', 'flooded-tunnel-v2.png'),
+    Buffer.from([13, 14, 15]),
+  )
   await writeFile(join(root, 'release-note.txt'), 'deployment-only')
   return root
 }
@@ -80,11 +93,14 @@ describe('asset budget release gate', () => {
       'assets/app.css',
       'assets/app.js',
       'assets/audio/hit.wav',
+      'assets/environment/flooded-tunnel-v2.png',
+      'assets/environment/n9-depot-v2.png',
+      'assets/environment/service-train-v2.png',
       'assets/sprites/actors.multiatlas.json',
       'assets/sprites/actors.png',
       'index.html',
     ])
-    expect(result.files).toHaveLength(7)
+    expect(result.files).toHaveLength(10)
     expect(result.distRawBytes).toBe(
       result.files.reduce((total: number, file: { rawBytes: number }) => total + file.rawBytes, 0),
     )

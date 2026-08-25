@@ -9,12 +9,21 @@ vi.mock('phaser', () => ({
 }))
 
 import {
+  CHARACTER_SELECT_BACKGROUND_KEY,
   CHARACTER_SELECT_CONTROLS_TEXT,
   characterSelectDirectionForCode,
+  fighterRoleForCharacter,
   formatFighterBrief,
 } from '../../src/phaser/scenes/CharacterSelectScene'
 
 describe('CharacterSelectScene fighter briefs', () => {
+  it('keeps the visual contract on the preloaded depot art and compact role tags', () => {
+    expect(CHARACTER_SELECT_BACKGROUND_KEY).toBe('n9-depot-background-v2')
+    expect(fighterRoleForCharacter('han')).toBe('BALANCED')
+    expect(fighterRoleForCharacter('mina')).toBe('RUSH')
+    expect(fighterRoleForCharacter('jin')).toBe('POWER')
+  })
+
   it('documents and maps both A/D and arrow character selection controls', () => {
     expect(CHARACTER_SELECT_CONTROLS_TEXT).toBe(
       '1/2/3 OR A/D OR ARROWS  •  ENTER / SPACE TO FIGHT',
