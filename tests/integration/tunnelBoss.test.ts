@@ -5,6 +5,7 @@ vi.mock('phaser', () => {
     visible = true
     x = 0
     y = 0
+    add(_children: unknown): this { return this }
     setAlpha(_value: number): this { return this }
     setBackgroundColor(_value: string): this { return this }
     setColor(_value: string): this { return this }
@@ -16,6 +17,7 @@ vi.mock('phaser', () => {
     setInteractive(_value?: unknown): this { return this }
     setOrigin(_x: number, _y?: number): this { return this }
     setPosition(x: number, y: number): this { this.x = x; this.y = y; return this }
+    setRotation(_value: number): this { return this }
     setScale(_value: number): this { return this }
     setScrollFactor(_value: number): this { return this }
     setStrokeStyle(_width: number, _color: number, _alpha?: number): this { return this }
@@ -24,7 +26,7 @@ vi.mock('phaser', () => {
     setTintFill(_value: number): this { return this }
     setVisible(value: boolean): this { this.visible = value; return this }
     clearTint(): this { return this }
-    destroy(): void {}
+    destroy(_fromScene?: boolean): void {}
     on(_event: string, _listener: (...args: unknown[]) => void): this { return this }
   }
   class Graphics extends DisplayObject {
@@ -55,6 +57,7 @@ vi.mock('phaser', () => {
   }
   class Scene {
     readonly add = {
+      container: () => new DisplayObject(),
       ellipse: () => new DisplayObject(),
       graphics: () => new Graphics(),
       image: () => new DisplayObject(),
@@ -79,7 +82,12 @@ import {
   floodedTunnelZone,
   getPlayableStageOneZone,
 } from '../../src/content/stage1'
-import type { CombatState } from '../../src/domain/combat/combatReducer'
+import type {
+  CombatActor,
+  CombatCommand,
+  CombatState,
+} from '../../src/domain/combat/combatReducer'
+import type { BossAttackPlan } from '../../src/domain/combat/bossAttackDirector'
 import { fixedStepMs } from '../../src/domain/combat/tuning'
 import { SIDE_SCROLL_VIEWPORT_WIDTH } from '../../src/domain/world/sideScroll'
 import { createBossBrainState, type BossBrainState } from '../../src/domain/enemies/bossBrain'
@@ -200,6 +208,22 @@ type SceneHarness = {
   itemRuntime: ItemRuntimeState
   itemTargetClasses: Map<string, 'normal' | 'elite' | 'boss'>
   bossBrains: Map<string, BossBrainState>
+  bossRangedCooldownMs: Map<string, number>
+  bossRangedVolleyCount: Map<string, number>
+  pendingBossRangedAttacks: Map<string, {
+    plan: BossAttackPlan
+    remainingTelegraphMs: number
+  }>
+  bossRangedFiringThisStep: Set<string>
+  bossProjectileView: {
+    advance(deltaMs: number, target: unknown): Array<{
+      sourceId: string
+      pattern: 'straight-projectile' | 'three-way-spread' | 'ground-shockwave'
+      damage: number
+      hitstunMs: number
+    }>
+    spawn(sourceId: string, plan: Readonly<BossAttackPlan>): void
+  } | null
   tunnelHazardState: TunnelHazardState
   tunnelBackdrop: TunnelBackdrop | null
   hazardView: { snapshot(): { telegraphCount: number } } | null
@@ -215,6 +239,11 @@ type SceneHarness = {
   stepDomain(): void
   applyRunEffects(effects: ReturnType<typeof runReducer>['effects']): void
   recordEnemyDefeats(enemyIds: readonly string[]): void
+  advanceBossRangedAttacks(
+    deltaMs: number,
+    player: Readonly<CombatActor>,
+  ): CombatCommand[]
+  buildBossCommands(deltaMs?: number, pauseEnteringEnemies?: boolean): CombatCommand[]
   advanceZoneClock(deltaMs: number): void
   debugClearCurrentZone(): void
   onDebugKeyDown(event: KeyboardEvent): void
@@ -611,6 +640,82 @@ describe('CombatScene flooded-tunnel orchestration', () => {
       expect(scene.scene.start).toHaveBeenCalledWith(SCENE_KEYS.Results)
     },
   )
+
+  it('keeps the melee boss brain idle throughout a ranged telegraph and its firing tick', () => {
+    const { scene } = createLiveScene()
+    enterFloodedTunnel(scene)
+    const bossId = enterBossWave(scene)
+    stepUntil(
+      scene,
+      () => scene.state.actors[bossId].wakeInvulnerabilityRemainingMs === 0,
+    )
+    const player = scene.state.actors.han
+    const boss = scene.state.actors[bossId]
+    player.position = { x: 120, y: 220, z: 0 }
+    boss.position = { x: 500, y: 264, z: 0 }
+    boss.mode = 'idle'
+    scene.bossBrains.set(bossId, createBossBrainState())
+    scene.pendingBossRangedAttacks.clear()
+    scene.bossRangedCooldownMs.set(bossId, 0)
+    scene.bossRangedVolleyCount.set(bossId, 0)
+    const spawn = vi.fn()
+    scene.bossProjectileView = {
+      advance: () => [],
+      spawn,
+    }
+
+    scene.advanceBossRangedAttacks(fixedStepMs, player)
+    expect(scene.pendingBossRangedAttacks.has(bossId)).toBe(true)
+    expect(scene.buildBossCommands()).toContainEqual({
+      actorId: bossId,
+      moveX: 0,
+      moveY: 0,
+    })
+    expect(scene.bossBrains.get(bossId)?.mode).toBe('chase')
+
+    const pending = scene.pendingBossRangedAttacks.get(bossId)
+    if (!pending) throw new Error('Expected an authored ranged telegraph.')
+    pending.remainingTelegraphMs = 0
+    scene.advanceBossRangedAttacks(fixedStepMs, player)
+    expect(spawn).toHaveBeenCalledOnce()
+    expect(scene.bossRangedFiringThisStep.has(bossId)).toBe(true)
+    expect(scene.buildBossCommands()).toContainEqual({
+      actorId: bossId,
+      moveX: 0,
+      moveY: 0,
+    })
+    expect(scene.bossBrains.get(bossId)?.mode).toBe('chase')
+  })
+
+  it('does not stack a boss projectile hit onto hitstun or knockdown', () => {
+    const { scene } = createLiveScene()
+    enterFloodedTunnel(scene)
+    const bossId = enterBossWave(scene)
+    const player = scene.state.actors.han
+    player.wakeInvulnerabilityRemainingMs = 0
+    scene.bossRangedCooldownMs.set(bossId, 99_000)
+    scene.bossProjectileView = {
+      advance: () => [{
+        sourceId: bossId,
+        pattern: 'straight-projectile',
+        damage: 6,
+        hitstunMs: 240,
+      }],
+      spawn: vi.fn(),
+    }
+
+    player.mode = 'hitstun'
+    expect(scene.advanceBossRangedAttacks(fixedStepMs, player)).toEqual([])
+    player.mode = 'knocked-down'
+    expect(scene.advanceBossRangedAttacks(fixedStepMs, player)).toEqual([])
+    player.mode = 'idle'
+    expect(scene.advanceBossRangedAttacks(fixedStepMs, player)).toContainEqual(
+      expect.objectContaining({
+        actorId: player.id,
+        environmentalImpact: expect.objectContaining({ damage: 6 }),
+      }),
+    )
+  })
 
   it('advances the accepted boss cursor and resumes its next pattern after a live 700ms EMP edge', () => {
     const { scene } = createLiveScene()

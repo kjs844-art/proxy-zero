@@ -26,6 +26,10 @@ import {
   type CombatEvent,
   type CombatState,
 } from '../../domain/combat/combatReducer'
+import {
+  directBossAttack,
+  type BossAttackPlan,
+} from '../../domain/combat/bossAttackDirector'
 import { resolveCombo, type AcceptedAttackInput } from '../../domain/combat/comboResolver'
 import { type BufferedAction, type InputFrame } from '../../domain/combat/inputBuffer'
 import { fixedStepMs } from '../../domain/combat/tuning'
@@ -101,6 +105,9 @@ import {
   type WaveDirectorEvent,
   type ZoneWaveRuntime,
 } from '../../domain/waves/waveDirector'
+import {
+  shouldOpenNormalWaveTraversal,
+} from '../../domain/waves/traversalPolicy'
 import { HudController } from '../../presentation/HudController'
 import { InventoryHud } from '../../presentation/InventoryHud'
 import {
@@ -121,13 +128,28 @@ import { FixedStepRunner } from '../../runtime/FixedStepRunner'
 import { SeededRandom } from '../../runtime/SeededRandom'
 import { ActorView } from '../actors/ActorView'
 import { KeyboardInputAdapter } from '../input/KeyboardInputAdapter'
+import { BossProjectileView } from '../world/BossProjectileView'
 import { EnemyDropView } from '../world/EnemyDropView'
+import {
+  planEnemyEntrance,
+  type EnemyEntrancePlan,
+} from '../world/EnemyEntranceDirector'
 import { HazardView } from '../world/HazardView'
 import { TrainBackdrop } from '../world/TrainBackdrop'
 import { TunnelBackdrop } from '../world/TunnelBackdrop'
 import { ZoneRenderer } from '../world/ZoneRenderer'
 
 type ZonePhase = 'active' | 'inter-wave' | 'zone-clear' | 'zone-handoff'
+
+interface EnemyEntranceRuntime {
+  readonly plan: Readonly<EnemyEntrancePlan>
+  elapsedMs: number
+}
+
+interface PendingBossRangedAttack {
+  readonly plan: Readonly<BossAttackPlan>
+  remainingTelegraphMs: number
+}
 
 export const GAME_OVER_CONTINUE_PROMPT = 'GAME OVER\nENTER · CONTINUE   ESC · FORFEIT'
 export const GAME_OVER_EXHAUSTED_PROMPT =
@@ -273,6 +295,7 @@ const finiteDelta = (deltaMs: number): number =>
 const SECTION_STRIDE = SIDE_SCROLL_VIEWPORT_WIDTH
 const CAMERA_FORWARD_LEAD = 54
 const CAMERA_SMOOTHING_MS = 82
+const BOSS_RANGED_INITIAL_COOLDOWN_MS = 1_250
 
 const lerp = (from: number, to: number, alpha: number): number =>
   from + (to - from) * alpha
@@ -331,6 +354,7 @@ export class CombatScene extends Phaser.Scene {
   private tunnelBackdrop: TunnelBackdrop | null = null
   private enemyDropView: EnemyDropView | null = null
   private hazardView: HazardView | null = null
+  private bossProjectileView: BossProjectileView | null = null
 
   private currentZone: PlayableStageOneZoneDefinition = n9DepotZone
   private waveIndex = 0
@@ -347,6 +371,11 @@ export class CombatScene extends Phaser.Scene {
   private readonly enemyVariantIds = new Map<string, string>()
   private readonly returningEnemyIds = new Set<string>()
   private readonly lastRecoveryPositions = new Map<string, EnemyPoint>()
+  private readonly enemyEntrances = new Map<string, EnemyEntranceRuntime>()
+  private readonly bossRangedCooldownMs = new Map<string, number>()
+  private readonly bossRangedVolleyCount = new Map<string, number>()
+  private readonly pendingBossRangedAttacks = new Map<string, PendingBossRangedAttack>()
+  private readonly bossRangedFiringThisStep = new Set<string>()
   private trainHazardState: TrainHazardState = createTrainHazardState()
   private tunnelHazardState: TunnelHazardState = createTunnelHazardState()
   private pendingCombatResult: Exclude<RunOutcome, 'mission-failed'> = 'mission-clear'
@@ -412,6 +441,7 @@ export class CombatScene extends Phaser.Scene {
     this.tunnelBackdrop = null
     this.enemyDropView = new EnemyDropView(this)
     this.hazardView = new HazardView(this)
+    this.bossProjectileView = new BossProjectileView(this)
     this.actorViews.set(
       character.id,
       new ActorView(this, this.state.actors[character.id], character.id),
@@ -535,12 +565,19 @@ export class CombatScene extends Phaser.Scene {
         type: 'advance-time',
         deltaMs: activeDeltaMs,
       }).state
-      this.state.actors[this.state.playerId].wakeInvulnerabilityRemainingMs =
-        this.runState.respawnInvulnerabilityRemainingMs
+      const playerActor = this.state.actors[this.state.playerId]
+      playerActor.wakeInvulnerabilityRemainingMs = playerActor.mode === 'getting-up'
+        ? Math.max(
+            playerActor.wakeInvulnerabilityRemainingMs,
+            this.runState.respawnInvulnerabilityRemainingMs,
+          )
+        : this.runState.respawnInvulnerabilityRemainingMs
 
       const phaseAtStart = this.zonePhase
       if (phaseAtStart === 'active') {
         this.advanceWaveRuntime(activeDeltaMs)
+        this.advanceEnemyEntrances(activeDeltaMs)
+        this.openNormalTraversalWhenReady()
         if (this.currentZone.id === 'service-train' && this.zonePhase === 'active') {
           const player = this.state.actors[this.state.playerId]
           const sectionOffsetX = this.currentSegmentOffsetX()
@@ -603,6 +640,10 @@ export class CombatScene extends Phaser.Scene {
 
     const frame = this.inputAdapter?.readFrame() ?? emptyInputFrame()
     const player = this.state.actors[this.state.playerId]
+    const bossProjectileCommands =
+      activeDeltaMs > 0 && this.zonePhase === 'active'
+        ? this.advanceBossRangedAttacks(activeDeltaMs, player)
+        : []
     const playerTunnelEffect = tunnelEffects.find((effect) => effect.actorId === player.id)
     const itemHealAmount = this.processItemEdges(
       frame,
@@ -639,16 +680,17 @@ export class CombatScene extends Phaser.Scene {
       ...(playerEnvironmentalImpact ? { environmentalImpact: playerEnvironmentalImpact } : {}),
     }
     const normalEnemyCommands =
-      activeDeltaMs > 0 && this.zonePhase === 'active'
-        ? this.buildEnemyCommands(activeDeltaMs)
+      activeDeltaMs > 0 &&
+        (this.zonePhase === 'active' || this.zonePhase === 'inter-wave')
+        ? this.buildEnemyCommands(activeDeltaMs, true)
         : []
     const eliteCommands =
       activeDeltaMs > 0 && this.zonePhase === 'active'
-        ? this.buildEliteCommands(activeDeltaMs)
+        ? this.buildEliteCommands(activeDeltaMs, true)
         : []
     const bossCommands =
       activeDeltaMs > 0 && this.zonePhase === 'active'
-        ? this.buildBossCommands(activeDeltaMs)
+        ? this.buildBossCommands(activeDeltaMs, true)
         : []
     const tunnelImpactCommands: CombatCommand[] = tunnelEffects
       .filter((effect) => effect.actorId !== player.id)
@@ -667,6 +709,7 @@ export class CombatScene extends Phaser.Scene {
       normalEnemyCommands,
       eliteCommands,
       bossCommands,
+      bossProjectileCommands,
       tunnelImpactCommands,
       this.empStatusCommands(),
     )
@@ -681,6 +724,7 @@ export class CombatScene extends Phaser.Scene {
       this.clampLivingActors()
     } else if (this.zonePhase === 'inter-wave') {
       this.clampTraversalPlayer()
+      this.retireEscapedTraversalEnemies()
     }
     this.runState = runReducer(this.runState, {
       type: 'player-hp-changed',
@@ -1079,9 +1123,38 @@ export class CombatScene extends Phaser.Scene {
     const variant = getWaveVariant(enemyVariantId)
     const body = getWaveBaseBody(runtime.baseBodyId)
     const player = this.state.actors[this.state.playerId]
-    const spawnPosition = {
+    const enemyIndex = this.currentWave().orders.findIndex((entry) => entry.id === orderId)
+    const segmentArena = this.currentSegmentArena()
+    const plannedEntrance = planEnemyEntrance({
+      zoneId: this.currentZone.id,
+      waveIndex: this.waveIndex,
+      enemyIndex,
+      arena: segmentArena,
+    })
+    const authoredTarget = {
       x: order.position.x + this.currentSegmentOffsetX(),
       y: order.position.y,
+      z: 0,
+    }
+    const entrance: EnemyEntrancePlan = {
+      ...plannedEntrance,
+      startPosition: {
+        x: plannedEntrance.kind === 'overhead'
+          ? Math.min(
+              plannedEntrance.startPosition.x +
+                authoredTarget.x - plannedEntrance.targetPosition.x,
+              segmentArena.maxX - 120,
+            )
+          : plannedEntrance.startPosition.x +
+            authoredTarget.x - plannedEntrance.targetPosition.x,
+        y: plannedEntrance.startPosition.y + authoredTarget.y - plannedEntrance.targetPosition.y,
+        z: plannedEntrance.startPosition.z,
+      },
+      targetPosition: authoredTarget,
+    }
+    const spawnPosition = {
+      x: entrance.targetPosition.x,
+      y: entrance.targetPosition.y,
     }
     const actor = makeActor({
       id: enemyId,
@@ -1101,6 +1174,8 @@ export class CombatScene extends Phaser.Scene {
           ? this.currentZone.eliteDamageScale
           : this.currentZone.enemyDamageScale,
       moveSpeed: variant.moveSpeed,
+      wakeInvulnerabilityRemainingMs:
+        entrance.delayMs + entrance.telegraphDurationMs + entrance.landingDurationMs,
     })
     this.state.actors[enemyId] = actor
     if (bossDefinition) {
@@ -1112,6 +1187,11 @@ export class CombatScene extends Phaser.Scene {
       this.enemyRngs.set(enemyId, new SeededRandom(runtime.seed))
     }
     this.enemyVariantIds.set(enemyId, enemyVariantId)
+    this.enemyEntrances.set(enemyId, { plan: entrance, elapsedMs: 0 })
+    if (bossDefinition || eliteDefinition) {
+      this.bossRangedCooldownMs.set(enemyId, BOSS_RANGED_INITIAL_COOLDOWN_MS)
+      this.bossRangedVolleyCount.set(enemyId, 0)
+    }
     this.itemTargetClasses.set(
       enemyId,
       bossDefinition?.targetClass ?? eliteDefinition?.targetClass ?? 'normal',
@@ -1124,7 +1204,188 @@ export class CombatScene extends Phaser.Scene {
     this.services.recordEnemySpawn(enemyId, this.state.elapsedMs)
   }
 
-  private buildEnemyCommands(deltaMs = fixedStepMs): CombatCommand[] {
+  private advanceEnemyEntrances(deltaMs: number): void {
+    const elapsed = finiteDelta(deltaMs)
+    for (const [enemyId, runtime] of this.enemyEntrances) {
+      runtime.elapsedMs += elapsed
+      const actor = this.state.actors[enemyId]
+      if (actor) {
+        // Entry protection is presentation-owned. The combat reducer only
+        // counts down wake protection during a get-up lifecycle, so decrement
+        // this independent landing timer here and never leave an idle enemy
+        // permanently invulnerable.
+        actor.wakeInvulnerabilityRemainingMs = Math.max(
+          0,
+          actor.wakeInvulnerabilityRemainingMs - elapsed,
+        )
+      }
+      const totalMs =
+        runtime.plan.delayMs +
+        runtime.plan.telegraphDurationMs +
+        runtime.plan.landingDurationMs
+      if (runtime.elapsedMs < totalMs) continue
+      this.enemyEntrances.delete(enemyId)
+      this.hazardView?.clearEnemy(`entrance:${enemyId}`)
+      if (actor) actor.wakeInvulnerabilityRemainingMs = 0
+    }
+  }
+
+  private entrancePresentationActor(
+    actorId: string,
+    actor: Readonly<CombatActor>,
+  ): Readonly<CombatActor> {
+    const runtime = this.enemyEntrances.get(actorId)
+    if (!runtime) return actor
+    const { plan } = runtime
+    const travelStartMs = plan.delayMs + plan.telegraphDurationMs
+    const rawProgress = plan.landingDurationMs <= 0
+      ? 1
+      : (runtime.elapsedMs - travelStartMs) / plan.landingDurationMs
+    const progress = Math.max(0, Math.min(1, rawProgress))
+    const eased = 1 - (1 - progress) ** 3
+    const position = {
+      x: lerp(plan.startPosition.x, actor.position.x, eased),
+      y: lerp(plan.startPosition.y, actor.position.y, eased),
+      z: lerp(plan.startPosition.z, actor.position.z, eased),
+    }
+    const mode: CombatActor['mode'] = plan.kind === 'overhead' ? 'airborne' : 'moving'
+    return {
+      ...actor,
+      position,
+      velocity: {
+        x: plan.targetPosition.x - plan.startPosition.x,
+        y: plan.targetPosition.y - plan.startPosition.y,
+        z: plan.targetPosition.z - plan.startPosition.z,
+      },
+      mode,
+      isRunning: false,
+    }
+  }
+
+  private advanceBossRangedAttacks(
+    deltaMs: number,
+    player: Readonly<CombatActor>,
+  ): CombatCommand[] {
+    const elapsed = finiteDelta(deltaMs)
+    this.bossRangedFiringThisStep.clear()
+    const impacts = this.bossProjectileView?.advance(elapsed, {
+      x: player.position.x,
+      y: player.position.y,
+      z: player.position.z,
+      radius: Math.max(player.body.halfWidth, player.body.halfDepth),
+    }) ?? []
+    const strongestImpact = [...impacts].sort((left, right) => right.damage - left.damage)[0]
+    const playerCanTakeProjectileHit =
+      player.wakeInvulnerabilityRemainingMs <= 0 &&
+      player.mode !== 'defeated' &&
+      player.mode !== 'hitstun' &&
+      player.mode !== 'knocked-down' &&
+      player.mode !== 'getting-up'
+    const impactCommands: CombatCommand[] =
+      strongestImpact && playerCanTakeProjectileHit
+        ? [{
+            actorId: player.id,
+            moveX: 0,
+            moveY: 0,
+            environmentalImpact: {
+              damage: strongestImpact.damage,
+              recoveryPosition: { ...player.position },
+              reaction: strongestImpact.pattern === 'ground-shockwave'
+                ? { type: 'knockdown', durationMs: strongestImpact.hitstunMs }
+                : { type: 'hitstun', durationMs: strongestImpact.hitstunMs },
+            },
+          }]
+        : []
+
+    const rangedEnemyIds = new Set(this.bossBrains.keys())
+    for (const enemyId of [...rangedEnemyIds].sort()) {
+      const actor = this.state.actors[enemyId]
+      const variantId = this.enemyVariantIds.get(enemyId)
+      if (!actor || !variantId || actor.mode === 'defeated') continue
+      const interrupted =
+        this.enemyEntrances.has(enemyId) ||
+        (this.itemRuntime.empRemainingMsByTargetId[enemyId] ?? 0) > 0 ||
+        actor.mode === 'hitstun' ||
+        actor.mode === 'knocked-down' ||
+        actor.mode === 'getting-up'
+      if (interrupted) {
+        this.pendingBossRangedAttacks.delete(enemyId)
+        this.hazardView?.clearEnemy(`ranged:${enemyId}`)
+        this.bossRangedCooldownMs.set(
+          enemyId,
+          Math.max(450, this.bossRangedCooldownMs.get(enemyId) ?? 0),
+        )
+        continue
+      }
+
+      const pending = this.pendingBossRangedAttacks.get(enemyId)
+      if (pending) {
+        pending.remainingTelegraphMs = Math.max(0, pending.remainingTelegraphMs - elapsed)
+        if (pending.remainingTelegraphMs === 0) {
+          this.bossProjectileView?.spawn(enemyId, pending.plan)
+          this.bossRangedFiringThisStep.add(enemyId)
+          this.pendingBossRangedAttacks.delete(enemyId)
+          this.hazardView?.clearEnemy(`ranged:${enemyId}`)
+          this.bossRangedCooldownMs.set(enemyId, pending.plan.cooldownMs)
+          this.bossRangedVolleyCount.set(
+            enemyId,
+            (this.bossRangedVolleyCount.get(enemyId) ?? 0) + 1,
+          )
+        }
+        continue
+      }
+
+      const cooldownMs = Math.max(
+        0,
+        (this.bossRangedCooldownMs.get(enemyId) ?? BOSS_RANGED_INITIAL_COOLDOWN_MS) - elapsed,
+      )
+      this.bossRangedCooldownMs.set(enemyId, cooldownMs)
+      const bossBrain = this.bossBrains.get(enemyId)
+      if (cooldownMs > 0 || actor.mode === 'attacking' || bossBrain?.mode !== 'chase') continue
+      const volleyCount = this.bossRangedVolleyCount.get(enemyId) ?? 0
+      // The elite already owns two strong close-range patterns. Give it one
+      // readable warning shot; reserve the rotating barrage for the true boss.
+      const volleyLimit = isBossDefinitionId(variantId) ? 5 : 1
+      if (volleyCount >= volleyLimit) continue
+      const rangeToPlayer = Math.hypot(
+        player.position.x - actor.position.x,
+        player.position.y - actor.position.y,
+      )
+      const minimumRangedDistance = isBossDefinitionId(variantId) ? 132 : 156
+      if (rangeToPlayer < minimumRangedDistance) {
+        this.bossRangedCooldownMs.set(enemyId, 360)
+        continue
+      }
+      const plan = directBossAttack({
+        enemyVariantId: variantId,
+        elapsedMs: volleyCount * 1_600,
+        enemyPosition: actor.position,
+        playerPosition: player.position,
+      })
+      if (!plan) continue
+      this.pendingBossRangedAttacks.set(enemyId, {
+        plan,
+        remainingTelegraphMs: plan.telegraphMs,
+      })
+      const range = plan.pattern === 'ground-shockwave'
+        ? { x: 72, y: 22 }
+        : plan.pattern === 'three-way-spread'
+          ? { x: 48, y: 32 }
+          : { x: 30, y: 18 }
+      this.hazardView?.showTelegraph(
+        `ranged:${enemyId}`,
+        { x: plan.target.x, y: plan.target.y },
+        range,
+        plan.telegraphMs,
+      )
+    }
+    return impactCommands
+  }
+
+  private buildEnemyCommands(
+    deltaMs = fixedStepMs,
+    pauseEnteringEnemies = false,
+  ): CombatCommand[] {
     const commands: CombatCommand[] = []
     const player = this.state.actors[this.state.playerId]
     for (const enemyId of [...this.enemyBrains.keys()].sort()) {
@@ -1137,6 +1398,25 @@ export class CombatScene extends Phaser.Scene {
       const variant = getEnemyVariant(variantId)
       actor.facing = player.position.x < actor.position.x ? -1 : 1
       let command: CombatCommand = { actorId: enemyId, moveX: 0, moveY: 0 }
+
+      if (pauseEnteringEnemies && this.enemyEntrances.has(enemyId)) {
+        commands.push(command)
+        continue
+      }
+
+      if (this.zonePhase === 'inter-wave') {
+        actor.facing = -1
+        this.enemyBrains.set(enemyId, createEnemyBrainState('chase'))
+        this.hazardView?.clearEnemy(enemyId)
+        commands.push({
+          actorId: enemyId,
+          moveX: -1,
+          moveY: 0,
+          interruptAttack: true,
+          clearGuard: true,
+        })
+        continue
+      }
 
       if (actor.mode === 'knocked-down' || actor.mode === 'getting-up') {
         this.enemyBrains.set(enemyId, createEnemyBrainState('down'))
@@ -1184,7 +1464,10 @@ export class CombatScene extends Phaser.Scene {
     return commands
   }
 
-  private buildEliteCommands(deltaMs = fixedStepMs): CombatCommand[] {
+  private buildEliteCommands(
+    deltaMs = fixedStepMs,
+    pauseEnteringEnemies = false,
+  ): CombatCommand[] {
     const commands: CombatCommand[] = []
     const player = this.state.actors[this.state.playerId]
     for (const enemyId of [...this.eliteBrains.keys()].sort()) {
@@ -1197,6 +1480,11 @@ export class CombatScene extends Phaser.Scene {
       const definition = getEliteDefinition(variantId)
       actor.facing = player.position.x < actor.position.x ? -1 : 1
       let command: CombatCommand = { actorId: enemyId, moveX: 0, moveY: 0 }
+
+      if (pauseEnteringEnemies && this.enemyEntrances.has(enemyId)) {
+        commands.push(command)
+        continue
+      }
 
       if (
         actor.mode === 'hitstun' ||
@@ -1288,7 +1576,10 @@ export class CombatScene extends Phaser.Scene {
     }
   }
 
-  private buildBossCommands(deltaMs = fixedStepMs): CombatCommand[] {
+  private buildBossCommands(
+    deltaMs = fixedStepMs,
+    pauseEnteringEnemies = false,
+  ): CombatCommand[] {
     const commands: CombatCommand[] = []
     const player = this.state.actors[this.state.playerId]
     for (const bossId of [...this.bossBrains.keys()].sort()) {
@@ -1301,6 +1592,20 @@ export class CombatScene extends Phaser.Scene {
       const definition = getBossDefinition(variantId)
       actor.facing = player.position.x < actor.position.x ? -1 : 1
       let command: CombatCommand = { actorId: bossId, moveX: 0, moveY: 0 }
+
+      if (pauseEnteringEnemies && this.enemyEntrances.has(bossId)) {
+        commands.push(command)
+        continue
+      }
+
+      if (
+        this.pendingBossRangedAttacks.has(bossId) ||
+        this.bossRangedFiringThisStep.has(bossId)
+      ) {
+        this.hazardView?.clearEnemy(bossId)
+        commands.push(command)
+        continue
+      }
 
       if (
         actor.mode === 'hitstun' ||
@@ -1455,42 +1760,94 @@ export class CombatScene extends Phaser.Scene {
 
   private recordEnemyDefeats(enemyIds: readonly string[]): void {
     const uniqueEnemyIds = [...new Set(enemyIds)]
-    const drops = uniqueEnemyIds.flatMap((enemyId) => {
-      const actor = this.state.actors[enemyId]
-      if (!actor || !this.waveRuntime.wave.spawnedEnemyIds.includes(enemyId)) return []
-      const drop = createStageOneEnemyDropPickup(enemyId, {
-        x: actor.position.x,
-        y: actor.position.y,
-      })
-      return drop ? [drop] : []
-    })
+    this.spawnGuaranteedEnemyDrops(uniqueEnemyIds)
     if (uniqueEnemyIds.length > 0) {
       this.itemRuntime = itemReducer(this.itemRuntime, {
         type: 'remove-targets',
         targetIds: uniqueEnemyIds,
       }).state
     }
+    for (const enemyId of uniqueEnemyIds) {
+      if (!this.waveRuntime.wave.spawnedEnemyIds.includes(enemyId)) continue
+      this.pendingDefeatedEnemyIds.add(enemyId)
+      this.removeEnemyActor(enemyId)
+    }
+  }
+
+  /**
+   * Guaranteed supplies are carried by authored enemies. If a normal wave
+   * turns into a moving fight, the carrier drops the supply before retreating
+   * so optional scrolling never deletes the player's recovery route.
+   */
+  private spawnGuaranteedEnemyDrops(
+    enemyIds: readonly string[],
+    placeOnTraversalLine = false,
+  ): void {
+    const existingPickupIds = new Set(this.itemRuntime.pickups.map((pickup) => pickup.id))
+    const player = this.state.actors[this.state.playerId]
+    const arena = this.currentSegmentArena()
+    const traversalPosition = {
+      x: Math.min(arena.maxX - 40, Math.max(arena.minX + 40, player.position.x + 36)),
+      y: Math.min(arena.maxY - 18, Math.max(arena.minY + 18, player.position.y)),
+    }
+    const drops = [...new Set(enemyIds)].flatMap((enemyId) => {
+      const actor = this.state.actors[enemyId]
+      if (!actor || !this.waveRuntime.wave.spawnedEnemyIds.includes(enemyId)) return []
+      const drop = createStageOneEnemyDropPickup(
+        enemyId,
+        placeOnTraversalLine ? traversalPosition : actor.position,
+      )
+      return drop && !existingPickupIds.has(drop.id) ? [drop] : []
+    })
     if (drops.length > 0) {
       this.itemRuntime = itemReducer(this.itemRuntime, {
         type: 'spawn-pickups',
         pickups: drops,
       }).state
     }
-    for (const enemyId of uniqueEnemyIds) {
-      if (!this.waveRuntime.wave.spawnedEnemyIds.includes(enemyId)) continue
-      this.pendingDefeatedEnemyIds.add(enemyId)
-      this.actorViews.get(enemyId)?.dispose()
-      this.actorViews.delete(enemyId)
-      this.enemyBrains.delete(enemyId)
-      this.eliteBrains.delete(enemyId)
-      this.bossBrains.delete(enemyId)
-      this.enemyRngs.delete(enemyId)
-      this.enemyVariantIds.delete(enemyId)
-      this.itemTargetClasses.delete(enemyId)
-      this.returningEnemyIds.delete(enemyId)
-      this.lastRecoveryPositions.delete(enemyId)
-      this.hazardView?.clearEnemy(enemyId)
-      delete this.state.actors[enemyId]
+  }
+
+  private removeEnemyActor(enemyId: string): void {
+    this.actorViews.get(enemyId)?.dispose()
+    this.actorViews.delete(enemyId)
+    this.enemyBrains.delete(enemyId)
+    this.eliteBrains.delete(enemyId)
+    this.bossBrains.delete(enemyId)
+    this.enemyRngs.delete(enemyId)
+    this.enemyVariantIds.delete(enemyId)
+    this.itemTargetClasses.delete(enemyId)
+    this.returningEnemyIds.delete(enemyId)
+    this.lastRecoveryPositions.delete(enemyId)
+    this.enemyEntrances.delete(enemyId)
+    this.bossRangedCooldownMs.delete(enemyId)
+    this.bossRangedVolleyCount.delete(enemyId)
+    this.pendingBossRangedAttacks.delete(enemyId)
+    this.bossRangedFiringThisStep.delete(enemyId)
+    this.hazardView?.clearEnemy(enemyId)
+    this.hazardView?.clearEnemy(`entrance:${enemyId}`)
+    this.hazardView?.clearEnemy(`ranged:${enemyId}`)
+    this.bossProjectileView?.clearSource(enemyId)
+    delete this.state.actors[enemyId]
+  }
+
+  private retireCurrentWaveEnemies(): void {
+    const enemyIds = this.waveRuntime.wave.spawnedEnemyIds.filter(
+      (enemyId) => this.state.actors[enemyId] !== undefined,
+    )
+    if (enemyIds.length > 0) {
+      this.itemRuntime = itemReducer(this.itemRuntime, {
+        type: 'remove-targets',
+        targetIds: enemyIds,
+      }).state
+    }
+    for (const enemyId of enemyIds) this.removeEnemyActor(enemyId)
+  }
+
+  private retireEscapedTraversalEnemies(): void {
+    const exitX = this.currentSegmentArena().minX - 36
+    for (const enemyId of this.waveRuntime.wave.spawnedEnemyIds) {
+      const actor = this.state.actors[enemyId]
+      if (actor && actor.position.x <= exitX) this.removeEnemyActor(enemyId)
     }
   }
 
@@ -1550,6 +1907,30 @@ export class CombatScene extends Phaser.Scene {
       .setVisible(true)
   }
 
+  private openNormalTraversalWhenReady(): void {
+    if (this.zonePhase !== 'active') return
+    const wave = this.currentWave()
+    if (!shouldOpenNormalWaveTraversal({
+      wave,
+      elapsedMs: this.waveRuntime.wave.elapsedMs,
+      emittedOrderCount: this.waveRuntime.wave.emittedOrderIds.length,
+    })) return
+
+    this.spawnGuaranteedEnemyDrops(this.waveRuntime.wave.spawnedEnemyIds, true)
+    this.zoneRenderer?.setLocked(false)
+    if (this.waveIndex < this.currentZone.waves.length - 1) {
+      this.zonePhase = 'inter-wave'
+      this.interWaveRemainingMs = 0
+      this.zoneClearText?.setVisible(false)
+      return
+    }
+
+    // A normal final encounter may be left behind, but bosses and elites can
+    // never reach this branch because traversalPolicy keeps their arena locked.
+    this.retireCurrentWaveEnemies()
+    this.beginWaveClear(wave.id)
+  }
+
   private advanceZoneClock(deltaMs: number): void {
     const elapsed = finiteDelta(deltaMs)
     if (this.zonePhase === 'inter-wave') {
@@ -1573,6 +1954,7 @@ export class CombatScene extends Phaser.Scene {
   private startNextWave(): void {
     const nextIndex = this.waveIndex + 1
     if (nextIndex >= this.currentZone.waves.length) return
+    this.retireCurrentWaveEnemies()
     this.waveIndex = nextIndex
     this.waveRuntime = this.createWaveRuntime(nextIndex)
     this.runState = { ...this.runState, currentWaveId: this.currentWave().id }
@@ -1738,7 +2120,7 @@ export class CombatScene extends Phaser.Scene {
     for (const [actorId, view] of this.actorViews) {
       const actor = this.state.actors[actorId]
       if (!actor) continue
-      view.update(actor, {
+      view.update(this.entrancePresentationActor(actorId, actor), {
         domainTimeMs: this.state.elapsedMs,
         renderDeltaMs,
         telegraph: this.telegraphFor(actorId),
@@ -1943,6 +2325,12 @@ export class CombatScene extends Phaser.Scene {
     this.itemTargetClasses.clear()
     this.returningEnemyIds.clear()
     this.lastRecoveryPositions.clear()
+    this.enemyEntrances.clear()
+    this.bossRangedCooldownMs.clear()
+    this.bossRangedVolleyCount.clear()
+    this.pendingBossRangedAttacks.clear()
+    this.bossRangedFiringThisStep.clear()
+    this.bossProjectileView?.reset()
   }
 
   private createWaveRuntime(index: number): ZoneWaveRuntime {
@@ -1974,6 +2362,12 @@ export class CombatScene extends Phaser.Scene {
     this.returningEnemyIds.clear()
     this.lastRecoveryPositions.clear()
     this.pendingDefeatedEnemyIds.clear()
+    this.enemyEntrances.clear()
+    this.bossRangedCooldownMs.clear()
+    this.bossRangedVolleyCount.clear()
+    this.pendingBossRangedAttacks.clear()
+    this.bossRangedFiringThisStep.clear()
+    this.bossProjectileView?.reset()
     this.hazardView?.reset()
   }
 
@@ -2251,6 +2645,13 @@ export class CombatScene extends Phaser.Scene {
     this.returningEnemyIds.clear()
     this.lastRecoveryPositions.clear()
     this.pendingDefeatedEnemyIds.clear()
+    this.enemyEntrances.clear()
+    this.bossRangedCooldownMs.clear()
+    this.bossRangedVolleyCount.clear()
+    this.pendingBossRangedAttacks.clear()
+    this.bossRangedFiringThisStep.clear()
+    this.bossProjectileView?.dispose()
+    this.bossProjectileView = null
     this.hazardView?.dispose()
     this.hazardView = null
     this.zoneRenderer?.dispose()

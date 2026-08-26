@@ -5,6 +5,7 @@ vi.mock('phaser', () => {
     visible = true
     x = 0
     y = 0
+    add(_children: unknown): this { return this }
     setAlpha(_value: number): this { return this }
     setBackgroundColor(_value: string): this { return this }
     setColor(_value: string): this { return this }
@@ -16,6 +17,7 @@ vi.mock('phaser', () => {
     setInteractive(_value?: unknown): this { return this }
     setOrigin(_x: number, _y?: number): this { return this }
     setPosition(x: number, y: number): this { this.x = x; this.y = y; return this }
+    setRotation(_value: number): this { return this }
     setScale(_value: number): this { return this }
     setScrollFactor(_value: number): this { return this }
     setStrokeStyle(_width: number, _color: number, _alpha?: number): this { return this }
@@ -24,7 +26,7 @@ vi.mock('phaser', () => {
     setTintFill(_value: number): this { return this }
     setVisible(value: boolean): this { this.visible = value; return this }
     clearTint(): this { return this }
-    destroy(): void {}
+    destroy(_fromScene?: boolean): void {}
     on(_event: string, _listener: (...args: unknown[]) => void): this { return this }
   }
   class Graphics extends DisplayObject {
@@ -55,6 +57,7 @@ vi.mock('phaser', () => {
   }
   class Scene {
     readonly add = {
+      container: () => new DisplayObject(),
       ellipse: () => new DisplayObject(),
       graphics: () => new Graphics(),
       image: () => new DisplayObject(),
@@ -82,6 +85,7 @@ import { GameServices, SCENE_KEYS } from '../../src/app/GameServices'
 import type { CombatState } from '../../src/domain/combat/combatReducer'
 import type { InputFrame } from '../../src/domain/combat/inputBuffer'
 import { fixedStepMs } from '../../src/domain/combat/tuning'
+import type { LimbInput } from '../../src/domain/combat/types'
 import { SIDE_SCROLL_VIEWPORT_WIDTH } from '../../src/domain/world/sideScroll'
 import {
   createEliteBrainState,
@@ -208,7 +212,7 @@ type SceneHarness = {
   actionQueue: {
     buffer: {
       enqueue(
-        edge: { type: 'attack'; limb: 'right-hand' },
+        edge: { type: 'attack'; limb: LimbInput },
         domainTimeMs: number,
       ): unknown
     }
@@ -304,10 +308,16 @@ const measureDeterministicHanRun = (): HanTimingSample => {
   let sawLivingEnemy = false
   let waitingForNextSpawn = false
   let itemsUsed = 0
+  let nextHanLimb: 'right-hand' | 'left-hand' = 'right-hand'
+  let nextAttackEnqueueAtMs = 0
 
   for (let step = 0; step < 15_000 && scene.zonePhase !== 'zone-clear'; step += 1) {
     if (scene.runState.status === 'game-over') {
-      throw new Error('Deterministic HAN timing run reached Game Over.')
+      throw new Error(
+        `Deterministic HAN timing run reached Game Over at wave ${scene.waveIndex}, ` +
+        `elapsed ${Math.round(scene.state.elapsedMs)} ms, hits ${scene.runState.hitsTaken}, ` +
+        `HP ${scene.state.actors.han?.hp ?? 0}.`,
+      )
     }
     const player = scene.state.actors.han
     const livingTargets = Object.values(scene.state.actors)
@@ -391,15 +401,34 @@ const measureDeterministicHanRun = (): HanTimingSample => {
       moveX = 1
     } else if (!nextPickup && edges.length === 0 && target) {
       const deltaX = target.position.x - player.position.x
-      if (Math.abs(deltaX) > 48) moveX = deltaX < 0 ? -1 : 1
-      const playerActionable = player.mode === 'idle' || player.mode === 'moving'
+      const deltaY = target.position.y - player.position.y
+      const targetEliteBrain = scene.eliteBrains.get(target.id)
+      const eliteAttackCommitted =
+        targetEliteBrain?.mode === 'pending-start' ||
+        targetEliteBrain?.mode === 'await-completion'
+      if (eliteAttackCommitted) {
+        // Once the heavy commits, leave the marked belt. During its long
+        // telegraph the runner instead presses forward to demonstrate that a
+        // clean player hit can interrupt the wind-up.
+        moveY = player.position.y <= target.position.y ? -1 : 1
+      } else if (Math.abs(deltaX) > 48) {
+        moveX = deltaX < 0 ? -1 : 1
+      }
+      if (!eliteAttackCommitted) {
+        if (Math.abs(deltaY) > 14) moveY = deltaY < 0 ? -1 : 1
+      }
       const targetVulnerable =
         target.mode !== 'knocked-down' && target.mode !== 'getting-up'
-      if (moveX === 0 && playerActionable && targetVulnerable) {
+      if (
+        moveX === 0 && moveY === 0 && targetVulnerable &&
+        scene.state.elapsedMs >= nextAttackEnqueueAtMs
+      ) {
         scene.actionQueue.buffer.enqueue(
-          { type: 'attack', limb: 'right-hand' },
+          { type: 'attack', limb: nextHanLimb },
           scene.state.elapsedMs,
         )
+        nextHanLimb = nextHanLimb === 'right-hand' ? 'left-hand' : 'right-hand'
+        nextAttackEnqueueAtMs = scene.state.elapsedMs + 190
       }
     }
     const heldBefore =
@@ -724,6 +753,9 @@ describe('CombatScene service-train orchestration', () => {
     scene.runState = { ...scene.runState, currentWaveId: 'service-train-wave-5' }
     scene.stepDomain()
     const eliteId = scene.waveRuntime.wave.spawnedEnemyIds[0]
+    stepUntil(scene, () => (
+      scene.state.actors[eliteId]?.wakeInvulnerabilityRemainingMs === 0
+    ), 60)
     const elite = scene.state.actors[eliteId]
     const eliteSectionOffset = 4 * SIDE_SCROLL_VIEWPORT_WIDTH
     scene.state.actors.han.position = { x: 450 + eliteSectionOffset, y: 270, z: 0 }
@@ -830,11 +862,13 @@ describe('CombatScene service-train orchestration', () => {
     ]
     expect(samples[1]).toEqual(samples[0])
     expect(samples[2]).toEqual(samples[0])
-    expect(samples[0].noTargetMs).toBeLessThanOrEqual(3_700 + 1e-6)
-    expect(samples[0].noTargetMs).toBeCloseTo(3_666.6666666667, 6)
+    expect(samples[0].noTargetMs).toBeLessThanOrEqual(100 + 1e-6)
+    expect(samples[0].noTargetMs).toBeCloseTo(66.6666666667, 6)
     expect(samples[0].zoneActiveMs).toBeGreaterThan(0)
     expect(samples[0].eliteActiveMs).toBeGreaterThan(0)
-    expect(samples[0].pickupsAcquired).toBe(5)
+    // Moving encounters may leave capacity-blocked duplicate supplies behind;
+    // the runner must still secure the two staged pickups and one recovery drop.
+    expect(samples[0].pickupsAcquired).toBeGreaterThanOrEqual(3)
     expect(samples[0].itemsUsed).toBeGreaterThanOrEqual(1)
     expect(samples[0].handedOff).toBe(true)
   })

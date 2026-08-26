@@ -7,18 +7,20 @@ import {
   selectActorFrame,
   type ActorPresentationSnapshot,
 } from '../../src/content/animations'
-import { ActorView } from '../../src/phaser/actors/ActorView'
+import { ActorView, actorDisplayScale } from '../../src/phaser/actors/ActorView'
 
 class FakeDisplay {
   x = 0
   y = 0
   origin = { x: 0, y: 0 }
   flipX = false
+  scale = 1
 
   setAlpha(_value: number): this { return this }
   setDepth(_value: number): this { return this }
   setFrame(_value: string): this { return this }
   setOrigin(x: number, y: number): this { this.origin = { x, y }; return this }
+  setScale(value: number): this { this.scale = value; return this }
   setPosition(x: number, y: number): this { this.x = x; this.y = y; return this }
   setFlipX(value: boolean): this { this.flipX = value; return this }
   setTintFill(_value: number): this { return this }
@@ -263,6 +265,18 @@ describe('Task 13 deterministic actor presentation', () => {
       x: 640, y: 232, flipX: false,
     })
     expect({ x: shadow.x, y: shadow.y }).toEqual({ x: 640, y: 236 })
+  })
+
+  it('uses compact belt-scroll proportions while keeping elites and bosses visually distinct', () => {
+    expect(actorDisplayScale('han')).toBe(0.84)
+    expect(actorDisplayScale('mina')).toBe(0.84)
+    expect(actorDisplayScale('scout-striker')).toBe(0.86)
+    expect(actorDisplayScale('elite-bulwark-frame')).toBeGreaterThan(
+      actorDisplayScale('scout-striker'),
+    )
+    expect(actorDisplayScale('boss-silo-dredger')).toBeGreaterThan(
+      actorDisplayScale('elite-bulwark-frame'),
+    )
   })
 
 })

@@ -144,11 +144,12 @@ export class CharacterSelectScene extends Phaser.Scene {
         this.add
           .image(
             cardX,
-            176,
+            200,
             ACTOR_ATLAS_KEY,
             profile.clips.idle.frames[0],
           )
-          .setOrigin(profile.anchor.x, profile.anchor.y),
+          .setOrigin(profile.anchor.x, profile.anchor.y)
+          .setScale(0.78),
       )
       const text = this.add
         .text(cardX, 210, labels[characterId], {
@@ -272,7 +273,9 @@ export class CharacterSelectScene extends Phaser.Scene {
       text.setBackgroundColor(index === this.selectedIndex ? '#0e3c4d' : '#071018')
     })
     this.choiceImages.forEach((image, index) => {
-      image.setAlpha(index === this.selectedIndex ? 1 : 0.5)
+      image
+        .setAlpha(index === this.selectedIndex ? 1 : 0.5)
+        .setScale(index === this.selectedIndex ? 0.84 : 0.78)
     })
     this.choiceCards.forEach((card, index) => {
       card

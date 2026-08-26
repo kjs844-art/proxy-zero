@@ -12,6 +12,18 @@ import type { CombatActor } from '../../domain/combat/combatReducer'
 const POSITION_SMOOTHING_MS = 46
 const TELEPORT_SNAP_DISTANCE = 180
 
+/**
+ * Keep the fighters readable while restoring the wider belt-scroll playfield
+ * proportions requested for Stage 1. Boss silhouettes remain deliberately
+ * larger than players and normal enemies.
+ */
+export const actorDisplayScale = (profileId: string): number => {
+  if (profileId === 'boss-silo-dredger') return 0.92
+  if (profileId === 'elite-bulwark-frame') return 0.89
+  if (profileId === 'han' || profileId === 'mina' || profileId === 'jin') return 0.84
+  return 0.86
+}
+
 const finiteDelta = (value: number | undefined): number =>
   Number.isFinite(value) ? Math.max(0, value ?? 0) : 0
 
@@ -50,6 +62,7 @@ export class ActorView {
     private readonly profileId: string,
   ) {
     const profile = getActorVisualProfile(profileId)
+    const displayScale = actorDisplayScale(profileId)
     this.shadow = scene.add.ellipse(
       0,
       0,
@@ -57,10 +70,11 @@ export class ActorView {
       profile.shadow.height,
       0x071018,
       0.58,
-    )
+    ).setScale(Math.max(0.82, displayScale))
     this.image = scene.add
       .image(0, 0, ACTOR_ATLAS_KEY, profile.clips.idle.frames[0])
       .setOrigin(profile.anchor.x, profile.anchor.y)
+      .setScale(displayScale)
     this.update(actor)
   }
 

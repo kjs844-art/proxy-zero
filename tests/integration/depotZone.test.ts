@@ -5,6 +5,7 @@ vi.mock('phaser', () => {
     visible = true
     x = 0
     y = 0
+    add(_children: unknown): this { return this }
     setAlpha(_value: number): this { return this }
     setBackgroundColor(_value: string): this { return this }
     setColor(_value: string): this { return this }
@@ -16,13 +17,15 @@ vi.mock('phaser', () => {
     setInteractive(_value?: unknown): this { return this }
     setOrigin(_x: number, _y?: number): this { return this }
     setPosition(x: number, y: number): this { this.x = x; this.y = y; return this }
+    setRotation(_value: number): this { return this }
+    setScale(_value: number): this { return this }
     setScrollFactor(_value: number): this { return this }
     setStrokeStyle(_width: number, _color: number, _alpha?: number): this { return this }
     setText(_value: string): this { return this }
     setVisible(value: boolean): this { this.visible = value; return this }
     setTintFill(_value: number): this { return this }
     clearTint(): this { return this }
-    destroy(): void {}
+    destroy(_fromScene?: boolean): void {}
     on(_event: string, _listener: (...args: unknown[]) => void): this { return this }
   }
 
@@ -56,6 +59,7 @@ vi.mock('phaser', () => {
 
   class Scene {
     readonly add = {
+      container: () => new DisplayObject(),
       ellipse: () => new DisplayObject(),
       graphics: () => new Graphics(),
       image: () => new DisplayObject(),
@@ -694,6 +698,10 @@ type CombatSceneHarness = {
     madeRecoveryProgress?: boolean
   }>
   buildEnemyCommands(): CombatCommand[]
+  spawnGuaranteedEnemyDrops(
+    enemyIds: readonly string[],
+    placeOnTraversalLine?: boolean,
+  ): void
   tryContinue(): void
   dispose(): void
 }
@@ -842,6 +850,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
     const { scene } = createLiveScene()
     scene.stepDomain()
     const enemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
+    stepUntil(scene, () => scene.state.actors[enemyId].wakeInvulnerabilityRemainingMs === 0, 60)
     const attack = getEnemyVariant('scout-patrol').attacks[0]
     scene.state.actors.han.position = { x: 250, y: 248, z: 0 }
     scene.state.actors[enemyId].position = { x: 290, y: 248, z: 0 }
@@ -887,10 +896,33 @@ describe('CombatScene N-9 Depot orchestration', () => {
     )).toHaveLength(0)
   })
 
+  it('keeps a newly projected enemy harmless until its entrance finishes', () => {
+    const { scene } = createLiveScene()
+    scene.stepDomain()
+    const enemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
+    const brainBefore = scene.enemyBrains.get(enemyId)
+    const hpBefore = scene.state.actors.han.hp
+    scene.state.actors.han.position = { x: 250, y: 248, z: 0 }
+    scene.state.actors[enemyId].position = { x: 290, y: 248, z: 0 }
+
+    for (let step = 0; step < 4; step += 1) scene.stepDomain()
+
+    expect(scene.state.actors[enemyId].wakeInvulnerabilityRemainingMs).toBeGreaterThan(0)
+    expect(scene.enemyBrains.get(enemyId)).toEqual(brainBefore)
+    expect(scene.state.actors.han.hp).toBe(hpBefore)
+    expect(scene.state.events).not.toContainEqual(
+      expect.objectContaining({ type: 'attack-started', actorId: enemyId }),
+    )
+
+    stepUntil(scene, () => scene.state.actors[enemyId].wakeInvulnerabilityRemainingMs === 0, 60)
+    expect(scene.enemyBrains.get(enemyId)).not.toEqual(brainBefore)
+  })
+
   it('advances wave, AI, run, and gameplay markers by only a partial hitstop remainder', () => {
     const { scene } = createLiveScene()
     scene.stepDomain()
     const enemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
+    stepUntil(scene, () => scene.state.actors[enemyId].wakeInvulnerabilityRemainingMs === 0, 60)
     const attack = getEnemyVariant('scout-patrol').attacks[0]
     const frozenMs = fixedStepMs / 2
     const activeDeltaMs = fixedStepMs - frozenMs
@@ -1049,6 +1081,7 @@ describe('CombatScene N-9 Depot orchestration', () => {
     const { scene } = createLiveScene()
     scene.stepDomain()
     const enemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
+    stepUntil(scene, () => scene.state.actors[enemyId].wakeInvulnerabilityRemainingMs === 0, 60)
     const enemy = scene.state.actors[enemyId]
     enemy.position = { x: 290, y: 248, z: 0 }
     enemy.facing = -1
@@ -1412,6 +1445,67 @@ describe('CombatScene N-9 Depot orchestration', () => {
     expect(scene.itemRuntime.empRemainingMsByTargetId).toEqual({})
     expect(dispose).toHaveBeenCalledOnce()
     expect(scene.inventoryHud).not.toBe(oldHud)
+  })
+
+  it('clears an enemy attack and guard while the moving fight retreats', () => {
+    const { scene } = createLiveScene()
+    scene.stepDomain()
+    const enemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
+    const enemy = scene.state.actors[enemyId]
+    enemy.mode = 'attacking'
+    enemy.activeAttack = {
+      attackId: 'han-right-hand',
+      elapsedMs: 80,
+      phase: 'active',
+      hitRecords: {},
+    }
+    enemy.wakeInvulnerabilityRemainingMs = 500
+    scene.zonePhase = 'inter-wave'
+
+    const command = scene.buildEnemyCommands().find((candidate) => candidate.actorId === enemyId)
+
+    expect(command).toMatchObject({
+      actorId: enemyId,
+      moveX: -1,
+      moveY: 0,
+      interruptAttack: true,
+      clearGuard: true,
+    })
+    scene.state = combatReducer(scene.state, command ? [command] : [], 0)
+    expect(scene.state.actors[enemyId].activeAttack).toBeNull()
+    expect(scene.state.actors[enemyId].wakeInvulnerabilityRemainingMs).toBe(0)
+  })
+
+  it('preserves combat wake protection after the respawn timer has expired', () => {
+    const { scene } = createLiveScene()
+    const player = scene.state.actors[scene.state.playerId]
+    scene.runState = { ...scene.runState, respawnInvulnerabilityRemainingMs: 0 }
+    player.mode = 'getting-up'
+    player.wakeInvulnerabilityRemainingMs = 500
+
+    scene.stepDomain()
+
+    const currentPlayer = scene.state.actors[scene.state.playerId]
+    expect(currentPlayer.wakeInvulnerabilityRemainingMs).toBeGreaterThan(0)
+    expect(currentPlayer.wakeInvulnerabilityRemainingMs).toBeLessThan(500)
+  })
+
+  it('places a guaranteed moving-fight drop on the player traversal line', () => {
+    const { scene } = createLiveScene()
+    scene.stepDomain()
+    const enemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
+    const player = scene.state.actors[scene.state.playerId]
+    player.position = { x: 310, y: 236, z: 0 }
+
+    scene.spawnGuaranteedEnemyDrops([enemyId], true)
+
+    const drop = scene.itemRuntime.pickups.find(
+      (pickup) => pickup.id === `stage1-drop:${enemyId}`,
+    )
+    expect(drop).toBeDefined()
+    expect(drop?.position.y).toBe(player.position.y)
+    expect(drop?.position.x).toBeGreaterThan(player.position.x)
+    expect((drop?.position.x ?? 0) - player.position.x).toBeLessThanOrEqual(40)
   })
 
   it('symmetrically clears defeated enemy resources and every owned shutdown listener/view', () => {

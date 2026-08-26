@@ -22,11 +22,14 @@ body {
 }
 
 canvas {
-  /* Phaser writes an inline `image-rendering: pixelated` declaration. The
-     desktop app frequently fits 640x360 into a non-integer viewport, where
-     nearest-neighbour stretching creates uneven 1/2 px columns. Override the
-     inline declaration so the finished high-detail frame is sampled evenly. */
-  image-rendering: auto !important;
+  /* Fill the largest possible 16:9 rectangle without changing the logical
+     640x360 Phaser world or leaving a fixed 1280x720 ceiling. */
+  width: min(100vw, 177.7777778vh) !important;
+  height: min(100vh, 56.25vw) !important;
+  aspect-ratio: 16 / 9;
+  display: block;
+  /* Keep authored pixel clusters crisp at desktop and browser-zoom scales. */
+  image-rendering: pixelated !important;
   backface-visibility: hidden;
   transform: translateZ(0);
   max-height: 100%;

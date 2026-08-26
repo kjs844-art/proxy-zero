@@ -24,11 +24,16 @@ export const resolveCanvasSamplingMode = (
 
 const installResponsiveCanvasSampling = (game: Phaser.Game): void => {
   const applySampling = (): void => {
-    // Nearest-neighbour keeps the authored sprite clusters readable even when
-    // the desktop shell fits 640x360 to a fractional CSS size.
+    // The canvas is deliberately kept on nearest-neighbour sampling. The
+    // responsive CSS owns its final 16:9 display size, while Phaser owns the
+    // 640 x 360 logical world and its input transform.
     const mode: CanvasSamplingMode = 'pixelated'
     game.canvas.style.setProperty('image-rendering', mode, 'important')
     game.canvas.dataset.sampling = mode
+    // CSS can resize the canvas after Phaser has calculated its initial bounds.
+    // Refreshing here keeps pointer/keyboard scene coordinates aligned with
+    // the visible canvas at every responsive size.
+    game.scale.refresh()
   }
   applySampling()
   if (typeof ResizeObserver === 'undefined') return
