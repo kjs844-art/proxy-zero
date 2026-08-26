@@ -253,7 +253,7 @@ describe('combatReducer', () => {
     expect(velocity.y).toBeLessThan(0)
   })
 
-  it('resets the gait clock on walk-run transitions, stopping, and opposite movement', () => {
+  it('preserves the gait phase across walk-run transitions and resets it on stopping or turning', () => {
     const walking = combatReducer(
       state(actor()),
       [{ actorId: 'han', moveX: 1, moveY: 0 }],
@@ -267,14 +267,14 @@ describe('combatReducer', () => {
       100,
     )
     expect(running.actors.han.isRunning).toBe(true)
-    expect(running.actors.han.locomotionElapsedMs).toBe(0)
+    expect(running.actors.han.locomotionElapsedMs).toBe(200)
 
     const continued = combatReducer(
       running,
       [{ actorId: 'han', moveX: 1, moveY: 0, running: true }],
       100,
     )
-    expect(continued.actors.han.locomotionElapsedMs).toBe(100)
+    expect(continued.actors.han.locomotionElapsedMs).toBe(300)
 
     const opposite = combatReducer(
       continued,
@@ -430,19 +430,22 @@ describe('combatReducer', () => {
     )
     current = combatReducer(current, [attack('han', 'han-iron-tempest')], 260)
     expect(current.actors.target.hp).toBe(487)
+    expect(current.hitstopRemainingMs).toBe(55)
 
-    current = combatReducer(current, [], 110)
+    current = combatReducer(current, [], 55)
     current = combatReducer(current, [], 89)
     expect(current.actors.target.hp).toBe(487)
     current = combatReducer(current, [], 1)
     expect(current.actors.target.hp).toBe(474)
+    expect(current.hitstopRemainingMs).toBe(55)
 
-    for (let hit = 0; hit < 4; hit += 1) {
-      current = combatReducer(current, [], 110)
+    for (let hit = 0; hit < 2; hit += 1) {
+      current = combatReducer(current, [], 55)
       current = combatReducer(current, [], 90)
     }
     expect(current.actors.target.hp).toBe(448)
     expect(current.actors.han.activeAttack?.hitRecords.target.count).toBe(4)
+    expect(current.hitstopRemainingMs).toBe(110)
   })
 
   it('uses exact knockdown and wake windows and blocks hits during wake invulnerability', () => {

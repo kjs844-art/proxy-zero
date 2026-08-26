@@ -15,7 +15,7 @@ const attack = (
   edge: { type: 'attack', limb },
   attackCandidate: limb,
   enqueuedAtMs,
-  expiresAtMs: enqueuedAtMs + 180,
+  expiresAtMs: enqueuedAtMs + 260,
 })
 
 const history = (...entries: Array<[Parameters<typeof attack>[0], number]>) =>
@@ -68,7 +68,7 @@ describe('resolveCombo', () => {
       sequence: 1,
       edge: { type: 'jump' },
       enqueuedAtMs: 0,
-      expiresAtMs: 180,
+      expiresAtMs: 260,
     }
 
     expect(resolveCombo(jump, [], profile, { airborne: false, meter: 0 })).toBeUndefined()
@@ -208,6 +208,47 @@ describe('resolveCombo', () => {
         meter: 0,
       })
       expect(result?.attackId).toBe(character.normalAttackIds['right-hand'])
+    }
+  })
+
+  it('resolves every character technique and full-meter sequence in authored order', () => {
+    for (const character of characters) {
+      for (const authored of [...character.techniqueRecipes, character.superRecipe]) {
+        const stepMs = Math.min(100, authored.maxGapMs)
+        const priorInputs = authored.inputs.slice(0, -1)
+        const finalInput = authored.inputs[authored.inputs.length - 1]
+        const acceptedHistory = priorInputs.map((limb, index) => ({
+          limb,
+          enqueuedAtMs: index * stepMs,
+        }))
+        const finalAtMs = priorInputs.length * stepMs
+
+        expect(resolveCombo(
+          attack(finalInput, finalAtMs),
+          acceptedHistory,
+          character,
+          { airborne: false, meter: authored.requiresFullMeter ? 100 : 0 },
+        ), `${character.id}:${authored.id}`).toEqual({
+          attackId: authored.attackId,
+          recipeId: authored.id,
+          meterCost: authored.meterCost,
+        })
+      }
+    }
+  })
+
+  it('routes every airborne limb edge to each character jump attack', () => {
+    const limbs = ['left-hand', 'right-hand', 'left-foot', 'right-foot'] as const
+    for (const character of characters) {
+      for (const limb of limbs) {
+        expect(resolveCombo(attack(limb, 0), [], character, {
+          airborne: true,
+          meter: 0,
+        }), `${character.id}:${limb}`).toEqual({
+          attackId: character.jumpAttackId,
+          meterCost: 0,
+        })
+      }
     }
   })
 })

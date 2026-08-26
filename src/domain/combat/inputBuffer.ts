@@ -31,7 +31,10 @@ export interface BufferedAction {
 
 export type BufferedActionMatcher = (entry: Readonly<BufferedAction>) => boolean
 
-export const DEFAULT_ACTION_BUFFER_MS = 180
+// A short arcade buffer keeps ordered techniques responsive while a prior
+// strike reaches its authored cancel window, including JIN's slower normals.
+// The queue remains FIFO, so anatomical input order is intact.
+export const DEFAULT_ACTION_BUFFER_MS = 360
 
 /**
  * A deterministic, caller-clocked FIFO action buffer.

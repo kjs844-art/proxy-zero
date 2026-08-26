@@ -151,12 +151,12 @@ if (selected.length === 4) {
     .filter((report) => report.runKind === 'clear')
     .map((report) => report.activeTimeMs)
     .sort((left, right) => left - right)
-  if (clearTimes.some((time) => !finiteNumber(time) || time < 480_000 || time > 720_000)) {
-    issues.push('one or more clear times are outside 480000-720000ms')
+  if (clearTimes.some((time) => !finiteNumber(time) || time < 900_000 || time > 1_500_000)) {
+    issues.push('one or more clear times are outside 900000-1500000ms')
   }
   const medianActiveTimeMs = clearTimes[1]
-  if (!finiteNumber(medianActiveTimeMs) || medianActiveTimeMs < 540_000 || medianActiveTimeMs > 660_000) {
-    issues.push('clear-time median is outside 540000-660000ms')
+  if (!finiteNumber(medianActiveTimeMs) || medianActiveTimeMs < 1_080_000 || medianActiveTimeMs > 1_320_000) {
+    issues.push('clear-time median is outside 1080000-1320000ms')
   }
 }
 

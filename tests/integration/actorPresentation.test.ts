@@ -87,7 +87,7 @@ describe('Task 13 deterministic actor presentation', () => {
       profileId: 'scout-striker',
       actor: moving,
       telegraph: { attackId: 'scout-striker-jab', elapsedMs: 100 },
-      itemUse: { startedAtMs: 0, durationMs: 400 },
+      itemUse: { kind: 'pickup', startedAtMs: 0, durationMs: 400 },
       domainTimeMs: 100,
     }))).toContain('/telegraph/')
 
@@ -103,9 +103,34 @@ describe('Task 13 deterministic actor presentation', () => {
 
     expect(selectActorFrame(snapshot({
       actor: moving,
-      itemUse: { startedAtMs: 0, durationMs: 400 },
+      itemUse: { kind: 'pickup', startedAtMs: 0, durationMs: 400 },
       domainTimeMs: 100,
     }))).toContain('/pickup-use/')
+  })
+
+  it('plays every fighter pickup as four grounded phases and keeps item use separate', () => {
+    for (const profileId of ['han', 'mina', 'jin'] as const) {
+      const pickup = (domainTimeMs: number): string => selectActorFrame(snapshot({
+        profileId,
+        actor: actor({ id: profileId }),
+        itemUse: { kind: 'pickup', startedAtMs: 0, durationMs: 400 },
+        domainTimeMs,
+      }))
+
+      expect([pickup(0), pickup(100), pickup(200), pickup(300)]).toEqual([
+        `${profileId}/pickup-use/00`,
+        `${profileId}/pickup-use/01`,
+        `${profileId}/pickup-use/02`,
+        `${profileId}/pickup-use/03`,
+      ])
+      expect(pickup(400)).toContain('/idle/')
+    }
+    expect(selectActorFrame(snapshot({
+      profileId: 'mina',
+      actor: actor({ id: 'mina' }),
+      itemUse: { kind: 'use', startedAtMs: 0, durationMs: 400 },
+      domainTimeMs: 100,
+    }))).toContain('/item-use/')
   })
 
   it('is pure for repeated snapshots and freezes when domain time is frozen', () => {
@@ -151,6 +176,35 @@ describe('Task 13 deterministic actor presentation', () => {
       profileId: 'boss-silo-dredger', actor: actor({ id: 'boss', team: 'enemies' }),
       telegraph: { attackId: 'boss-dredger-slam', elapsedMs: 300 },
     }))).toContain('/telegraph/boss-dredger-slam/')
+  })
+
+  it('orders industrial enemy preparation, impact, and recovery frames deterministically', () => {
+    const enemy = actor({ id: 'enemy-1', team: 'enemies' })
+    const telegraph = (elapsedMs: number): string => selectActorFrame(snapshot({
+      profileId: 'scout-striker',
+      actor: enemy,
+      telegraph: { attackId: 'scout-striker-jab', elapsedMs },
+    }))
+    const attack = (elapsedMs: number): string => selectActorFrame(snapshot({
+      profileId: 'scout-striker',
+      actor: actor({
+        ...enemy,
+        mode: 'attacking',
+        activeAttack: {
+          attackId: 'han-right-hand', elapsedMs, phase: 'active', hitRecords: {},
+        },
+      }),
+    }))
+
+    expect([telegraph(0), telegraph(100)]).toEqual([
+      'scout-striker/telegraph/scout-striker-jab/00',
+      'scout-striker/telegraph/scout-striker-jab/01',
+    ])
+    expect([attack(0), attack(100), attack(200)]).toEqual([
+      'scout-striker/attack/scout-striker-jab/00',
+      'scout-striker/attack/scout-striker-jab/01',
+      'scout-striker/attack/scout-striker-jab/02',
+    ])
   })
 
   it('selects four direct limb clips, both left-foot actions, and JIN shoulder charge', () => {

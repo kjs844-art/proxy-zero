@@ -4,6 +4,7 @@ import {
   HUD_CONTROL_KEYS,
   HUD_CONTROLS_TEXT,
   HUD_LAYOUT,
+  HUD_TECHNIQUE_GUIDES,
   HudController,
   deriveHudPortraitPresentation,
   deriveHudModel,
@@ -83,10 +84,16 @@ describe('Task 14 unified HUD contract', () => {
     expect(HUD_CONTROLS_TEXT).toContain('WASD MOVE')
     expect(HUD_CONTROLS_TEXT).toContain('D×2 HOLD RUN')
     expect(HUD_CONTROLS_TEXT).toContain('SPACE JUMP')
-    expect(HUD_CONTROLS_TEXT).toContain('Q ITEM')
-    expect(HUD_CONTROLS_TEXT).toContain('E USE')
+    expect(HUD_CONTROLS_TEXT).toContain('AIR + J/K/L/;')
+    expect(HUD_CONTROLS_TEXT).toContain('Q SELECT')
+    expect(HUD_CONTROLS_TEXT).toContain('E PICK UP / USE')
     expect(HUD_CONTROLS_TEXT.split('\n')).toHaveLength(1)
     expect(HUD_CONTROLS_TEXT).not.toContain('L.HAND')
+    expect(HUD_TECHNIQUE_GUIDES).toEqual({
+      han: 'SKILLS  K J CROSS  ·  L ; K RISING  ·  100% K J ; L TEMPEST',
+      mina: 'SKILLS  K ; FLASH  ·  L K L SKY NEEDLE  ·  100% J K L ; PRISM',
+      jin: 'SKILLS  J K ANCHOR  ·  ; L K FAULT LINE  ·  100% ; L J K ZERO',
+    })
   })
 
   it('centers character-specific head-and-shoulder crops inside the portrait box', () => {
@@ -114,6 +121,7 @@ describe('Task 14 unified HUD contract', () => {
       combo: { x: 12, y: 72 },
       encounter: { x: 144, y: 52, width: 352, height: 16 },
       controlsHint: { x: 320, y: 308 },
+      techniques: { x: 320, y: 298 },
       controls: { x: 320, y: 323, keyWidth: 30, keyHeight: 21, gap: 5 },
     })
     expect(HUD_LAYOUT.status.y).toBeLessThanOrEqual(16)
@@ -160,14 +168,14 @@ describe('Task 14 unified HUD contract', () => {
     expect(source).toMatchObject({ hp: 81.2, meter: 147, lives: 2 })
   })
 
-  it('expires presentation combo at 850 ms and keeps the first-combat controls readable for 22 seconds', () => {
+  it('expires presentation combo at 1000 ms and keeps the first-combat controls readable for 22 seconds', () => {
     const emptyInventory = {
       counts: { emp: 0 as const, 'repair-kit': 0 as const },
       selectedItemId: null,
     }
     const comboHud = new HudController(fakeScene() as never, 'han', emptyInventory)
     comboHud.registerConfirmedHits(2)
-    comboHud.advance(849)
+    comboHud.advance(999)
     expect(comboHud.snapshot().combo).toBe(2)
     comboHud.advance(1)
     expect(comboHud.snapshot().combo).toBe(0)

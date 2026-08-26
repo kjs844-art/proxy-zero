@@ -5,7 +5,7 @@
       "format": "RGBA8888",
       "size": {
         "w": 2048,
-        "h": 4608
+        "h": 4864
       },
       "scale": 1,
       "frames": [
@@ -535,7 +535,7 @@
           }
         },
         {
-          "filename": "han/defeated/00",
+          "filename": "han/pickup-use/02",
           "frame": {
             "x": 1280,
             "y": 512,
@@ -560,7 +560,7 @@
           }
         },
         {
-          "filename": "han/attack/han-right-hand/00",
+          "filename": "han/pickup-use/03",
           "frame": {
             "x": 1536,
             "y": 512,
@@ -585,7 +585,7 @@
           }
         },
         {
-          "filename": "han/attack/han-right-hand/01",
+          "filename": "han/item-use/00",
           "frame": {
             "x": 1792,
             "y": 512,
@@ -610,9 +610,109 @@
           }
         },
         {
-          "filename": "han/attack/han-right-hand/02",
+          "filename": "han/item-use/01",
           "frame": {
             "x": 0,
+            "y": 768,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "han/defeated/00",
+          "frame": {
+            "x": 256,
+            "y": 768,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "han/attack/han-right-hand/00",
+          "frame": {
+            "x": 512,
+            "y": 768,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "han/attack/han-right-hand/01",
+          "frame": {
+            "x": 768,
+            "y": 768,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "han/attack/han-right-hand/02",
+          "frame": {
+            "x": 1024,
             "y": 768,
             "w": 256,
             "h": 256
@@ -637,7 +737,7 @@
         {
           "filename": "han/attack/han-left-hand/00",
           "frame": {
-            "x": 256,
+            "x": 1280,
             "y": 768,
             "w": 256,
             "h": 256
@@ -662,7 +762,7 @@
         {
           "filename": "han/attack/han-left-hand/01",
           "frame": {
-            "x": 512,
+            "x": 1536,
             "y": 768,
             "w": 256,
             "h": 256
@@ -687,7 +787,7 @@
         {
           "filename": "han/attack/han-left-hand/02",
           "frame": {
-            "x": 768,
+            "x": 1792,
             "y": 768,
             "w": 256,
             "h": 256
@@ -712,8 +812,8 @@
         {
           "filename": "han/attack/han-right-foot/00",
           "frame": {
-            "x": 1024,
-            "y": 768,
+            "x": 0,
+            "y": 1024,
             "w": 256,
             "h": 256
           },
@@ -737,8 +837,8 @@
         {
           "filename": "han/attack/han-right-foot/01",
           "frame": {
-            "x": 1280,
-            "y": 768,
+            "x": 256,
+            "y": 1024,
             "w": 256,
             "h": 256
           },
@@ -762,8 +862,8 @@
         {
           "filename": "han/attack/han-right-foot/02",
           "frame": {
-            "x": 1536,
-            "y": 768,
+            "x": 512,
+            "y": 1024,
             "w": 256,
             "h": 256
           },
@@ -787,8 +887,8 @@
         {
           "filename": "han/attack/han-left-foot/00",
           "frame": {
-            "x": 1792,
-            "y": 768,
+            "x": 768,
+            "y": 1024,
             "w": 256,
             "h": 256
           },
@@ -812,7 +912,7 @@
         {
           "filename": "han/attack/han-left-foot/01",
           "frame": {
-            "x": 0,
+            "x": 1024,
             "y": 1024,
             "w": 256,
             "h": 256
@@ -837,7 +937,7 @@
         {
           "filename": "han/attack/han-left-foot/02",
           "frame": {
-            "x": 256,
+            "x": 1280,
             "y": 1024,
             "w": 256,
             "h": 256
@@ -862,7 +962,7 @@
         {
           "filename": "han/attack/han-cross-strike/00",
           "frame": {
-            "x": 512,
+            "x": 1536,
             "y": 1024,
             "w": 256,
             "h": 256
@@ -887,7 +987,7 @@
         {
           "filename": "han/attack/han-cross-strike/01",
           "frame": {
-            "x": 768,
+            "x": 1792,
             "y": 1024,
             "w": 256,
             "h": 256
@@ -912,8 +1012,8 @@
         {
           "filename": "han/attack/han-cross-strike/02",
           "frame": {
-            "x": 1024,
-            "y": 1024,
+            "x": 0,
+            "y": 1280,
             "w": 256,
             "h": 256
           },
@@ -937,8 +1037,8 @@
         {
           "filename": "han/attack/han-rising-kick/00",
           "frame": {
-            "x": 1280,
-            "y": 1024,
+            "x": 256,
+            "y": 1280,
             "w": 256,
             "h": 256
           },
@@ -962,8 +1062,8 @@
         {
           "filename": "han/attack/han-rising-kick/01",
           "frame": {
-            "x": 1536,
-            "y": 1024,
+            "x": 512,
+            "y": 1280,
             "w": 256,
             "h": 256
           },
@@ -987,8 +1087,8 @@
         {
           "filename": "han/attack/han-rising-kick/02",
           "frame": {
-            "x": 1792,
-            "y": 1024,
+            "x": 768,
+            "y": 1280,
             "w": 256,
             "h": 256
           },
@@ -1012,7 +1112,7 @@
         {
           "filename": "han/attack/han-jump-kick/00",
           "frame": {
-            "x": 0,
+            "x": 1024,
             "y": 1280,
             "w": 256,
             "h": 256
@@ -1037,7 +1137,7 @@
         {
           "filename": "han/attack/han-jump-kick/01",
           "frame": {
-            "x": 256,
+            "x": 1280,
             "y": 1280,
             "w": 256,
             "h": 256
@@ -1062,7 +1162,7 @@
         {
           "filename": "han/attack/han-jump-kick/02",
           "frame": {
-            "x": 512,
+            "x": 1536,
             "y": 1280,
             "w": 256,
             "h": 256
@@ -1087,7 +1187,7 @@
         {
           "filename": "han/attack/han-iron-tempest/00",
           "frame": {
-            "x": 768,
+            "x": 1792,
             "y": 1280,
             "w": 256,
             "h": 256
@@ -1112,8 +1212,8 @@
         {
           "filename": "han/attack/han-iron-tempest/01",
           "frame": {
-            "x": 1024,
-            "y": 1280,
+            "x": 0,
+            "y": 1536,
             "w": 256,
             "h": 256
           },
@@ -1137,8 +1237,8 @@
         {
           "filename": "han/attack/han-iron-tempest/02",
           "frame": {
-            "x": 1280,
-            "y": 1280,
+            "x": 256,
+            "y": 1536,
             "w": 256,
             "h": 256
           },
@@ -1162,8 +1262,8 @@
         {
           "filename": "mina/idle/00",
           "frame": {
-            "x": 1536,
-            "y": 1280,
+            "x": 512,
+            "y": 1536,
             "w": 256,
             "h": 256
           },
@@ -1187,8 +1287,8 @@
         {
           "filename": "mina/idle/01",
           "frame": {
-            "x": 1792,
-            "y": 1280,
+            "x": 768,
+            "y": 1536,
             "w": 256,
             "h": 256
           },
@@ -1212,7 +1312,7 @@
         {
           "filename": "mina/walk/00",
           "frame": {
-            "x": 0,
+            "x": 1024,
             "y": 1536,
             "w": 256,
             "h": 256
@@ -1237,7 +1337,7 @@
         {
           "filename": "mina/walk/01",
           "frame": {
-            "x": 256,
+            "x": 1280,
             "y": 1536,
             "w": 256,
             "h": 256
@@ -1262,7 +1362,7 @@
         {
           "filename": "mina/walk/02",
           "frame": {
-            "x": 512,
+            "x": 1536,
             "y": 1536,
             "w": 256,
             "h": 256
@@ -1287,7 +1387,7 @@
         {
           "filename": "mina/walk/03",
           "frame": {
-            "x": 768,
+            "x": 1792,
             "y": 1536,
             "w": 256,
             "h": 256
@@ -1312,8 +1412,8 @@
         {
           "filename": "mina/walk/04",
           "frame": {
-            "x": 1024,
-            "y": 1536,
+            "x": 0,
+            "y": 1792,
             "w": 256,
             "h": 256
           },
@@ -1337,8 +1437,8 @@
         {
           "filename": "mina/walk/05",
           "frame": {
-            "x": 1280,
-            "y": 1536,
+            "x": 256,
+            "y": 1792,
             "w": 256,
             "h": 256
           },
@@ -1362,8 +1462,8 @@
         {
           "filename": "mina/run/00",
           "frame": {
-            "x": 1536,
-            "y": 1536,
+            "x": 512,
+            "y": 1792,
             "w": 256,
             "h": 256
           },
@@ -1387,8 +1487,8 @@
         {
           "filename": "mina/run/01",
           "frame": {
-            "x": 1792,
-            "y": 1536,
+            "x": 768,
+            "y": 1792,
             "w": 256,
             "h": 256
           },
@@ -1412,7 +1512,7 @@
         {
           "filename": "mina/run/02",
           "frame": {
-            "x": 0,
+            "x": 1024,
             "y": 1792,
             "w": 256,
             "h": 256
@@ -1437,7 +1537,7 @@
         {
           "filename": "mina/run/03",
           "frame": {
-            "x": 256,
+            "x": 1280,
             "y": 1792,
             "w": 256,
             "h": 256
@@ -1462,7 +1562,7 @@
         {
           "filename": "mina/run/04",
           "frame": {
-            "x": 512,
+            "x": 1536,
             "y": 1792,
             "w": 256,
             "h": 256
@@ -1487,7 +1587,7 @@
         {
           "filename": "mina/run/05",
           "frame": {
-            "x": 768,
+            "x": 1792,
             "y": 1792,
             "w": 256,
             "h": 256
@@ -1512,8 +1612,8 @@
         {
           "filename": "mina/airborne/00",
           "frame": {
-            "x": 1024,
-            "y": 1792,
+            "x": 0,
+            "y": 2048,
             "w": 256,
             "h": 256
           },
@@ -1537,8 +1637,8 @@
         {
           "filename": "mina/hitstun/00",
           "frame": {
-            "x": 1280,
-            "y": 1792,
+            "x": 256,
+            "y": 2048,
             "w": 256,
             "h": 256
           },
@@ -1562,8 +1662,8 @@
         {
           "filename": "mina/knocked-down/00",
           "frame": {
-            "x": 1536,
-            "y": 1792,
+            "x": 512,
+            "y": 2048,
             "w": 256,
             "h": 256
           },
@@ -1587,8 +1687,8 @@
         {
           "filename": "mina/getting-up/00",
           "frame": {
-            "x": 1792,
-            "y": 1792,
+            "x": 768,
+            "y": 2048,
             "w": 256,
             "h": 256
           },
@@ -1612,7 +1712,7 @@
         {
           "filename": "mina/getting-up/01",
           "frame": {
-            "x": 0,
+            "x": 1024,
             "y": 2048,
             "w": 256,
             "h": 256
@@ -1637,7 +1737,7 @@
         {
           "filename": "mina/pickup-use/00",
           "frame": {
-            "x": 256,
+            "x": 1280,
             "y": 2048,
             "w": 256,
             "h": 256
@@ -1662,8 +1762,108 @@
         {
           "filename": "mina/pickup-use/01",
           "frame": {
-            "x": 512,
+            "x": 1536,
             "y": 2048,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "mina/pickup-use/02",
+          "frame": {
+            "x": 1792,
+            "y": 2048,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "mina/pickup-use/03",
+          "frame": {
+            "x": 0,
+            "y": 2304,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "mina/item-use/00",
+          "frame": {
+            "x": 256,
+            "y": 2304,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "mina/item-use/01",
+          "frame": {
+            "x": 512,
+            "y": 2304,
             "w": 256,
             "h": 256
           },
@@ -1688,7 +1888,7 @@
           "filename": "mina/defeated/00",
           "frame": {
             "x": 768,
-            "y": 2048,
+            "y": 2304,
             "w": 256,
             "h": 256
           },
@@ -1713,7 +1913,7 @@
           "filename": "mina/attack/mina-right-hand/00",
           "frame": {
             "x": 1024,
-            "y": 2048,
+            "y": 2304,
             "w": 256,
             "h": 256
           },
@@ -1738,7 +1938,7 @@
           "filename": "mina/attack/mina-right-hand/01",
           "frame": {
             "x": 1280,
-            "y": 2048,
+            "y": 2304,
             "w": 256,
             "h": 256
           },
@@ -1763,7 +1963,7 @@
           "filename": "mina/attack/mina-right-hand/02",
           "frame": {
             "x": 1536,
-            "y": 2048,
+            "y": 2304,
             "w": 256,
             "h": 256
           },
@@ -1788,7 +1988,7 @@
           "filename": "mina/attack/mina-left-hand/00",
           "frame": {
             "x": 1792,
-            "y": 2048,
+            "y": 2304,
             "w": 256,
             "h": 256
           },
@@ -1813,7 +2013,7 @@
           "filename": "mina/attack/mina-left-hand/01",
           "frame": {
             "x": 0,
-            "y": 2304,
+            "y": 2560,
             "w": 256,
             "h": 256
           },
@@ -1838,7 +2038,7 @@
           "filename": "mina/attack/mina-left-hand/02",
           "frame": {
             "x": 256,
-            "y": 2304,
+            "y": 2560,
             "w": 256,
             "h": 256
           },
@@ -1863,7 +2063,7 @@
           "filename": "mina/attack/mina-right-foot/00",
           "frame": {
             "x": 512,
-            "y": 2304,
+            "y": 2560,
             "w": 256,
             "h": 256
           },
@@ -1888,7 +2088,7 @@
           "filename": "mina/attack/mina-right-foot/01",
           "frame": {
             "x": 768,
-            "y": 2304,
+            "y": 2560,
             "w": 256,
             "h": 256
           },
@@ -1913,7 +2113,7 @@
           "filename": "mina/attack/mina-right-foot/02",
           "frame": {
             "x": 1024,
-            "y": 2304,
+            "y": 2560,
             "w": 256,
             "h": 256
           },
@@ -1938,7 +2138,7 @@
           "filename": "mina/attack/mina-left-foot/00",
           "frame": {
             "x": 1280,
-            "y": 2304,
+            "y": 2560,
             "w": 256,
             "h": 256
           },
@@ -1963,7 +2163,7 @@
           "filename": "mina/attack/mina-left-foot/01",
           "frame": {
             "x": 1536,
-            "y": 2304,
+            "y": 2560,
             "w": 256,
             "h": 256
           },
@@ -1988,7 +2188,7 @@
           "filename": "mina/attack/mina-left-foot/02",
           "frame": {
             "x": 1792,
-            "y": 2304,
+            "y": 2560,
             "w": 256,
             "h": 256
           },
@@ -2013,7 +2213,7 @@
           "filename": "mina/attack/mina-flash-step/00",
           "frame": {
             "x": 0,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -2038,7 +2238,7 @@
           "filename": "mina/attack/mina-flash-step/01",
           "frame": {
             "x": 256,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -2063,7 +2263,7 @@
           "filename": "mina/attack/mina-flash-step/02",
           "frame": {
             "x": 512,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -2088,7 +2288,7 @@
           "filename": "mina/attack/mina-sky-needle/00",
           "frame": {
             "x": 768,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -2113,7 +2313,7 @@
           "filename": "mina/attack/mina-sky-needle/01",
           "frame": {
             "x": 1024,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -2138,7 +2338,7 @@
           "filename": "mina/attack/mina-sky-needle/02",
           "frame": {
             "x": 1280,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -2163,7 +2363,7 @@
           "filename": "mina/attack/mina-jump-heel/00",
           "frame": {
             "x": 1536,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -2188,7 +2388,7 @@
           "filename": "mina/attack/mina-jump-heel/01",
           "frame": {
             "x": 1792,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -2213,7 +2413,7 @@
           "filename": "mina/attack/mina-jump-heel/02",
           "frame": {
             "x": 0,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -2238,7 +2438,7 @@
           "filename": "mina/attack/mina-prism-rush/00",
           "frame": {
             "x": 256,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -2263,7 +2463,7 @@
           "filename": "mina/attack/mina-prism-rush/01",
           "frame": {
             "x": 512,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -2288,7 +2488,7 @@
           "filename": "mina/attack/mina-prism-rush/02",
           "frame": {
             "x": 768,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -2313,7 +2513,7 @@
           "filename": "jin/idle/00",
           "frame": {
             "x": 1024,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -2338,7 +2538,7 @@
           "filename": "jin/idle/01",
           "frame": {
             "x": 1280,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -2363,7 +2563,7 @@
           "filename": "jin/walk/00",
           "frame": {
             "x": 1536,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -2388,7 +2588,7 @@
           "filename": "jin/walk/01",
           "frame": {
             "x": 1792,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -2413,7 +2613,7 @@
           "filename": "jin/walk/02",
           "frame": {
             "x": 0,
-            "y": 3072,
+            "y": 3328,
             "w": 256,
             "h": 256
           },
@@ -2438,7 +2638,7 @@
           "filename": "jin/walk/03",
           "frame": {
             "x": 256,
-            "y": 3072,
+            "y": 3328,
             "w": 256,
             "h": 256
           },
@@ -2463,7 +2663,7 @@
           "filename": "jin/walk/04",
           "frame": {
             "x": 512,
-            "y": 3072,
+            "y": 3328,
             "w": 256,
             "h": 256
           },
@@ -2488,7 +2688,7 @@
           "filename": "jin/walk/05",
           "frame": {
             "x": 768,
-            "y": 3072,
+            "y": 3328,
             "w": 256,
             "h": 256
           },
@@ -2513,7 +2713,7 @@
           "filename": "jin/run/00",
           "frame": {
             "x": 1024,
-            "y": 3072,
+            "y": 3328,
             "w": 256,
             "h": 256
           },
@@ -2538,7 +2738,7 @@
           "filename": "jin/run/01",
           "frame": {
             "x": 1280,
-            "y": 3072,
+            "y": 3328,
             "w": 256,
             "h": 256
           },
@@ -2563,7 +2763,7 @@
           "filename": "jin/run/02",
           "frame": {
             "x": 1536,
-            "y": 3072,
+            "y": 3328,
             "w": 256,
             "h": 256
           },
@@ -2588,7 +2788,7 @@
           "filename": "jin/run/03",
           "frame": {
             "x": 1792,
-            "y": 3072,
+            "y": 3328,
             "w": 256,
             "h": 256
           },
@@ -2613,7 +2813,7 @@
           "filename": "jin/run/04",
           "frame": {
             "x": 0,
-            "y": 3328,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -2638,7 +2838,7 @@
           "filename": "jin/run/05",
           "frame": {
             "x": 256,
-            "y": 3328,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -2663,7 +2863,7 @@
           "filename": "jin/airborne/00",
           "frame": {
             "x": 512,
-            "y": 3328,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -2688,7 +2888,7 @@
           "filename": "jin/hitstun/00",
           "frame": {
             "x": 768,
-            "y": 3328,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -2713,7 +2913,7 @@
           "filename": "jin/knocked-down/00",
           "frame": {
             "x": 1024,
-            "y": 3328,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -2738,7 +2938,7 @@
           "filename": "jin/getting-up/00",
           "frame": {
             "x": 1280,
-            "y": 3328,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -2763,7 +2963,7 @@
           "filename": "jin/getting-up/01",
           "frame": {
             "x": 1536,
-            "y": 3328,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -2788,7 +2988,7 @@
           "filename": "jin/pickup-use/00",
           "frame": {
             "x": 1792,
-            "y": 3328,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -2813,7 +3013,107 @@
           "filename": "jin/pickup-use/01",
           "frame": {
             "x": 0,
-            "y": 3584,
+            "y": 3840,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "jin/pickup-use/02",
+          "frame": {
+            "x": 256,
+            "y": 3840,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "jin/pickup-use/03",
+          "frame": {
+            "x": 512,
+            "y": 3840,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "jin/item-use/00",
+          "frame": {
+            "x": 768,
+            "y": 3840,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "jin/item-use/01",
+          "frame": {
+            "x": 1024,
+            "y": 3840,
             "w": 256,
             "h": 256
           },
@@ -2837,8 +3137,8 @@
         {
           "filename": "jin/defeated/00",
           "frame": {
-            "x": 256,
-            "y": 3584,
+            "x": 1280,
+            "y": 3840,
             "w": 256,
             "h": 256
           },
@@ -2862,8 +3162,8 @@
         {
           "filename": "jin/attack/jin-right-hand/00",
           "frame": {
-            "x": 512,
-            "y": 3584,
+            "x": 1536,
+            "y": 3840,
             "w": 256,
             "h": 256
           },
@@ -2887,8 +3187,8 @@
         {
           "filename": "jin/attack/jin-right-hand/01",
           "frame": {
-            "x": 768,
-            "y": 3584,
+            "x": 1792,
+            "y": 3840,
             "w": 256,
             "h": 256
           },
@@ -2912,8 +3212,8 @@
         {
           "filename": "jin/attack/jin-right-hand/02",
           "frame": {
-            "x": 1024,
-            "y": 3584,
+            "x": 0,
+            "y": 4096,
             "w": 256,
             "h": 256
           },
@@ -2937,8 +3237,8 @@
         {
           "filename": "jin/attack/jin-left-hand/00",
           "frame": {
-            "x": 1280,
-            "y": 3584,
+            "x": 256,
+            "y": 4096,
             "w": 256,
             "h": 256
           },
@@ -2962,8 +3262,8 @@
         {
           "filename": "jin/attack/jin-left-hand/01",
           "frame": {
-            "x": 1536,
-            "y": 3584,
+            "x": 512,
+            "y": 4096,
             "w": 256,
             "h": 256
           },
@@ -2987,8 +3287,8 @@
         {
           "filename": "jin/attack/jin-left-hand/02",
           "frame": {
-            "x": 1792,
-            "y": 3584,
+            "x": 768,
+            "y": 4096,
             "w": 256,
             "h": 256
           },
@@ -3012,8 +3312,8 @@
         {
           "filename": "jin/attack/jin-right-foot/00",
           "frame": {
-            "x": 0,
-            "y": 3840,
+            "x": 1024,
+            "y": 4096,
             "w": 256,
             "h": 256
           },
@@ -3037,8 +3337,8 @@
         {
           "filename": "jin/attack/jin-right-foot/01",
           "frame": {
-            "x": 256,
-            "y": 3840,
+            "x": 1280,
+            "y": 4096,
             "w": 256,
             "h": 256
           },
@@ -3062,8 +3362,8 @@
         {
           "filename": "jin/attack/jin-right-foot/02",
           "frame": {
-            "x": 512,
-            "y": 3840,
+            "x": 1536,
+            "y": 4096,
             "w": 256,
             "h": 256
           },
@@ -3087,8 +3387,8 @@
         {
           "filename": "jin/attack/jin-left-foot/00",
           "frame": {
-            "x": 768,
-            "y": 3840,
+            "x": 1792,
+            "y": 4096,
             "w": 256,
             "h": 256
           },
@@ -3112,8 +3412,8 @@
         {
           "filename": "jin/attack/jin-left-foot/01",
           "frame": {
-            "x": 1024,
-            "y": 3840,
+            "x": 0,
+            "y": 4352,
             "w": 256,
             "h": 256
           },
@@ -3137,8 +3437,8 @@
         {
           "filename": "jin/attack/jin-left-foot/02",
           "frame": {
-            "x": 1280,
-            "y": 3840,
+            "x": 256,
+            "y": 4352,
             "w": 256,
             "h": 256
           },
@@ -3162,8 +3462,8 @@
         {
           "filename": "jin/attack/jin-anchor-blow/00",
           "frame": {
-            "x": 1536,
-            "y": 3840,
+            "x": 512,
+            "y": 4352,
             "w": 256,
             "h": 256
           },
@@ -3187,8 +3487,8 @@
         {
           "filename": "jin/attack/jin-anchor-blow/01",
           "frame": {
-            "x": 1792,
-            "y": 3840,
+            "x": 768,
+            "y": 4352,
             "w": 256,
             "h": 256
           },
@@ -3212,8 +3512,8 @@
         {
           "filename": "jin/attack/jin-anchor-blow/02",
           "frame": {
-            "x": 0,
-            "y": 4096,
+            "x": 1024,
+            "y": 4352,
             "w": 256,
             "h": 256
           },
@@ -3237,8 +3537,8 @@
         {
           "filename": "jin/attack/jin-fault-line/00",
           "frame": {
-            "x": 256,
-            "y": 4096,
+            "x": 1280,
+            "y": 4352,
             "w": 256,
             "h": 256
           },
@@ -3262,8 +3562,8 @@
         {
           "filename": "jin/attack/jin-fault-line/01",
           "frame": {
-            "x": 512,
-            "y": 4096,
+            "x": 1536,
+            "y": 4352,
             "w": 256,
             "h": 256
           },
@@ -3287,8 +3587,8 @@
         {
           "filename": "jin/attack/jin-fault-line/02",
           "frame": {
-            "x": 768,
-            "y": 4096,
+            "x": 1792,
+            "y": 4352,
             "w": 256,
             "h": 256
           },
@@ -3312,8 +3612,8 @@
         {
           "filename": "jin/attack/jin-jump-crush/00",
           "frame": {
-            "x": 1024,
-            "y": 4096,
+            "x": 0,
+            "y": 4608,
             "w": 256,
             "h": 256
           },
@@ -3337,8 +3637,8 @@
         {
           "filename": "jin/attack/jin-jump-crush/01",
           "frame": {
-            "x": 1280,
-            "y": 4096,
+            "x": 256,
+            "y": 4608,
             "w": 256,
             "h": 256
           },
@@ -3362,8 +3662,8 @@
         {
           "filename": "jin/attack/jin-jump-crush/02",
           "frame": {
-            "x": 1536,
-            "y": 4096,
+            "x": 512,
+            "y": 4608,
             "w": 256,
             "h": 256
           },
@@ -3387,8 +3687,8 @@
         {
           "filename": "jin/attack/jin-zero-breaker/00",
           "frame": {
-            "x": 1792,
-            "y": 4096,
+            "x": 768,
+            "y": 4608,
             "w": 256,
             "h": 256
           },
@@ -3412,8 +3712,8 @@
         {
           "filename": "jin/attack/jin-zero-breaker/01",
           "frame": {
-            "x": 0,
-            "y": 4352,
+            "x": 1024,
+            "y": 4608,
             "w": 256,
             "h": 256
           },
@@ -3437,8 +3737,8 @@
         {
           "filename": "jin/attack/jin-zero-breaker/02",
           "frame": {
-            "x": 256,
-            "y": 4352,
+            "x": 1280,
+            "y": 4608,
             "w": 256,
             "h": 256
           },
@@ -3466,7 +3766,7 @@
       "format": "RGBA8888",
       "size": {
         "w": 2048,
-        "h": 3584
+        "h": 3840
       },
       "scale": 1,
       "frames": [
@@ -3796,9 +4096,59 @@
           }
         },
         {
-          "filename": "scout-striker/defeated/00",
+          "filename": "scout-striker/item-use/00",
           "frame": {
             "x": 1280,
+            "y": 256,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "scout-striker/item-use/01",
+          "frame": {
+            "x": 1536,
+            "y": 256,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "scout-striker/defeated/00",
+          "frame": {
+            "x": 1792,
             "y": 256,
             "w": 256,
             "h": 256
@@ -3823,8 +4173,8 @@
         {
           "filename": "scout-striker/attack/scout-striker-jab/00",
           "frame": {
-            "x": 1536,
-            "y": 256,
+            "x": 0,
+            "y": 512,
             "w": 256,
             "h": 256
           },
@@ -3848,8 +4198,8 @@
         {
           "filename": "scout-striker/attack/scout-striker-jab/01",
           "frame": {
-            "x": 1792,
-            "y": 256,
+            "x": 256,
+            "y": 512,
             "w": 256,
             "h": 256
           },
@@ -3873,7 +4223,7 @@
         {
           "filename": "scout-striker/attack/scout-striker-jab/02",
           "frame": {
-            "x": 0,
+            "x": 512,
             "y": 512,
             "w": 256,
             "h": 256
@@ -3898,7 +4248,7 @@
         {
           "filename": "scout-striker/telegraph/scout-striker-jab/00",
           "frame": {
-            "x": 256,
+            "x": 768,
             "y": 512,
             "w": 256,
             "h": 256
@@ -3923,7 +4273,7 @@
         {
           "filename": "scout-striker/telegraph/scout-striker-jab/01",
           "frame": {
-            "x": 512,
+            "x": 1024,
             "y": 512,
             "w": 256,
             "h": 256
@@ -3948,7 +4298,7 @@
         {
           "filename": "scout-striker/attack/scout-striker-sweep/00",
           "frame": {
-            "x": 768,
+            "x": 1280,
             "y": 512,
             "w": 256,
             "h": 256
@@ -3973,7 +4323,7 @@
         {
           "filename": "scout-striker/attack/scout-striker-sweep/01",
           "frame": {
-            "x": 1024,
+            "x": 1536,
             "y": 512,
             "w": 256,
             "h": 256
@@ -3998,7 +4348,7 @@
         {
           "filename": "scout-striker/attack/scout-striker-sweep/02",
           "frame": {
-            "x": 1280,
+            "x": 1792,
             "y": 512,
             "w": 256,
             "h": 256
@@ -4023,8 +4373,8 @@
         {
           "filename": "scout-striker/telegraph/scout-striker-sweep/00",
           "frame": {
-            "x": 1536,
-            "y": 512,
+            "x": 0,
+            "y": 768,
             "w": 256,
             "h": 256
           },
@@ -4048,8 +4398,8 @@
         {
           "filename": "scout-striker/telegraph/scout-striker-sweep/01",
           "frame": {
-            "x": 1792,
-            "y": 512,
+            "x": 256,
+            "y": 768,
             "w": 256,
             "h": 256
           },
@@ -4073,7 +4423,7 @@
         {
           "filename": "scout-patrol/idle/00",
           "frame": {
-            "x": 0,
+            "x": 512,
             "y": 768,
             "w": 256,
             "h": 256
@@ -4098,7 +4448,7 @@
         {
           "filename": "scout-patrol/idle/01",
           "frame": {
-            "x": 256,
+            "x": 768,
             "y": 768,
             "w": 256,
             "h": 256
@@ -4123,7 +4473,7 @@
         {
           "filename": "scout-patrol/walk/00",
           "frame": {
-            "x": 512,
+            "x": 1024,
             "y": 768,
             "w": 256,
             "h": 256
@@ -4148,7 +4498,7 @@
         {
           "filename": "scout-patrol/walk/01",
           "frame": {
-            "x": 768,
+            "x": 1280,
             "y": 768,
             "w": 256,
             "h": 256
@@ -4173,7 +4523,7 @@
         {
           "filename": "scout-patrol/walk/02",
           "frame": {
-            "x": 1024,
+            "x": 1536,
             "y": 768,
             "w": 256,
             "h": 256
@@ -4198,7 +4548,7 @@
         {
           "filename": "scout-patrol/walk/03",
           "frame": {
-            "x": 1280,
+            "x": 1792,
             "y": 768,
             "w": 256,
             "h": 256
@@ -4223,8 +4573,8 @@
         {
           "filename": "scout-patrol/airborne/00",
           "frame": {
-            "x": 1536,
-            "y": 768,
+            "x": 0,
+            "y": 1024,
             "w": 256,
             "h": 256
           },
@@ -4248,8 +4598,8 @@
         {
           "filename": "scout-patrol/hitstun/00",
           "frame": {
-            "x": 1792,
-            "y": 768,
+            "x": 256,
+            "y": 1024,
             "w": 256,
             "h": 256
           },
@@ -4273,7 +4623,7 @@
         {
           "filename": "scout-patrol/knocked-down/00",
           "frame": {
-            "x": 0,
+            "x": 512,
             "y": 1024,
             "w": 256,
             "h": 256
@@ -4298,7 +4648,7 @@
         {
           "filename": "scout-patrol/getting-up/00",
           "frame": {
-            "x": 256,
+            "x": 768,
             "y": 1024,
             "w": 256,
             "h": 256
@@ -4323,7 +4673,7 @@
         {
           "filename": "scout-patrol/getting-up/01",
           "frame": {
-            "x": 512,
+            "x": 1024,
             "y": 1024,
             "w": 256,
             "h": 256
@@ -4348,7 +4698,7 @@
         {
           "filename": "scout-patrol/pickup-use/00",
           "frame": {
-            "x": 768,
+            "x": 1280,
             "y": 1024,
             "w": 256,
             "h": 256
@@ -4373,56 +4723,6 @@
         {
           "filename": "scout-patrol/pickup-use/01",
           "frame": {
-            "x": 1024,
-            "y": 1024,
-            "w": 256,
-            "h": 256
-          },
-          "rotated": false,
-          "trimmed": false,
-          "spriteSourceSize": {
-            "x": 0,
-            "y": 0,
-            "w": 256,
-            "h": 256
-          },
-          "sourceSize": {
-            "w": 256,
-            "h": 256
-          },
-          "pivot": {
-            "x": 0.5,
-            "y": 1
-          }
-        },
-        {
-          "filename": "scout-patrol/defeated/00",
-          "frame": {
-            "x": 1280,
-            "y": 1024,
-            "w": 256,
-            "h": 256
-          },
-          "rotated": false,
-          "trimmed": false,
-          "spriteSourceSize": {
-            "x": 0,
-            "y": 0,
-            "w": 256,
-            "h": 256
-          },
-          "sourceSize": {
-            "w": 256,
-            "h": 256
-          },
-          "pivot": {
-            "x": 0.5,
-            "y": 1
-          }
-        },
-        {
-          "filename": "scout-patrol/attack/scout-patrol-kick/00",
-          "frame": {
             "x": 1536,
             "y": 1024,
             "w": 256,
@@ -4446,7 +4746,7 @@
           }
         },
         {
-          "filename": "scout-patrol/attack/scout-patrol-kick/01",
+          "filename": "scout-patrol/item-use/00",
           "frame": {
             "x": 1792,
             "y": 1024,
@@ -4471,9 +4771,109 @@
           }
         },
         {
-          "filename": "scout-patrol/attack/scout-patrol-kick/02",
+          "filename": "scout-patrol/item-use/01",
           "frame": {
             "x": 0,
+            "y": 1280,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "scout-patrol/defeated/00",
+          "frame": {
+            "x": 256,
+            "y": 1280,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "scout-patrol/attack/scout-patrol-kick/00",
+          "frame": {
+            "x": 512,
+            "y": 1280,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "scout-patrol/attack/scout-patrol-kick/01",
+          "frame": {
+            "x": 768,
+            "y": 1280,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "scout-patrol/attack/scout-patrol-kick/02",
+          "frame": {
+            "x": 1024,
             "y": 1280,
             "w": 256,
             "h": 256
@@ -4498,7 +4898,7 @@
         {
           "filename": "scout-patrol/telegraph/scout-patrol-kick/00",
           "frame": {
-            "x": 256,
+            "x": 1280,
             "y": 1280,
             "w": 256,
             "h": 256
@@ -4523,7 +4923,7 @@
         {
           "filename": "scout-patrol/telegraph/scout-patrol-kick/01",
           "frame": {
-            "x": 512,
+            "x": 1536,
             "y": 1280,
             "w": 256,
             "h": 256
@@ -4548,7 +4948,7 @@
         {
           "filename": "bulwark-sentinel/idle/00",
           "frame": {
-            "x": 768,
+            "x": 1792,
             "y": 1280,
             "w": 256,
             "h": 256
@@ -4573,8 +4973,8 @@
         {
           "filename": "bulwark-sentinel/idle/01",
           "frame": {
-            "x": 1024,
-            "y": 1280,
+            "x": 0,
+            "y": 1536,
             "w": 256,
             "h": 256
           },
@@ -4598,8 +4998,8 @@
         {
           "filename": "bulwark-sentinel/walk/00",
           "frame": {
-            "x": 1280,
-            "y": 1280,
+            "x": 256,
+            "y": 1536,
             "w": 256,
             "h": 256
           },
@@ -4623,8 +5023,8 @@
         {
           "filename": "bulwark-sentinel/walk/01",
           "frame": {
-            "x": 1536,
-            "y": 1280,
+            "x": 512,
+            "y": 1536,
             "w": 256,
             "h": 256
           },
@@ -4648,8 +5048,8 @@
         {
           "filename": "bulwark-sentinel/walk/02",
           "frame": {
-            "x": 1792,
-            "y": 1280,
+            "x": 768,
+            "y": 1536,
             "w": 256,
             "h": 256
           },
@@ -4673,7 +5073,7 @@
         {
           "filename": "bulwark-sentinel/walk/03",
           "frame": {
-            "x": 0,
+            "x": 1024,
             "y": 1536,
             "w": 256,
             "h": 256
@@ -4698,7 +5098,7 @@
         {
           "filename": "bulwark-sentinel/airborne/00",
           "frame": {
-            "x": 256,
+            "x": 1280,
             "y": 1536,
             "w": 256,
             "h": 256
@@ -4723,7 +5123,7 @@
         {
           "filename": "bulwark-sentinel/hitstun/00",
           "frame": {
-            "x": 512,
+            "x": 1536,
             "y": 1536,
             "w": 256,
             "h": 256
@@ -4748,7 +5148,7 @@
         {
           "filename": "bulwark-sentinel/knocked-down/00",
           "frame": {
-            "x": 768,
+            "x": 1792,
             "y": 1536,
             "w": 256,
             "h": 256
@@ -4773,8 +5173,8 @@
         {
           "filename": "bulwark-sentinel/getting-up/00",
           "frame": {
-            "x": 1024,
-            "y": 1536,
+            "x": 0,
+            "y": 1792,
             "w": 256,
             "h": 256
           },
@@ -4798,8 +5198,8 @@
         {
           "filename": "bulwark-sentinel/getting-up/01",
           "frame": {
-            "x": 1280,
-            "y": 1536,
+            "x": 256,
+            "y": 1792,
             "w": 256,
             "h": 256
           },
@@ -4823,8 +5223,8 @@
         {
           "filename": "bulwark-sentinel/pickup-use/00",
           "frame": {
-            "x": 1536,
-            "y": 1536,
+            "x": 512,
+            "y": 1792,
             "w": 256,
             "h": 256
           },
@@ -4848,8 +5248,58 @@
         {
           "filename": "bulwark-sentinel/pickup-use/01",
           "frame": {
-            "x": 1792,
-            "y": 1536,
+            "x": 768,
+            "y": 1792,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "bulwark-sentinel/item-use/00",
+          "frame": {
+            "x": 1024,
+            "y": 1792,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "bulwark-sentinel/item-use/01",
+          "frame": {
+            "x": 1280,
+            "y": 1792,
             "w": 256,
             "h": 256
           },
@@ -4873,7 +5323,7 @@
         {
           "filename": "bulwark-sentinel/defeated/00",
           "frame": {
-            "x": 0,
+            "x": 1536,
             "y": 1792,
             "w": 256,
             "h": 256
@@ -4898,7 +5348,7 @@
         {
           "filename": "bulwark-sentinel/attack/bulwark-sentinel-slam/00",
           "frame": {
-            "x": 256,
+            "x": 1792,
             "y": 1792,
             "w": 256,
             "h": 256
@@ -4923,8 +5373,8 @@
         {
           "filename": "bulwark-sentinel/attack/bulwark-sentinel-slam/01",
           "frame": {
-            "x": 512,
-            "y": 1792,
+            "x": 0,
+            "y": 2048,
             "w": 256,
             "h": 256
           },
@@ -4948,8 +5398,8 @@
         {
           "filename": "bulwark-sentinel/attack/bulwark-sentinel-slam/02",
           "frame": {
-            "x": 768,
-            "y": 1792,
+            "x": 256,
+            "y": 2048,
             "w": 256,
             "h": 256
           },
@@ -4973,8 +5423,8 @@
         {
           "filename": "bulwark-sentinel/telegraph/bulwark-sentinel-slam/00",
           "frame": {
-            "x": 1024,
-            "y": 1792,
+            "x": 512,
+            "y": 2048,
             "w": 256,
             "h": 256
           },
@@ -4998,8 +5448,8 @@
         {
           "filename": "bulwark-sentinel/telegraph/bulwark-sentinel-slam/01",
           "frame": {
-            "x": 1280,
-            "y": 1792,
+            "x": 768,
+            "y": 2048,
             "w": 256,
             "h": 256
           },
@@ -5023,8 +5473,8 @@
         {
           "filename": "bulwark-enforcer/idle/00",
           "frame": {
-            "x": 1536,
-            "y": 1792,
+            "x": 1024,
+            "y": 2048,
             "w": 256,
             "h": 256
           },
@@ -5048,8 +5498,8 @@
         {
           "filename": "bulwark-enforcer/idle/01",
           "frame": {
-            "x": 1792,
-            "y": 1792,
+            "x": 1280,
+            "y": 2048,
             "w": 256,
             "h": 256
           },
@@ -5073,7 +5523,7 @@
         {
           "filename": "bulwark-enforcer/walk/00",
           "frame": {
-            "x": 0,
+            "x": 1536,
             "y": 2048,
             "w": 256,
             "h": 256
@@ -5098,7 +5548,7 @@
         {
           "filename": "bulwark-enforcer/walk/01",
           "frame": {
-            "x": 256,
+            "x": 1792,
             "y": 2048,
             "w": 256,
             "h": 256
@@ -5123,8 +5573,8 @@
         {
           "filename": "bulwark-enforcer/walk/02",
           "frame": {
-            "x": 512,
-            "y": 2048,
+            "x": 0,
+            "y": 2304,
             "w": 256,
             "h": 256
           },
@@ -5148,8 +5598,8 @@
         {
           "filename": "bulwark-enforcer/walk/03",
           "frame": {
-            "x": 768,
-            "y": 2048,
+            "x": 256,
+            "y": 2304,
             "w": 256,
             "h": 256
           },
@@ -5173,8 +5623,8 @@
         {
           "filename": "bulwark-enforcer/airborne/00",
           "frame": {
-            "x": 1024,
-            "y": 2048,
+            "x": 512,
+            "y": 2304,
             "w": 256,
             "h": 256
           },
@@ -5198,8 +5648,8 @@
         {
           "filename": "bulwark-enforcer/hitstun/00",
           "frame": {
-            "x": 1280,
-            "y": 2048,
+            "x": 768,
+            "y": 2304,
             "w": 256,
             "h": 256
           },
@@ -5223,8 +5673,8 @@
         {
           "filename": "bulwark-enforcer/knocked-down/00",
           "frame": {
-            "x": 1536,
-            "y": 2048,
+            "x": 1024,
+            "y": 2304,
             "w": 256,
             "h": 256
           },
@@ -5248,8 +5698,8 @@
         {
           "filename": "bulwark-enforcer/getting-up/00",
           "frame": {
-            "x": 1792,
-            "y": 2048,
+            "x": 1280,
+            "y": 2304,
             "w": 256,
             "h": 256
           },
@@ -5273,7 +5723,7 @@
         {
           "filename": "bulwark-enforcer/getting-up/01",
           "frame": {
-            "x": 0,
+            "x": 1536,
             "y": 2304,
             "w": 256,
             "h": 256
@@ -5298,7 +5748,7 @@
         {
           "filename": "bulwark-enforcer/pickup-use/00",
           "frame": {
-            "x": 256,
+            "x": 1792,
             "y": 2304,
             "w": 256,
             "h": 256
@@ -5323,8 +5773,58 @@
         {
           "filename": "bulwark-enforcer/pickup-use/01",
           "frame": {
+            "x": 0,
+            "y": 2560,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "bulwark-enforcer/item-use/00",
+          "frame": {
+            "x": 256,
+            "y": 2560,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "bulwark-enforcer/item-use/01",
+          "frame": {
             "x": 512,
-            "y": 2304,
+            "y": 2560,
             "w": 256,
             "h": 256
           },
@@ -5349,7 +5849,7 @@
           "filename": "bulwark-enforcer/defeated/00",
           "frame": {
             "x": 768,
-            "y": 2304,
+            "y": 2560,
             "w": 256,
             "h": 256
           },
@@ -5374,7 +5874,7 @@
           "filename": "bulwark-enforcer/attack/bulwark-enforcer-punch/00",
           "frame": {
             "x": 1024,
-            "y": 2304,
+            "y": 2560,
             "w": 256,
             "h": 256
           },
@@ -5399,7 +5899,7 @@
           "filename": "bulwark-enforcer/attack/bulwark-enforcer-punch/01",
           "frame": {
             "x": 1280,
-            "y": 2304,
+            "y": 2560,
             "w": 256,
             "h": 256
           },
@@ -5424,7 +5924,7 @@
           "filename": "bulwark-enforcer/attack/bulwark-enforcer-punch/02",
           "frame": {
             "x": 1536,
-            "y": 2304,
+            "y": 2560,
             "w": 256,
             "h": 256
           },
@@ -5449,7 +5949,7 @@
           "filename": "bulwark-enforcer/telegraph/bulwark-enforcer-punch/00",
           "frame": {
             "x": 1792,
-            "y": 2304,
+            "y": 2560,
             "w": 256,
             "h": 256
           },
@@ -5474,7 +5974,7 @@
           "filename": "bulwark-enforcer/telegraph/bulwark-enforcer-punch/01",
           "frame": {
             "x": 0,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -5499,7 +5999,7 @@
           "filename": "bulwark-enforcer/attack/bulwark-enforcer-charge/00",
           "frame": {
             "x": 256,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -5524,7 +6024,7 @@
           "filename": "bulwark-enforcer/attack/bulwark-enforcer-charge/01",
           "frame": {
             "x": 512,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -5549,7 +6049,7 @@
           "filename": "bulwark-enforcer/attack/bulwark-enforcer-charge/02",
           "frame": {
             "x": 768,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -5574,7 +6074,7 @@
           "filename": "bulwark-enforcer/telegraph/bulwark-enforcer-charge/00",
           "frame": {
             "x": 1024,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -5599,7 +6099,7 @@
           "filename": "bulwark-enforcer/telegraph/bulwark-enforcer-charge/01",
           "frame": {
             "x": 1280,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -5624,7 +6124,7 @@
           "filename": "elite-bulwark-frame/idle/00",
           "frame": {
             "x": 1536,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -5649,7 +6149,7 @@
           "filename": "elite-bulwark-frame/idle/01",
           "frame": {
             "x": 1792,
-            "y": 2560,
+            "y": 2816,
             "w": 256,
             "h": 256
           },
@@ -5674,7 +6174,7 @@
           "filename": "elite-bulwark-frame/walk/00",
           "frame": {
             "x": 0,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -5699,7 +6199,7 @@
           "filename": "elite-bulwark-frame/walk/01",
           "frame": {
             "x": 256,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -5724,7 +6224,7 @@
           "filename": "elite-bulwark-frame/walk/02",
           "frame": {
             "x": 512,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -5749,7 +6249,7 @@
           "filename": "elite-bulwark-frame/walk/03",
           "frame": {
             "x": 768,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -5774,7 +6274,7 @@
           "filename": "elite-bulwark-frame/airborne/00",
           "frame": {
             "x": 1024,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -5799,7 +6299,7 @@
           "filename": "elite-bulwark-frame/hitstun/00",
           "frame": {
             "x": 1280,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -5824,7 +6324,7 @@
           "filename": "elite-bulwark-frame/knocked-down/00",
           "frame": {
             "x": 1536,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -5849,7 +6349,7 @@
           "filename": "elite-bulwark-frame/getting-up/00",
           "frame": {
             "x": 1792,
-            "y": 2816,
+            "y": 3072,
             "w": 256,
             "h": 256
           },
@@ -5874,7 +6374,7 @@
           "filename": "elite-bulwark-frame/getting-up/01",
           "frame": {
             "x": 0,
-            "y": 3072,
+            "y": 3328,
             "w": 256,
             "h": 256
           },
@@ -5899,7 +6399,7 @@
           "filename": "elite-bulwark-frame/pickup-use/00",
           "frame": {
             "x": 256,
-            "y": 3072,
+            "y": 3328,
             "w": 256,
             "h": 256
           },
@@ -5924,7 +6424,57 @@
           "filename": "elite-bulwark-frame/pickup-use/01",
           "frame": {
             "x": 512,
-            "y": 3072,
+            "y": 3328,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "elite-bulwark-frame/item-use/00",
+          "frame": {
+            "x": 768,
+            "y": 3328,
+            "w": 256,
+            "h": 256
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 256,
+            "h": 256
+          },
+          "sourceSize": {
+            "w": 256,
+            "h": 256
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "elite-bulwark-frame/item-use/01",
+          "frame": {
+            "x": 1024,
+            "y": 3328,
             "w": 256,
             "h": 256
           },
@@ -5948,8 +6498,8 @@
         {
           "filename": "elite-bulwark-frame/defeated/00",
           "frame": {
-            "x": 768,
-            "y": 3072,
+            "x": 1280,
+            "y": 3328,
             "w": 256,
             "h": 256
           },
@@ -5973,8 +6523,8 @@
         {
           "filename": "elite-bulwark-frame/attack/elite-rail-hammer/00",
           "frame": {
-            "x": 1024,
-            "y": 3072,
+            "x": 1536,
+            "y": 3328,
             "w": 256,
             "h": 256
           },
@@ -5998,8 +6548,8 @@
         {
           "filename": "elite-bulwark-frame/attack/elite-rail-hammer/01",
           "frame": {
-            "x": 1280,
-            "y": 3072,
+            "x": 1792,
+            "y": 3328,
             "w": 256,
             "h": 256
           },
@@ -6023,8 +6573,8 @@
         {
           "filename": "elite-bulwark-frame/attack/elite-rail-hammer/02",
           "frame": {
-            "x": 1536,
-            "y": 3072,
+            "x": 0,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -6048,8 +6598,8 @@
         {
           "filename": "elite-bulwark-frame/telegraph/elite-rail-hammer/00",
           "frame": {
-            "x": 1792,
-            "y": 3072,
+            "x": 256,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -6073,8 +6623,8 @@
         {
           "filename": "elite-bulwark-frame/telegraph/elite-rail-hammer/01",
           "frame": {
-            "x": 0,
-            "y": 3328,
+            "x": 512,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -6098,8 +6648,8 @@
         {
           "filename": "elite-bulwark-frame/attack/elite-lane-charge/00",
           "frame": {
-            "x": 256,
-            "y": 3328,
+            "x": 768,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -6123,8 +6673,8 @@
         {
           "filename": "elite-bulwark-frame/attack/elite-lane-charge/01",
           "frame": {
-            "x": 512,
-            "y": 3328,
+            "x": 1024,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -6148,8 +6698,8 @@
         {
           "filename": "elite-bulwark-frame/attack/elite-lane-charge/02",
           "frame": {
-            "x": 768,
-            "y": 3328,
+            "x": 1280,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -6173,8 +6723,8 @@
         {
           "filename": "elite-bulwark-frame/telegraph/elite-lane-charge/00",
           "frame": {
-            "x": 1024,
-            "y": 3328,
+            "x": 1536,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -6198,8 +6748,8 @@
         {
           "filename": "elite-bulwark-frame/telegraph/elite-lane-charge/01",
           "frame": {
-            "x": 1280,
-            "y": 3328,
+            "x": 1792,
+            "y": 3584,
             "w": 256,
             "h": 256
           },
@@ -6227,7 +6777,7 @@
       "format": "RGBA8888",
       "size": {
         "w": 3072,
-        "h": 1152
+        "h": 1536
       },
       "scale": 1,
       "frames": [
@@ -6557,9 +7107,59 @@
           }
         },
         {
-          "filename": "boss-silo-dredger/defeated/00",
+          "filename": "boss-silo-dredger/item-use/00",
           "frame": {
             "x": 1920,
+            "y": 384,
+            "w": 384,
+            "h": 384
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 384,
+            "h": 384
+          },
+          "sourceSize": {
+            "w": 384,
+            "h": 384
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "boss-silo-dredger/item-use/01",
+          "frame": {
+            "x": 2304,
+            "y": 384,
+            "w": 384,
+            "h": 384
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 384,
+            "h": 384
+          },
+          "sourceSize": {
+            "w": 384,
+            "h": 384
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "boss-silo-dredger/defeated/00",
+          "frame": {
+            "x": 2688,
             "y": 384,
             "w": 384,
             "h": 384
@@ -6584,56 +7184,6 @@
         {
           "filename": "boss-silo-dredger/attack/boss-dredger-slam/00",
           "frame": {
-            "x": 2304,
-            "y": 384,
-            "w": 384,
-            "h": 384
-          },
-          "rotated": false,
-          "trimmed": false,
-          "spriteSourceSize": {
-            "x": 0,
-            "y": 0,
-            "w": 384,
-            "h": 384
-          },
-          "sourceSize": {
-            "w": 384,
-            "h": 384
-          },
-          "pivot": {
-            "x": 0.5,
-            "y": 1
-          }
-        },
-        {
-          "filename": "boss-silo-dredger/attack/boss-dredger-slam/01",
-          "frame": {
-            "x": 2688,
-            "y": 384,
-            "w": 384,
-            "h": 384
-          },
-          "rotated": false,
-          "trimmed": false,
-          "spriteSourceSize": {
-            "x": 0,
-            "y": 0,
-            "w": 384,
-            "h": 384
-          },
-          "sourceSize": {
-            "w": 384,
-            "h": 384
-          },
-          "pivot": {
-            "x": 0.5,
-            "y": 1
-          }
-        },
-        {
-          "filename": "boss-silo-dredger/attack/boss-dredger-slam/02",
-          "frame": {
             "x": 0,
             "y": 768,
             "w": 384,
@@ -6657,7 +7207,7 @@
           }
         },
         {
-          "filename": "boss-silo-dredger/telegraph/boss-dredger-slam/00",
+          "filename": "boss-silo-dredger/attack/boss-dredger-slam/01",
           "frame": {
             "x": 384,
             "y": 768,
@@ -6682,7 +7232,7 @@
           }
         },
         {
-          "filename": "boss-silo-dredger/telegraph/boss-dredger-slam/01",
+          "filename": "boss-silo-dredger/attack/boss-dredger-slam/02",
           "frame": {
             "x": 768,
             "y": 768,
@@ -6707,7 +7257,7 @@
           }
         },
         {
-          "filename": "boss-silo-dredger/attack/boss-floodline-charge/00",
+          "filename": "boss-silo-dredger/telegraph/boss-dredger-slam/00",
           "frame": {
             "x": 1152,
             "y": 768,
@@ -6732,7 +7282,7 @@
           }
         },
         {
-          "filename": "boss-silo-dredger/attack/boss-floodline-charge/01",
+          "filename": "boss-silo-dredger/telegraph/boss-dredger-slam/01",
           "frame": {
             "x": 1536,
             "y": 768,
@@ -6757,7 +7307,7 @@
           }
         },
         {
-          "filename": "boss-silo-dredger/attack/boss-floodline-charge/02",
+          "filename": "boss-silo-dredger/attack/boss-floodline-charge/00",
           "frame": {
             "x": 1920,
             "y": 768,
@@ -6782,7 +7332,7 @@
           }
         },
         {
-          "filename": "boss-silo-dredger/telegraph/boss-floodline-charge/00",
+          "filename": "boss-silo-dredger/attack/boss-floodline-charge/01",
           "frame": {
             "x": 2304,
             "y": 768,
@@ -6807,10 +7357,60 @@
           }
         },
         {
-          "filename": "boss-silo-dredger/telegraph/boss-floodline-charge/01",
+          "filename": "boss-silo-dredger/attack/boss-floodline-charge/02",
           "frame": {
             "x": 2688,
             "y": 768,
+            "w": 384,
+            "h": 384
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 384,
+            "h": 384
+          },
+          "sourceSize": {
+            "w": 384,
+            "h": 384
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "boss-silo-dredger/telegraph/boss-floodline-charge/00",
+          "frame": {
+            "x": 0,
+            "y": 1152,
+            "w": 384,
+            "h": 384
+          },
+          "rotated": false,
+          "trimmed": false,
+          "spriteSourceSize": {
+            "x": 0,
+            "y": 0,
+            "w": 384,
+            "h": 384
+          },
+          "sourceSize": {
+            "w": 384,
+            "h": 384
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 1
+          }
+        },
+        {
+          "filename": "boss-silo-dredger/telegraph/boss-floodline-charge/01",
+          "frame": {
+            "x": 384,
+            "y": 1152,
             "w": 384,
             "h": 384
           },

@@ -181,18 +181,9 @@ export class ZoneRenderer {
     const variant = sectionIndex % 3
 
     if (variant === 0) {
-      // Compact wall plaque: the painted backdrop already carries the depot
-      // architecture, so this landmark must not read as a gameplay gate or
-      // cover the combat silhouettes below it.
-      landmark.fillStyle(0x334155, 0.86)
-      landmark.fillRect(72 + offsetX, 82, 116, 30)
-      landmark.fillStyle(0x081521, 0.98)
-      landmark.fillRect(77 + offsetX, 87, 106, 20)
-      landmark.fillStyle(0x5f450e, 0.92)
-      landmark.fillRect(77 + offsetX, 87, 106, 4)
-      landmark.fillStyle(0xf6c76e, 0.9)
-      landmark.fillCircle(177 + offsetX, 100, 3)
-      this.addPhysicalLabel('N-9  INBOUND', 84 + offsetX, 95, '#fde68a')
+      // The authored background already carries N-9 signage. Keep the
+      // section landmark slot for deterministic bookkeeping, but do not add
+      // a foreground card that competes with the combat HUD.
     } else if (variant === 1) {
       // Cold-storage transfer bay: dense stack of sealed cases, not a panel.
       landmark.fillStyle(0x102333, 0.94)

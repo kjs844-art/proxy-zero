@@ -8,7 +8,7 @@ const PICKUP_Y_OFFSET_PX = 11
 
 interface PickupMarker {
   readonly itemId: ItemPickupSnapshot['itemId']
-  readonly object: Phaser.GameObjects.Graphics
+  readonly object: Phaser.GameObjects.Graphics | Phaser.GameObjects.Container
   readonly phaseMs: number
 }
 
@@ -94,8 +94,21 @@ export class EnemyDropView {
   }
 
   private createPickup(pickup: Readonly<ItemPickupSnapshot>): PickupMarker {
-    const object = this.scene.add.graphics()
-    this.drawPickup(object, pickup.itemId)
+    const object = typeof this.scene.add.container === 'function'
+      ? this.scene.add.container(0, 0)
+      : this.scene.add.graphics()
+    if ('add' in object) {
+      const glow = this.scene.add.graphics()
+      glow.fillStyle(pickup.itemId === 'repair-kit' ? 0x4ade80 : 0x22d3ee, 0.18)
+      glow.fillCircle(0, 0, 22)
+      const sprite = this.scene.add.image(
+        0, -2,
+        pickup.itemId === 'repair-kit' ? 'pickup-repair-crate' : 'pickup-emp-canister',
+      ).setDisplaySize(pickup.itemId === 'repair-kit' ? 48 : 30, 38)
+      object.add([glow, sprite])
+    } else {
+      this.drawPickup(object, pickup.itemId)
+    }
     const marker = {
       itemId: pickup.itemId,
       object,

@@ -132,6 +132,7 @@ type ZonePhase = 'active' | 'inter-wave' | 'zone-clear' | 'zone-handoff'
 export const GAME_OVER_CONTINUE_PROMPT = 'GAME OVER\nENTER · CONTINUE   ESC · FORFEIT'
 export const GAME_OVER_EXHAUSTED_PROMPT =
   'GAME OVER\nCONTINUE EXHAUSTED\nENTER / SPACE / J / ESC / T · RESULTS'
+const ITEM_ACTION_DURATION_MS = 400
 
 const getWaveVariant = (id: string): EnemyVariantDefinition => {
   if (isBossDefinitionId(id)) {
@@ -350,7 +351,7 @@ export class CombatScene extends Phaser.Scene {
   private tunnelHazardState: TunnelHazardState = createTunnelHazardState()
   private pendingCombatResult: Exclude<RunOutcome, 'mission-failed'> = 'mission-clear'
   private sceneCreated = false
-  private playerItemUseStartedAtMs: number | null = null
+  private playerItemAction: { kind: 'pickup' | 'use'; startedAtMs: number } | null = null
   private focusEventTarget: EventTarget | null = null
   private visibilityEventTarget: EventTarget | null = null
 
@@ -389,7 +390,7 @@ export class CombatScene extends Phaser.Scene {
     this.finished = false
     this.sceneCreated = true
     this.acceptedAttackHistory = []
-    this.playerItemUseStartedAtMs = null
+    this.playerItemAction = null
     this.presentationBatchId = 0
     this.pendingItemPresentationEffects = []
     this.presentationPaused = false
@@ -608,8 +609,9 @@ export class CombatScene extends Phaser.Scene {
       player,
       fallEffect !== null || playerTunnelEffect !== undefined,
     )
+    const itemActionActive = this.isPlayerItemActionActive()
     const bufferedAction =
-      activeDeltaMs > 0
+      activeDeltaMs > 0 && !itemActionActive
         ? this.actionQueue.nextAction(this.state.elapsedMs)
         : undefined
     const attackId = this.resolveBufferedAttack(bufferedAction, player)
@@ -628,10 +630,10 @@ export class CombatScene extends Phaser.Scene {
         : undefined
     const playerCommand: CombatCommand = {
       actorId: player.id,
-      moveX: frame.moveX,
-      moveY: frame.moveY,
-      running: frame.running === true,
-      jump: bufferedAction?.edge.type === 'jump',
+      moveX: itemActionActive ? 0 : frame.moveX,
+      moveY: itemActionActive ? 0 : frame.moveY,
+      running: !itemActionActive && frame.running === true,
+      jump: !itemActionActive && bufferedAction?.edge.type === 'jump',
       ...(attackId ? { attackId } : {}),
       ...(itemHealAmount > 0 ? { healAmount: itemHealAmount } : {}),
       ...(playerEnvironmentalImpact ? { environmentalImpact: playerEnvironmentalImpact } : {}),
@@ -726,7 +728,9 @@ export class CombatScene extends Phaser.Scene {
     )
     this.enemyDropView?.update(
       activeDeltaMs,
-      this.itemRuntime.pickups.filter((pickup) => pickup.id.startsWith('stage1-drop:')),
+      this.trainBackdrop
+        ? this.itemRuntime.pickups.filter((pickup) => pickup.id.startsWith('stage1-drop:'))
+        : this.itemRuntime.pickups,
     )
   }
 
@@ -787,9 +791,16 @@ export class CombatScene extends Phaser.Scene {
   private canInteractUse(player: Readonly<CombatActor>): boolean {
     return (
       (this.zonePhase === 'active' || this.zonePhase === 'inter-wave') &&
+      !this.isPlayerItemActionActive() &&
       player.hp > 0 &&
-      (player.mode === 'idle' || player.mode === 'moving' || player.mode === 'airborne')
+      (player.mode === 'idle' || player.mode === 'moving')
     )
+  }
+
+  private isPlayerItemActionActive(): boolean {
+    if (!this.playerItemAction) return false
+    const elapsedMs = this.state.elapsedMs - this.playerItemAction.startedAtMs
+    return elapsedMs >= 0 && elapsedMs < ITEM_ACTION_DURATION_MS
   }
 
   private itemTargets(): ItemTargetSnapshot[] {
@@ -814,12 +825,15 @@ export class CombatScene extends Phaser.Scene {
       }
       return { ...effect }
     }))
-    if (effects.some((effect) =>
-      effect.type === 'pickup-acquired' ||
-      effect.type === 'repair-requested' ||
-      effect.type === 'emp-applied'
-    )) {
-      this.playerItemUseStartedAtMs = this.state.elapsedMs
+    const itemActionKind = effects.some((effect) => effect.type === 'pickup-acquired')
+      ? 'pickup'
+      : effects.some((effect) =>
+          effect.type === 'repair-requested' || effect.type === 'emp-applied'
+        )
+        ? 'use'
+        : null
+    if (itemActionKind) {
+      this.playerItemAction = { kind: itemActionKind, startedAtMs: this.state.elapsedMs }
     }
     for (const effect of effects) {
       if (effect.type === 'emp-applied') {
@@ -862,7 +876,9 @@ export class CombatScene extends Phaser.Scene {
       actor.id,
       Object.freeze({
         x: Math.round(actor.position.x),
-        y: Math.round(actor.position.y - actor.position.z - Math.max(34, actor.body.height * 0.9)),
+        // Presentation sprites extend well above the physics capsule. Keep
+        // confirmed-hit VFX on the visible torso instead of the knee/floor.
+        y: Math.round(actor.position.y - actor.position.z - Math.max(58, actor.body.height * 1.45)),
         facing: actor.facing,
       }),
     ] as const)
@@ -1726,8 +1742,8 @@ export class CombatScene extends Phaser.Scene {
         domainTimeMs: this.state.elapsedMs,
         renderDeltaMs,
         telegraph: this.telegraphFor(actorId),
-        itemUse: actorId === this.state.playerId && this.playerItemUseStartedAtMs !== null
-          ? { startedAtMs: this.playerItemUseStartedAtMs, durationMs: 400 }
+        itemUse: actorId === this.state.playerId && this.playerItemAction !== null
+          ? { ...this.playerItemAction, durationMs: ITEM_ACTION_DURATION_MS }
           : null,
       })
     }
@@ -1742,6 +1758,9 @@ export class CombatScene extends Phaser.Scene {
         inventory: this.itemRuntime.inventory,
         encounter: this.encounterHudSnapshot(),
         showAdvancePrompt: this.zonePhase === 'inter-wave',
+        waveIndex: this.waveIndex,
+        waveCount: this.currentZone.waves.length,
+        score: this.runState.score,
       })
     }
     if (this.runState.status !== 'game-over') {
@@ -1839,7 +1858,7 @@ export class CombatScene extends Phaser.Scene {
     }
     this.actionQueue.clear()
     this.acceptedAttackHistory = []
-    this.playerItemUseStartedAtMs = null
+    this.playerItemAction = null
   }
 
   private tryContinue(): void {
@@ -1893,7 +1912,7 @@ export class CombatScene extends Phaser.Scene {
     this.initializeZoneRuntime()
     this.actionQueue.clear()
     this.acceptedAttackHistory = []
-    this.playerItemUseStartedAtMs = null
+    this.playerItemAction = null
     this.finished = false
     this.trainHazardState = createTrainHazardState()
     this.tunnelHazardState = createTunnelHazardState()
@@ -1997,7 +2016,7 @@ export class CombatScene extends Phaser.Scene {
     this.clearEnemyResources()
     this.actionQueue.clear()
     this.acceptedAttackHistory = []
-    this.playerItemUseStartedAtMs = null
+    this.playerItemAction = null
 
     this.currentZone = getPlayableStageOneZone(entry.zoneId)
     this.authoredItemPickups = this.cloneAuthoredPickups(this.currentZone.pickups)
@@ -2258,7 +2277,7 @@ export class CombatScene extends Phaser.Scene {
     this.tunnelHazardState = createTunnelHazardState()
     this.pendingCombatResult = 'mission-clear'
     this.acceptedAttackHistory = []
-    this.playerItemUseStartedAtMs = null
+    this.playerItemAction = null
     this.pendingItemPresentationEffects = []
     this.presentationPaused = false
     this.discardNextRenderDelta = false

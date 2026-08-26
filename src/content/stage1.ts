@@ -70,14 +70,23 @@ export const n9DepotZone: DepotZoneDefinition = deepFreeze({
   arena: { minX: 48, maxX: 592, minY: 188, maxY: 320 },
   playerSafeSeparation: { x: 72, y: 34 },
   playerStart: { x: 250, y: 248, z: 0 },
-  pickups: [],
+  pickups: [
+    {
+      id: 'n9-depot:emp', itemId: 'emp',
+      position: { x: 164, y: 302 }, consumed: false,
+    },
+    {
+      id: 'n9-depot:repair-kit', itemId: 'repair-kit',
+      position: { x: 438, y: 302 }, consumed: false,
+    },
+  ],
   interWaveDelayMs: 900,
-  enemyDamageScale: 0.05,
+  enemyDamageScale: 0.15,
   eliteDamageScale: 1,
   bossDamageScale: 1,
   transitionDurationMs: 1_500,
-  targetDurationMs: 180_000,
-  acceptanceDurationMs: { min: 150_000, max: 210_000 },
+  targetDurationMs: 360_000,
+  acceptanceDurationMs: { min: 300_000, max: 420_000 },
   inputReadyWithinMs: 2_000,
   firstSpawnWithinMs: 4_000,
   enemyPatternAttackIds: normalPatternAttackIds,
@@ -108,6 +117,23 @@ export const n9DepotZone: DepotZoneDefinition = deepFreeze({
         spawn('upper-patrol', 'scout-patrol', 1_350, 566, 224),
       ],
     },
+    {
+      id: 'n9-depot-wave-4', seed: 0x49d5f714,
+      orders: [
+        spawn('relay-sentinel', 'bulwark-sentinel', 0, 486, 246),
+        spawn('upper-striker', 'scout-striker', 650, 552, 208),
+        spawn('lower-patrol', 'scout-patrol', 1_300, 530, 298),
+      ],
+    },
+    {
+      id: 'n9-depot-wave-5', seed: 0x59e60825,
+      orders: [
+        spawn('last-enforcer', 'bulwark-enforcer', 0, 500, 278),
+        spawn('last-striker', 'scout-striker', 650, 566, 214),
+        spawn('last-sentinel', 'bulwark-sentinel', 1_300, 548, 300),
+        spawn('last-patrol', 'scout-patrol', 1_950, 470, 236),
+      ],
+    },
   ],
 })
 
@@ -134,8 +160,8 @@ export const serviceTrainZone: PlayableStageOneZoneDefinition & {
   eliteDamageScale: 1,
   bossDamageScale: 1,
   transitionDurationMs: 1_500,
-  targetDurationMs: 180_000,
-  acceptanceDurationMs: { min: 150_000, max: 210_000 },
+  targetDurationMs: 360_000,
+  acceptanceDurationMs: { min: 300_000, max: 420_000 },
   inputReadyWithinMs: 2_000,
   firstSpawnWithinMs: 4_000,
   enemyPatternAttackIds: {
@@ -162,12 +188,29 @@ export const serviceTrainZone: PlayableStageOneZoneDefinition & {
     },
     {
       id: 'service-train-wave-3', seed: 0x6cf70936,
+      orders: [
+        spawn('train-patrol-support', 'scout-patrol', 0, 470, 250),
+        spawn('train-rear-striker', 'scout-striker', 650, 540, 300),
+        spawn('train-rear-sentinel', 'bulwark-sentinel', 1_300, 560, 220),
+      ],
+    },
+    {
+      id: 'service-train-wave-4', seed: 0x7d081a47,
+      orders: [
+        spawn('train-late-patrol', 'scout-patrol', 0, 455, 286),
+        spawn('elite-screen-striker', 'scout-striker', 650, 520, 210),
+        spawn('elite-screen-sentinel', 'bulwark-sentinel', 1_300, 570, 292),
+        spawn('train-final-enforcer', 'bulwark-enforcer', 1_950, 500, 250),
+      ],
+    },
+    {
+      id: 'service-train-wave-5', seed: 0x8e192b58,
       orders: [spawn('elite-bulwark-frame', 'elite-bulwark-frame', 0, 500, 270)],
     },
   ],
 })
 
-/** Immutable Zone 3 data. Its second and final wave is the only Stage 1 boss. */
+/** Immutable Zone 3 data. Its fourth and final wave is the only Stage 1 boss. */
 export const floodedTunnelZone: PlayableStageOneZoneDefinition & {
   readonly id: 'flooded-tunnel'
 } = deepFreeze({
@@ -177,12 +220,12 @@ export const floodedTunnelZone: PlayableStageOneZoneDefinition & {
   playerStart: { x: 112, y: 224, z: 0 },
   pickups: [],
   interWaveDelayMs: 900,
-  enemyDamageScale: 0.25,
+  enemyDamageScale: 0.35,
   eliteDamageScale: 1,
   bossDamageScale: 1,
   transitionDurationMs: 1_500,
-  targetDurationMs: 240_000,
-  acceptanceDurationMs: { min: 210_000, max: 270_000 },
+  targetDurationMs: 480_000,
+  acceptanceDurationMs: { min: 420_000, max: 600_000 },
   inputReadyWithinMs: 2_000,
   firstSpawnWithinMs: 4_000,
   enemyPatternAttackIds: {
@@ -202,6 +245,23 @@ export const floodedTunnelZone: PlayableStageOneZoneDefinition & {
     },
     {
       id: 'flooded-tunnel-wave-2', seed: 0x8e192b58,
+      orders: [
+        spawn('tunnel-enforcer', 'bulwark-enforcer', 0, 490, 302),
+        spawn('tunnel-upper-striker', 'scout-striker', 650, 575, 205),
+        spawn('tunnel-lower-patrol', 'scout-patrol', 1_300, 520, 300),
+      ],
+    },
+    {
+      id: 'flooded-tunnel-wave-3', seed: 0x9f2a3c69,
+      orders: [
+        spawn('tunnel-rear-sentinel', 'bulwark-sentinel', 0, 570, 250),
+        spawn('tunnel-rear-striker', 'scout-striker', 650, 500, 214),
+        spawn('tunnel-final-enforcer', 'bulwark-enforcer', 1_300, 548, 292),
+        spawn('tunnel-final-patrol', 'scout-patrol', 1_950, 470, 236),
+      ],
+    },
+    {
+      id: 'flooded-tunnel-wave-4', seed: 0xaf3b4d7a,
       orders: [spawn('final-boss', 'boss-silo-dredger', 0, 500, 264)],
     },
   ],

@@ -17,14 +17,17 @@ const outputRoot = resolve(argValue('--out-dir') ?? join(projectRoot, 'public', 
 
 const profileSpecs = [
   { id: 'han', sheet: 'players', source: 'han-poses-keyed.png', row: null, targetHeight: 120 },
-  { id: 'mina', sheet: 'players', source: 'mina-poses-keyed.png', row: null, targetHeight: 114 },
+  { id: 'mina', sheet: 'players', source: 'mina-yellow-right-kick-v3-transparent.png', row: 'grid10', targetHeight: 150 },
   { id: 'jin', sheet: 'players', source: 'jin-poses-keyed.png', row: null, targetHeight: 124 },
-  { id: 'scout-striker', sheet: 'enemies', source: 'roster-poses-keyed.png', row: 3, targetHeight: 104 },
-  { id: 'scout-patrol', sheet: 'enemies', source: 'roster-poses-keyed.png', row: 4, targetHeight: 100 },
-  { id: 'bulwark-sentinel', sheet: 'enemies', source: 'roster-poses-keyed.png', row: 5, targetHeight: 128 },
-  { id: 'bulwark-enforcer', sheet: 'enemies', source: 'roster-poses-keyed.png', row: 6, targetHeight: 124 },
-  { id: 'elite-bulwark-frame', sheet: 'enemies', source: 'roster-poses-keyed.png', row: 7, targetHeight: 136 },
-  { id: 'boss-silo-dredger', sheet: 'boss', source: 'roster-poses-keyed.png', row: 8, targetHeight: 172 },
+  // Stage-one enemies share the industrial robot language of the visual target.
+  // Keep their domain IDs/behaviour intact, but use the authored shield/gun robot
+  // rows instead of the red hooded placeholder rows.
+  { id: 'scout-striker', sheet: 'enemies', source: 'robots-industrial-transparent.png', row: 'robot0', targetHeight: 126 },
+  { id: 'scout-patrol', sheet: 'enemies', source: 'robots-industrial-transparent.png', row: 'robot1', targetHeight: 126 },
+  { id: 'bulwark-sentinel', sheet: 'enemies', source: 'robots-industrial-transparent.png', row: 'robot2', targetHeight: 126 },
+  { id: 'bulwark-enforcer', sheet: 'enemies', source: 'roster-poses-keyed.png', row: 6, targetHeight: 154 },
+  { id: 'elite-bulwark-frame', sheet: 'enemies', source: 'roster-poses-keyed.png', row: 7, targetHeight: 168 },
+  { id: 'boss-silo-dredger', sheet: 'boss', source: 'roster-poses-keyed.png', row: 8, targetHeight: 190 },
 ]
 
 const sheetSpecs = {
@@ -87,8 +90,8 @@ const playerLocomotionSourceSpecs = {
     run: 'han-run-keyed-v2.png',
   },
   mina: {
-    walk: 'mina-walk-keyed-v2.png',
-    run: 'mina-run-keyed-v2.png',
+    walk: 'mina-yellow-walk-v3-transparent.png',
+    run: 'mina-yellow-run-v3-transparent.png',
   },
   jin: {
     walk: 'jin-walk-keyed-v2.png',
@@ -96,9 +99,16 @@ const playerLocomotionSourceSpecs = {
   },
 }
 
+const playerPickupSourceSpecs = {
+  han: 'han-pickup-v1-transparent.png',
+  mina: 'mina-yellow-pickup-v1-transparent.png',
+  jin: 'jin-pickup-v1-transparent.png',
+}
+
 const PLAYER_WALK_FPS = 9
 const PLAYER_RUN_FPS = 14
 const PLAYER_LOCOMOTION_FRAMES = 6
+const PLAYER_PICKUP_FRAMES = 4
 
 const enemyAttacks = {
   'scout-striker': [
@@ -144,8 +154,11 @@ const sampleKeyColor = (png) => {
 }
 
 /** Converts a uniform chroma-key source into clean alpha with a soft one-pixel edge. */
-const removeKeyBackground = (png) => {
+const removeKeyBackground = (png, aggressive = false) => {
   const key = sampleKeyColor(png)
+  const clearDistance = aggressive ? 125 : 88
+  const featherDistance = aggressive ? 195 : 150
+  const featherStart = aggressive ? 125 : 88
   for (let flat = 0; flat < png.width * png.height; flat += 1) {
     const index = flat * 4
     const distance = Math.hypot(
@@ -153,10 +166,13 @@ const removeKeyBackground = (png) => {
       png.data[index + 1] - key[1],
       png.data[index + 2] - key[2],
     )
-    if (distance <= 88) {
+    // The keyed roster uses a slightly noisy neon-green screen. A tighter
+    // threshold leaves a visible green halo/box around the robot rows in the
+    // browser, so remove the full chroma family and feather only its edge.
+    if (distance <= clearDistance) {
       png.data[index + 3] = 0
-    } else if (distance < 150) {
-      png.data[index + 3] = Math.round(((distance - 88) / 62) * png.data[index + 3])
+    } else if (distance < featherDistance) {
+      png.data[index + 3] = Math.round(((distance - featherStart) / (featherDistance - featherStart)) * png.data[index + 3])
     }
   }
   return png
@@ -378,6 +394,7 @@ const poseExtents = (pose, cell) => {
 const basePoseKey = (index) => `base:${index}`
 const attackPoseKey = (name) => `attack:${name}`
 const locomotionPoseKey = (kind, index) => `locomotion:${kind}:${index}`
+const pickupPoseKey = (index) => `pickup:${index}`
 
 const clip = (profileId, id, state, poseKeys, extra = {}) => ({
   id,
@@ -392,6 +409,8 @@ const clip = (profileId, id, state, poseKeys, extra = {}) => ({
 
 const buildClips = (profile) => {
   const playerLocomotion = playerLocomotionSourceSpecs[profile.id]
+  const playerPickup = playerPickupSourceSpecs[profile.id]
+  const industrialRobot = typeof profile.row === 'string' && profile.row.startsWith('robot')
   const clips = [
     clip(profile.id, 'idle', 'idle', [basePoseKey(0), basePoseKey(0)]),
     playerLocomotion
@@ -424,7 +443,15 @@ const buildClips = (profile) => {
     clip(profile.id, 'hitstun', 'hitstun', [basePoseKey(5)]),
     clip(profile.id, 'knocked-down', 'knocked-down', [basePoseKey(6)]),
     clip(profile.id, 'getting-up', 'getting-up', [basePoseKey(6), basePoseKey(0)]),
-    clip(profile.id, 'pickup-use', 'pickup-use', [basePoseKey(7), basePoseKey(7)]),
+    playerPickup
+      ? clip(
+          profile.id,
+          'pickup-use',
+          'pickup-use',
+          Array.from({ length: PLAYER_PICKUP_FRAMES }, (_, index) => pickupPoseKey(index)),
+        )
+      : clip(profile.id, 'pickup-use', 'pickup-use', [basePoseKey(7), basePoseKey(7)]),
+    clip(profile.id, 'item-use', 'item-use', [basePoseKey(7), basePoseKey(7)]),
     clip(profile.id, 'defeated', 'defeated', [basePoseKey(6)]),
   ]
   const attackEntries = playerAttackIds[profile.id]
@@ -443,7 +470,9 @@ const buildClips = (profile) => {
       'left-foot': [basePoseKey(0), attackPoseKey('left-foot-a'), attackPoseKey('left-foot-b')],
       'right-foot': [basePoseKey(0), attackPoseKey('right-foot'), attackPoseKey('right-foot')],
     }
-    const poseKeys = playerAttackIds[profile.id] && directPoseKeys[directLimb]
+    const poseKeys = industrialRobot
+      ? [basePoseKey(1), basePoseKey(3), basePoseKey(3)]
+      : playerAttackIds[profile.id] && directPoseKeys[directLimb]
       ? directPoseKeys[directLimb]
       : profile.id === 'jin' && authoredAttackId === 'jin-anchor-blow'
         ? [
@@ -457,9 +486,9 @@ const buildClips = (profile) => {
       domainAttackId,
     }))
     if (!playerAttackIds[profile.id]) {
-      clips.push(clip(profile.id, authoredAttackId, 'telegraph', [
-        basePoseKey(7), basePoseKey(actionPose),
-      ], {
+      clips.push(clip(profile.id, authoredAttackId, 'telegraph', industrialRobot
+        ? [basePoseKey(0), basePoseKey(1)]
+        : [basePoseKey(7), basePoseKey(actionPose)], {
         authoredAttackId,
         domainAttackId,
       }))
@@ -473,7 +502,10 @@ const matrixRowCache = new Map()
 const loadKeyedSource = async (name) => {
   let source = sourceCache.get(name)
   if (!source) {
-    source = removeKeyBackground(await parseSource(name))
+    source = await parseSource(name)
+    if (!name.endsWith('-transparent.png')) {
+      source = removeKeyBackground(source, name === 'roster-poses-keyed.png')
+    }
     sourceCache.set(name, source)
   }
   return source
@@ -535,41 +567,138 @@ const loadPlayerLocomotionPoses = async (profile, poses, cell) => {
 
   const walkSource = await loadKeyedSource(spec.walk)
   const runSource = await loadKeyedSource(spec.run)
-  if (walkSource.width !== runSource.width || walkSource.height !== runSource.height) {
-    throw new Error(`${profile.id} walk/run strips must share one source coordinate system.`)
-  }
-
   const walk = splitFixedHorizontalPoses(walkSource, PLAYER_LOCOMOTION_FRAMES)
   const run = splitFixedHorizontalPoses(runSource, PLAYER_LOCOMOTION_FRAMES)
-  if (walk.slotWidth !== run.slotWidth) {
-    throw new Error(`${profile.id} walk/run slots must have equal widths.`)
-  }
-
-  const walkBounds = walk.poses.map(alphaBounds)
-  const referenceHeight = Math.max(...walkBounds.map((bounds) => bounds.height))
-  const scale = referenceHeight <= 1
-    ? 1
-    : (profile.targetHeight - 1) / (referenceHeight - 1)
-  const sourceRootX = walk.slotWidth / 2
-  for (const [kind, authoredPoses] of [
-    ['walk', walk.poses],
-    ['run', run.poses],
+  const sharedCoordinateSystem =
+    walkSource.width === runSource.width &&
+    walkSource.height === runSource.height &&
+    walk.slotWidth === run.slotWidth
+  const sharedReferenceHeight = Math.max(...walk.poses.map(alphaBounds).map((bounds) => bounds.height))
+  for (const [kind, strip] of [
+    ['walk', walk],
+    ['run', run],
   ]) {
+    const authoredPoses = strip.poses
     const authoredBounds = authoredPoses.map(alphaBounds)
+    const referenceHeight = sharedCoordinateSystem
+      ? sharedReferenceHeight
+      : Math.max(...authoredBounds.map((bounds) => bounds.height))
+    const scale = referenceHeight <= 1
+      ? 1
+      : (profile.targetHeight - 1) / (referenceHeight - 1)
+    const sourceRootX = sharedCoordinateSystem ? walk.slotWidth / 2 : strip.slotWidth / 2
     const sourceBaselineY = Math.max(
       ...authoredBounds.map((bounds) => bounds.y + bounds.height - 1),
     )
     authoredPoses.forEach((pose, index) => {
+      const frameBaselineY = kind === 'walk'
+        ? authoredBounds[index].y + authoredBounds[index].height - 1
+        : sourceBaselineY
       poses.set(
         locomotionPoseKey(kind, index),
-        normalizePoseAtRoot(pose, scale, cell, sourceRootX, sourceBaselineY),
+        normalizePoseAtRoot(pose, scale, cell, sourceRootX, frameBaselineY),
       )
     })
   }
 }
 
+const loadPlayerPickupPoses = async (profile, poses, cell) => {
+  const sourceName = playerPickupSourceSpecs[profile.id]
+  if (!sourceName) return
+
+  const source = await loadKeyedSource(sourceName)
+  const alignedWidth = source.width - (source.width % PLAYER_PICKUP_FRAMES)
+  const alignedSource = alignedWidth === source.width
+    ? source
+    : crop(source, 0, 0, alignedWidth, source.height)
+  const strip = splitFixedHorizontalPoses(alignedSource, PLAYER_PICKUP_FRAMES)
+  const bounds = strip.poses.map(alphaBounds)
+  const referenceHeight = Math.max(...bounds.map((entry) => entry.height))
+  const scale = referenceHeight <= 1
+    ? 1
+    : (profile.targetHeight - 1) / (referenceHeight - 1)
+  const sourceRootX = strip.slotWidth / 2
+  const sourceBaselineY = Math.max(...bounds.map((entry) => entry.y + entry.height - 1))
+  strip.poses.forEach((pose, index) => {
+    poses.set(
+      pickupPoseKey(index),
+      normalizePoseAtRoot(pose, scale, cell, sourceRootX, sourceBaselineY),
+    )
+  })
+}
+
 const loadProfilePoses = async (profile) => {
   const source = await loadKeyedSource(profile.source)
+  if (profile.row === 'grid10') {
+    const cellWidth = Math.floor(source.width / 5)
+    const cellHeight = Math.floor(source.height / 2)
+    const authoredPoses = Array.from({ length: 10 }, (_, index) => crop(
+      source,
+      (index % 5) * cellWidth,
+      Math.floor(index / 5) * cellHeight,
+      cellWidth,
+      cellHeight,
+    ))
+    const scale = profile.targetHeight / alphaBounds(authoredPoses[0]).height
+    const cell = sheetSpecs[profile.sheet].cell
+    const poses = new Map(authoredPoses.slice(0, 8).map((pose, index) => [
+      basePoseKey(index), normalizePose(pose, scale, cell),
+    ]))
+    poses.set(basePoseKey(8), normalizePose(authoredPoses[8], scale, cell))
+    poses.set(basePoseKey(9), normalizePose(authoredPoses[9], scale, cell))
+    await loadPlayerLocomotionPoses(profile, poses, cell)
+    await loadPlayerPickupPoses(profile, poses, cell)
+    poses.set(attackPoseKey('left-hand'), poses.get(basePoseKey(5)))
+    poses.set(attackPoseKey('right-hand'), poses.get(basePoseKey(6)))
+    poses.set(attackPoseKey('left-foot-a'), poses.get(basePoseKey(7)))
+    poses.set(attackPoseKey('left-foot-b'), poses.get(basePoseKey(7)))
+    poses.set(attackPoseKey('right-foot'), poses.get(basePoseKey(8)))
+    return poses
+  }
+  if (typeof profile.row === 'string' && profile.row.startsWith('robot')) {
+    const row = Number(profile.row.slice('robot'.length))
+    const rowBounds = adaptiveBoundaries(source, 'y', 3, 260, 420)
+    const rowImage = crop(
+      source,
+      0,
+      rowBounds[row],
+      source.width,
+      rowBounds[row + 1] - rowBounds[row],
+    )
+    const columnBounds = adaptiveBoundaries(rowImage, 'x', 4, 300, 460)
+    const authoredPoses = Array.from({ length: 4 }, (_, index) => crop(
+      rowImage,
+      columnBounds[index],
+      0,
+      columnBounds[index + 1] - columnBounds[index],
+      rowImage.height,
+    ))
+    const scale = profile.targetHeight / alphaBounds(authoredPoses[0]).height
+    const cell = sheetSpecs[profile.sheet].cell
+    const normalized = authoredPoses.map((pose) => normalizePose(pose, scale, cell))
+    const semanticPoses = [
+      normalized[0], // idle
+      normalized[1], // approach / attack preparation
+      normalized[0], // airborne fallback
+      normalized[2], // authored attack
+      normalized[2], // kick/sweep domain fallback
+      normalized[3], // hitstun
+      normalized[3], // knocked down / defeated
+      normalized[1], // telegraph preparation
+    ]
+    const poses = new Map(semanticPoses.map((pose, index) => [basePoseKey(index), pose]))
+    for (let index = 0; index < 6; index += 1) {
+      poses.set(locomotionPoseKey('walk', index), poses.get(basePoseKey(index % 2)))
+      poses.set(locomotionPoseKey('run', index), poses.get(basePoseKey(index % 2)))
+    }
+    poses.set(attackPoseKey('left-hand'), poses.get(basePoseKey(2)))
+    poses.set(attackPoseKey('right-hand'), poses.get(basePoseKey(2)))
+    poses.set(attackPoseKey('left-foot-a'), poses.get(basePoseKey(2)))
+    poses.set(attackPoseKey('left-foot-b'), poses.get(basePoseKey(2)))
+    poses.set(attackPoseKey('right-foot'), poses.get(basePoseKey(2)))
+    poses.set(attackPoseKey('shoulder-charge'), poses.get(basePoseKey(2)))
+    return poses
+  }
   let rowImage
   let columnBounds
   if (profile.row === null) {
@@ -606,6 +735,7 @@ const loadProfilePoses = async (profile) => {
   ]))
   await loadPlayerLocomotionPoses(profile, poses, cell)
   await loadPlayerAttackPoses(profile, poses, cell)
+  await loadPlayerPickupPoses(profile, poses, cell)
   return poses
 }
 
@@ -685,6 +815,20 @@ const summaries = []
 for (const sheetId of ['players', 'enemies', 'boss']) {
   const spec = sheetSpecs[sheetId]
   const { sheet, frames } = packSheet(sheetId, sheetEntries[sheetId])
+  // Legacy authored rows can still contain chroma pixels. Actor sheets have no
+  // intentional saturated-green material, so remove opaque green spill globally
+  // at the final ingest boundary as a last safety net.
+  for (let p = 0; p < sheet.data.length; p += 4) {
+    const r = sheet.data[p]
+    const g = sheet.data[p + 1]
+    const b = sheet.data[p + 2]
+    if (g > 150 && g > r * 1.35 && g > b * 1.35) {
+      sheet.data[p] = 0
+      sheet.data[p + 1] = 0
+      sheet.data[p + 2] = 0
+      sheet.data[p + 3] = 0
+    }
+  }
   const bytes = PNG.sync.write(sheet, { colorType: 6, inputColorType: 6 })
   await writeFile(join(outputRoot, spec.image), bytes)
   textures.push({

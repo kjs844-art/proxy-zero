@@ -15,6 +15,7 @@ export const HUD_LAYOUT = Object.freeze({
   combo: Object.freeze({ x: 12, y: 72 }),
   encounter: Object.freeze({ x: 144, y: 52, width: 352, height: 16 }),
   controlsHint: Object.freeze({ x: 320, y: 308 }),
+  techniques: Object.freeze({ x: 320, y: 298 }),
   controls: Object.freeze({ x: 320, y: 323, keyWidth: 30, keyHeight: 21, gap: 5 }),
   actionFeedback: Object.freeze({ x: 320, y: 288 }),
 })
@@ -34,7 +35,13 @@ const controlsFadeMs = 2_000
 const hudTextResolution = 2
 
 export const HUD_CONTROLS_TEXT =
-  'WASD MOVE  ·  D×2 HOLD RUN  ·  SPACE JUMP  ·  Q ITEM  ·  E USE'
+  'WASD MOVE  ·  D×2 HOLD RUN  ·  SPACE JUMP  ·  AIR + J/K/L/;  ·  Q SELECT  ·  E PICK UP / USE'
+
+export const HUD_TECHNIQUE_GUIDES: Readonly<Record<CharacterId, string>> = Object.freeze({
+  han: 'SKILLS  K J CROSS  ·  L ; K RISING  ·  100% K J ; L TEMPEST',
+  mina: 'SKILLS  K ; FLASH  ·  L K L SKY NEEDLE  ·  100% J K L ; PRISM',
+  jin: 'SKILLS  J K ANCHOR  ·  ; L K FAULT LINE  ·  100% ; L J K ZERO',
+})
 
 export const HUD_CONTROL_KEYS = Object.freeze([
   Object.freeze({ key: 'J', label: 'L.HAND' }),
@@ -109,6 +116,9 @@ export interface HudUpdateInput {
   readonly combo: number
   readonly encounter: Readonly<EncounterHudSnapshot> | null
   readonly showAdvancePrompt?: boolean
+  readonly waveIndex?: number
+  readonly waveCount?: number
+  readonly score?: number
 }
 
 export interface HudModel {
@@ -148,7 +158,7 @@ export const deriveHudModel = (input: Readonly<HudUpdateInput>): HudModel => ({
   meterRatio: safeRatio(input.meter, 100),
   lifeText: `LIFE ×${Math.max(0, Math.floor(input.lives))}`,
   advanceText: input.showAdvancePrompt ? 'GO →' : '',
-  comboText: input.combo > 1 ? `${input.combo} HIT` : '',
+  comboText: input.combo > 0 ? `${input.combo} HIT` : '',
   encounterRatio: input.encounter ? safeRatio(input.encounter.hp, input.encounter.maxHp) : 0,
 })
 
@@ -171,7 +181,10 @@ export class HudController {
   private readonly lifeText: Phaser.GameObjects.Text
   private readonly advanceText: Phaser.GameObjects.Text
   private readonly comboText: Phaser.GameObjects.Text
+  private readonly waveText: Phaser.GameObjects.Text
+  private readonly scoreText: Phaser.GameObjects.Text
   private readonly encounterText: Phaser.GameObjects.Text
+  private readonly techniqueText: Phaser.GameObjects.Text
   private readonly controlsText: Phaser.GameObjects.Text
   private readonly controlKeyTexts: readonly Phaser.GameObjects.Text[]
   private readonly controlLimbTexts: readonly Phaser.GameObjects.Text[]
@@ -189,20 +202,25 @@ export class HudController {
     const portraitPresentation = deriveHudPortraitPresentation(characterId)
     this.bars = scene.add.graphics().setDepth(10_003).setScrollFactor(0)
     this.controlsGraphics = scene.add.graphics().setDepth(10_003).setScrollFactor(0)
-    const portrait = scene.add
-      .image(
-        portraitPresentation.imageX,
-        portraitPresentation.imageY,
-        ACTOR_ATLAS_KEY,
-        portraitFrame,
-      )
+    const portrait = characterId === 'mina'
+      ? scene.add.image(
+          HUD_LAYOUT.portrait.x + HUD_LAYOUT.portrait.width / 2,
+          HUD_LAYOUT.portrait.y + HUD_LAYOUT.portrait.height / 2,
+          'mina-portrait',
+        )
+      : scene.add.image(
+          portraitPresentation.imageX,
+          portraitPresentation.imageY,
+          ACTOR_ATLAS_KEY,
+          portraitFrame,
+        )
       .setOrigin(0.5)
-    if (typeof portrait.setCrop === 'function') {
+    if (characterId !== 'mina' && typeof portrait.setCrop === 'function') {
       const { x, y, width, height } = portraitPresentation.crop
       portrait.setCrop(x, y, width, height)
     }
     this.portrait = portrait
-      .setDisplaySize(portraitPresentation.displayWidth, portraitPresentation.displayHeight)
+      .setDisplaySize(characterId === 'mina' ? HUD_LAYOUT.portrait.width : portraitPresentation.displayWidth, characterId === 'mina' ? HUD_LAYOUT.portrait.height : portraitPresentation.displayHeight)
       .setDepth(10_004)
       .setScrollFactor(0)
     this.nameText = scene.add.text(
@@ -238,7 +256,17 @@ export class HudController {
       stroke: '#071018',
       strokeThickness: 3,
     }).setOrigin(0, 0.5).setDepth(10_004).setScrollFactor(0).setVisible(false)
+    this.waveText = scene.add.text(548, 8, 'WAVE 1/3', textStyle('10px', palette.advance))
+      .setDepth(10_004).setScrollFactor(0)
+    this.scoreText = scene.add.text(420, 8, 'SCORE 0000000', textStyle('8px', palette.secondary))
+      .setDepth(10_004).setScrollFactor(0)
     this.encounterText = scene.add.text(320, 60, '', textStyle('9px')).setOrigin(0.5).setDepth(10_004).setScrollFactor(0).setVisible(false)
+    this.techniqueText = scene.add.text(
+      HUD_LAYOUT.techniques.x,
+      HUD_LAYOUT.techniques.y,
+      HUD_TECHNIQUE_GUIDES[characterId],
+      textStyle('7px', palette.advance),
+    ).setOrigin(0.5, 0.5).setDepth(10_004).setScrollFactor(0)
     this.controlsText = scene.add.text(
       HUD_LAYOUT.controlsHint.x,
       HUD_LAYOUT.controlsHint.y,
@@ -282,7 +310,10 @@ export class HudController {
       this.lifeText,
       this.advanceText,
       this.comboText,
+      this.waveText,
+      this.scoreText,
       this.encounterText,
+      this.techniqueText,
       this.controlsText,
       ...this.controlKeyTexts,
       ...this.controlLimbTexts,
@@ -351,12 +382,13 @@ export class HudController {
       this.actionFeedbackValue = ''
       this.actionFeedbackText.setText('').setVisible(false)
     }
-    if (this.comboElapsedMs >= 850) this.combo = 0
+    if (this.comboElapsedMs >= 1_000) this.combo = 0
     this.controlsAlpha = this.controlsElapsedMs <= controlsHoldMs
       ? 1
       : Math.max(0, 1 - (this.controlsElapsedMs - controlsHoldMs) / controlsFadeMs)
     const controlsVisible = this.controlsAlpha > 0
     this.controlsGraphics.setAlpha(this.controlsAlpha).setVisible(controlsVisible)
+    this.techniqueText.setAlpha(this.controlsAlpha).setVisible(controlsVisible)
     this.controlsText.setAlpha(this.controlsAlpha).setVisible(controlsVisible)
     this.controlKeyTexts.forEach((text) => text.setAlpha(this.controlsAlpha).setVisible(controlsVisible))
     this.controlLimbTexts.forEach((text) => text.setAlpha(this.controlsAlpha).setVisible(controlsVisible))
@@ -372,6 +404,10 @@ export class HudController {
     this.comboText.setText(model.comboText).setVisible(model.comboText.length > 0)
     this.encounterText.setText(input.encounter?.label ?? '').setVisible(input.encounter !== null)
     this.inventoryHud.update(input.inventory)
+    const wave = Math.max(1, Math.floor((input.waveIndex ?? 0) + 1))
+    const waveCount = Math.max(wave, Math.floor(input.waveCount ?? 3))
+    this.waveText.setText(`WAVE ${wave}/${waveCount}`)
+    this.scoreText.setText(`SCORE ${String(Math.max(0, Math.floor(input.score ?? 0))).padStart(7, '0')}`)
 
     this.bars.clear()
     this.bars.fillStyle(palette.panel, 0.86)
@@ -484,7 +520,10 @@ export class HudController {
     this.lifeText.destroy()
     this.advanceText.destroy()
     this.comboText.destroy()
+    this.waveText.destroy()
+    this.scoreText.destroy()
     this.encounterText.destroy()
+    this.techniqueText.destroy()
     this.controlsText.destroy()
     this.controlKeyTexts.forEach((text) => text.destroy())
     this.controlLimbTexts.forEach((text) => text.destroy())

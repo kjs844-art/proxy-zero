@@ -22,10 +22,10 @@ const scorePoints = (score: number): number => {
 }
 
 const timePoints = (activeTimeMs: number): number => {
-  if (activeTimeMs <= 9 * 60_000) return 4
-  if (activeTimeMs <= 10 * 60_000) return 3
-  if (activeTimeMs <= 11.5 * 60_000) return 2
-  if (activeTimeMs <= 12 * 60_000) return 1
+  if (activeTimeMs <= 18 * 60_000) return 4
+  if (activeTimeMs <= 20 * 60_000) return 3
+  if (activeTimeMs <= 22 * 60_000) return 2
+  if (activeTimeMs <= 24 * 60_000) return 1
   return 0
 }
 

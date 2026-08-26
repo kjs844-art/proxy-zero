@@ -99,7 +99,7 @@ import { TrainBackdrop } from '../../src/phaser/world/TrainBackdrop'
 import { ZoneRenderer } from '../../src/phaser/world/ZoneRenderer'
 
 describe('service-train authored integration contracts', () => {
-  it('authors the exact three waves, items, arena, timing, and Zone 3 handoff', () => {
+  it('authors the exact five waves, items, arena, timing, and Zone 3 handoff', () => {
     expect(getPlayableStageOneZone('service-train')).toBe(serviceTrainZone)
     expect(serviceTrainZone).toMatchObject({
       id: 'service-train',
@@ -110,8 +110,8 @@ describe('service-train authored integration contracts', () => {
       enemyDamageScale: 0.2,
       eliteDamageScale: 1,
       transitionDurationMs: 1_500,
-      targetDurationMs: 180_000,
-      acceptanceDurationMs: { min: 150_000, max: 210_000 },
+      targetDurationMs: 360_000,
+      acceptanceDurationMs: { min: 300_000, max: 420_000 },
       nextZoneEntry: { zoneId: 'flooded-tunnel', zoneStartWaveId: 'flooded-tunnel-wave-1' },
     })
     expect(serviceTrainZone.waves).toEqual([
@@ -132,6 +132,23 @@ describe('service-train authored integration contracts', () => {
       },
       {
         id: 'service-train-wave-3', seed: 0x6cf70936,
+        orders: [
+          { id: 'train-patrol-support', enemyVariantId: 'scout-patrol', delayMs: 0, position: { x: 470, y: 250 } },
+          { id: 'train-rear-striker', enemyVariantId: 'scout-striker', delayMs: 650, position: { x: 540, y: 300 } },
+          { id: 'train-rear-sentinel', enemyVariantId: 'bulwark-sentinel', delayMs: 1_300, position: { x: 560, y: 220 } },
+        ],
+      },
+      {
+        id: 'service-train-wave-4', seed: 0x7d081a47,
+        orders: [
+          { id: 'train-late-patrol', enemyVariantId: 'scout-patrol', delayMs: 0, position: { x: 455, y: 286 } },
+          { id: 'elite-screen-striker', enemyVariantId: 'scout-striker', delayMs: 650, position: { x: 520, y: 210 } },
+          { id: 'elite-screen-sentinel', enemyVariantId: 'bulwark-sentinel', delayMs: 1_300, position: { x: 570, y: 292 } },
+          { id: 'train-final-enforcer', enemyVariantId: 'bulwark-enforcer', delayMs: 1_950, position: { x: 500, y: 250 } },
+        ],
+      },
+      {
+        id: 'service-train-wave-5', seed: 0x8e192b58,
         orders: [
           { id: 'elite-bulwark-frame', enemyVariantId: 'elite-bulwark-frame', delayMs: 0, position: { x: 500, y: 270 } },
         ],
@@ -347,6 +364,15 @@ const measureDeterministicHanRun = (): HanTimingSample => {
         if (Math.abs(deltaX) > 4) moveX = deltaX < 0 ? -1 : 1
         if (Math.abs(deltaY) > 4) moveY = deltaY < 0 ? -1 : 1
       }
+    } else if (
+      scene.itemRuntime.inventory.counts['repair-kit'] === 1 &&
+      player.hp <= player.maxHp * 0.65
+    ) {
+      if (scene.itemRuntime.inventory.selectedItemId !== 'repair-kit') {
+        edges.push({ type: 'cycle-item' })
+      } else {
+        edges.push({ type: 'interact-use' })
+      }
     } else if (scene.itemRuntime.inventory.counts.emp === 1) {
       if (scene.itemRuntime.inventory.selectedItemId !== 'emp') {
         edges.push({ type: 'cycle-item' })
@@ -429,8 +455,10 @@ describe('CombatScene service-train orchestration', () => {
     expect(scene.zonePhase).toBe('inter-wave')
     crossGateToNextWave(scene)
     clearServiceWave(scene)
-    crossGateToNextWave(scene)
-    clearServiceWave(scene)
+    for (let nextWaveIndex = 2; nextWaveIndex < serviceTrainZone.waves.length; nextWaveIndex += 1) {
+      crossGateToNextWave(scene)
+      clearServiceWave(scene)
+    }
     expect(scene.zonePhase).toBe('zone-clear')
     expect(services.result).toBeNull()
 
@@ -478,6 +506,9 @@ describe('CombatScene service-train orchestration', () => {
     expect(scene.itemRuntime.pickups[0].consumed).toBe(true)
     expect(scene.trainBackdrop?.snapshot().visiblePickupCount).toBe(1)
 
+    const pickupAnimationEndsAfterMs = scene.state.elapsedMs + 400
+    stepUntil(scene, () => scene.state.elapsedMs >= pickupAnimationEndsAfterMs, 60)
+
     scene.state.actors.han.hp = 50
     scene.runState = { ...scene.runState, hp: 50 }
     captureOneFrame(scene, {
@@ -488,6 +519,9 @@ describe('CombatScene service-train orchestration', () => {
     scene.stepDomain()
     expect(scene.state.actors.han.hp).toBe(95)
     expect(scene.itemRuntime.inventory.counts['repair-kit']).toBe(0)
+
+    const repairAnimationEndsAfterMs = scene.state.elapsedMs + 400
+    stepUntil(scene, () => scene.state.elapsedMs >= repairAnimationEndsAfterMs, 60)
 
     scene.state.actors.han.position = { x: 470, y: 292, z: 0 }
     scene.state.actors.han.mode = 'idle'
@@ -502,6 +536,9 @@ describe('CombatScene service-train orchestration', () => {
       selectedItemId: 'emp',
     })
     expect(scene.itemRuntime.pickups[1].consumed).toBe(true)
+
+    const empPickupAnimationEndsAfterMs = scene.state.elapsedMs + 400
+    stepUntil(scene, () => scene.state.elapsedMs >= empPickupAnimationEndsAfterMs, 60)
 
     const enemyId = scene.waveRuntime.wave.spawnedEnemyIds[0]
     const enemy = scene.state.actors[enemyId]
@@ -607,9 +644,9 @@ describe('CombatScene service-train orchestration', () => {
   it('retains first-life world state but Continue reconstructs authored Zone 2 start', () => {
     const { scene } = createLiveScene()
     enterServiceTrain(scene)
-    scene.waveIndex = 2
-    scene.waveRuntime = scene.createWaveRuntime(2)
-    scene.runState = { ...scene.runState, currentWaveId: 'service-train-wave-3' }
+    scene.waveIndex = 4
+    scene.waveRuntime = scene.createWaveRuntime(4)
+    scene.runState = { ...scene.runState, currentWaveId: 'service-train-wave-5' }
     scene.stepDomain()
     const eliteId = scene.waveRuntime.wave.spawnedEnemyIds[0]
     scene.state.actors[eliteId].hp = 137
@@ -635,7 +672,7 @@ describe('CombatScene service-train orchestration', () => {
 
     expect(scene.runState.lives).toBe(1)
     expect(scene.trainHazardState.elapsedMs).toBeGreaterThan(1_234)
-    expect(scene.runState.currentWaveId).toBe('service-train-wave-3')
+    expect(scene.runState.currentWaveId).toBe('service-train-wave-5')
     expect(scene.state.actors[eliteId].hp).toBe(137)
     expect(scene.eliteBrains.get(eliteId)?.cursor).toBe('B')
     expect(scene.itemRuntime.pickups.every((pickup) => pickup.consumed)).toBe(true)
@@ -652,7 +689,7 @@ describe('CombatScene service-train orchestration', () => {
     }
     scene.runState = {
       ...scene.runState,
-      currentWaveId: 'service-train-wave-3',
+      currentWaveId: 'service-train-wave-5',
       lives: 0,
       hp: 0,
       status: 'game-over',
@@ -682,13 +719,13 @@ describe('CombatScene service-train orchestration', () => {
   it('alternates accepted elite patterns, preserves B across EMP, and hits once before defeat', () => {
     const { scene } = createLiveScene()
     enterServiceTrain(scene)
-    scene.waveIndex = 2
-    scene.waveRuntime = scene.createWaveRuntime(2)
-    scene.runState = { ...scene.runState, currentWaveId: 'service-train-wave-3' }
+    scene.waveIndex = 4
+    scene.waveRuntime = scene.createWaveRuntime(4)
+    scene.runState = { ...scene.runState, currentWaveId: 'service-train-wave-5' }
     scene.stepDomain()
     const eliteId = scene.waveRuntime.wave.spawnedEnemyIds[0]
     const elite = scene.state.actors[eliteId]
-    const eliteSectionOffset = 2 * SIDE_SCROLL_VIEWPORT_WIDTH
+    const eliteSectionOffset = 4 * SIDE_SCROLL_VIEWPORT_WIDTH
     scene.state.actors.han.position = { x: 450 + eliteSectionOffset, y: 270, z: 0 }
     elite.position = { x: 500 + eliteSectionOffset, y: 270, z: 0 }
 
@@ -793,11 +830,11 @@ describe('CombatScene service-train orchestration', () => {
     ]
     expect(samples[1]).toEqual(samples[0])
     expect(samples[2]).toEqual(samples[0])
-    expect(samples[0].noTargetMs).toBeLessThanOrEqual(1_850 + 1e-6)
-    expect(samples[0].noTargetMs).toBeCloseTo(1_833.3333333333, 6)
+    expect(samples[0].noTargetMs).toBeLessThanOrEqual(3_700 + 1e-6)
+    expect(samples[0].noTargetMs).toBeCloseTo(3_666.6666666667, 6)
     expect(samples[0].zoneActiveMs).toBeGreaterThan(0)
     expect(samples[0].eliteActiveMs).toBeGreaterThan(0)
-    expect(samples[0].pickupsAcquired).toBe(3)
+    expect(samples[0].pickupsAcquired).toBe(5)
     expect(samples[0].itemsUsed).toBeGreaterThanOrEqual(1)
     expect(samples[0].handedOff).toBe(true)
   })

@@ -23,11 +23,11 @@ describe('InputBuffer', () => {
     })
   })
 
-  it('uses the default 180 ms action lifetime', () => {
+  it('uses the default 360 ms action lifetime for responsive chained attacks', () => {
     const entry = new InputBuffer().enqueue(jump, 1_000)
 
-    expect(DEFAULT_ACTION_BUFFER_MS).toBe(180)
-    expect(entry.expiresAtMs).toBe(1_180)
+    expect(DEFAULT_ACTION_BUFFER_MS).toBe(360)
+    expect(entry.expiresAtMs).toBe(1_360)
   })
 
   it('honours explicit 140 ms and 220 ms attack lifetimes at their boundaries', () => {
@@ -43,9 +43,9 @@ describe('InputBuffer', () => {
     const buffer = new InputBuffer()
     buffer.enqueue(jump, 100)
 
-    expect(buffer.consume(280)).toMatchObject({ edge: jump })
+    expect(buffer.consume(460)).toMatchObject({ edge: jump })
     buffer.enqueue(jump, 100)
-    expect(buffer.consume(281)).toBeUndefined()
+    expect(buffer.consume(461)).toBeUndefined()
   })
 
   it('does not age actions while the fixed-step caller supplies paused domain time', () => {

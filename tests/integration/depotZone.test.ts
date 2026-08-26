@@ -149,12 +149,14 @@ const advance = (
   })
 
 describe('N-9 Depot authored zone', () => {
-  it('authors three exact escalating waves with stable delayed spawn orders', () => {
+  it('authors five exact escalating waves with stable delayed spawn orders', () => {
     expect(n9DepotZone.id).toBe('n9-depot')
     expect(n9DepotZone.waves.map((wave) => wave.id)).toEqual([
       'n9-depot-wave-1',
       'n9-depot-wave-2',
       'n9-depot-wave-3',
+      'n9-depot-wave-4',
+      'n9-depot-wave-5',
     ])
     expect(
       n9DepotZone.waves.map((wave) =>
@@ -181,25 +183,38 @@ describe('N-9 Depot authored zone', () => {
         { id: 'gate-enforcer', enemyVariantId: 'bulwark-enforcer', delayMs: 900 },
         { id: 'upper-patrol', enemyVariantId: 'scout-patrol', delayMs: 1_350 },
       ],
+      [
+        { id: 'relay-sentinel', enemyVariantId: 'bulwark-sentinel', delayMs: 0 },
+        { id: 'upper-striker', enemyVariantId: 'scout-striker', delayMs: 650 },
+        { id: 'lower-patrol', enemyVariantId: 'scout-patrol', delayMs: 1_300 },
+      ],
+      [
+        { id: 'last-enforcer', enemyVariantId: 'bulwark-enforcer', delayMs: 0 },
+        { id: 'last-striker', enemyVariantId: 'scout-striker', delayMs: 650 },
+        { id: 'last-sentinel', enemyVariantId: 'bulwark-sentinel', delayMs: 1_300 },
+        { id: 'last-patrol', enemyVariantId: 'scout-patrol', delayMs: 1_950 },
+      ],
     ])
     expect(n9DepotZone.waves.map((wave) => wave.seed)).toEqual([
       0x19a2c4e1,
       0x29b3d5f2,
       0x39c4e603,
+      0x49d5f714,
+      0x59e60825,
     ])
-    expect(n9DepotZone.waves.map((wave) => wave.orders.length)).toEqual([3, 3, 4])
+    expect(n9DepotZone.waves.map((wave) => wave.orders.length)).toEqual([3, 3, 4, 3, 4])
   })
 
-  it('keeps arrival, lock timing, transition, and three-minute target as immutable data', () => {
+  it('keeps arrival, lock timing, transition, and six-minute target as immutable data', () => {
     expect(n9DepotZone.inputReadyWithinMs).toBe(2_000)
     expect(n9DepotZone.firstSpawnWithinMs).toBe(4_000)
     expect(n9DepotZone.interWaveDelayMs).toBe(900)
-    expect(n9DepotZone.enemyDamageScale).toBe(0.05)
+    expect(n9DepotZone.enemyDamageScale).toBe(0.15)
     expect(n9DepotZone.transitionDurationMs).toBe(1_500)
     expect(n9DepotZone.transitionDurationMs).toBeGreaterThan(0)
     expect(n9DepotZone.transitionDurationMs).toBeLessThanOrEqual(2_000)
-    expect(n9DepotZone.targetDurationMs).toBe(180_000)
-    expect(n9DepotZone.acceptanceDurationMs).toEqual({ min: 150_000, max: 210_000 })
+    expect(n9DepotZone.targetDurationMs).toBe(360_000)
+    expect(n9DepotZone.acceptanceDurationMs).toEqual({ min: 300_000, max: 420_000 })
     expect(Object.isFrozen(n9DepotZone)).toBe(true)
     expect(Object.isFrozen(n9DepotZone.waves)).toBe(true)
     expect(Object.isFrozen(n9DepotZone.waves[0].orders[0].position)).toBe(true)
@@ -300,7 +315,7 @@ describe('N-9 Depot Task 8 wave integration', () => {
   })
 
   it('clears all waves without a delayed-order deadlock at a reasonable simulated cadence', () => {
-    const clearCadences = [45_000, 55_000, 65_000]
+    const clearCadences = [55_000, 65_000, 75_000, 85_000, 95_000]
     let zoneElapsedMs = 0
 
     n9DepotZone.waves.forEach((wave, index) => {
@@ -963,8 +978,10 @@ describe('CombatScene N-9 Depot orchestration', () => {
     expect(services.completedRun).toBeNull()
     expect(scene.scene.start).not.toHaveBeenCalledWith(SCENE_KEYS.Results)
 
-    crossGateToNextWave(scene)
-    clearCurrentWave(scene)
+    for (let nextWaveIndex = 2; nextWaveIndex < n9DepotZone.waves.length; nextWaveIndex += 1) {
+      crossGateToNextWave(scene)
+      clearCurrentWave(scene)
+    }
     expect(scene.zonePhase).toBe('zone-clear')
     expect(scene.transitionRemainingMs).toBe(n9DepotZone.transitionDurationMs)
     expect(scene.zoneClearText?.visible).toBe(true)
@@ -1226,6 +1243,43 @@ describe('CombatScene N-9 Depot orchestration', () => {
     })
     expect(scene.state.actors.han.hp).toBe(85)
     expect(scene.runState.hp).toBe(85)
+  })
+
+  it('does not consume a second item while the pickup or use animation is still active', () => {
+    const { scene } = createLiveScene()
+    const playerPosition = scene.state.actors.han.position
+    scene.itemRuntime = createItemRuntimeState({
+      pickups: [
+        {
+          id: 'a-repair', itemId: 'repair-kit',
+          position: { x: playerPosition.x, y: playerPosition.y }, consumed: false,
+        },
+        {
+          id: 'b-emp', itemId: 'emp',
+          position: { x: playerPosition.x + 1, y: playerPosition.y }, consumed: false,
+        },
+      ],
+    })
+
+    captureOneFrame(scene, {
+      moveX: 0,
+      moveY: 0,
+      edges: [{ type: 'interact-use' }],
+    })
+    scene.stepDomain()
+    expect(scene.itemRuntime.inventory.counts.emp).toBe(0)
+    expect(scene.itemRuntime.inventory.counts['repair-kit']).toBe(1)
+    expect(scene.itemRuntime.pickups[0].consumed).toBe(true)
+
+    captureOneFrame(scene, {
+      moveX: 0,
+      moveY: 0,
+      edges: [{ type: 'interact-use' }],
+    })
+    scene.stepDomain()
+    expect(scene.itemRuntime.inventory.counts.emp).toBe(0)
+    expect(scene.itemRuntime.inventory.counts['repair-kit']).toBe(1)
+    expect(scene.itemRuntime.pickups[1].consumed).toBe(false)
   })
 
   it('accepts a new EMP during full hitstop and starts decrementing on the next active step', () => {

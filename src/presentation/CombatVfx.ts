@@ -59,12 +59,12 @@ const strengthIndex = (strength: number): 1 | 2 | 3 => strength >= 3 ? 3 : stren
 const cueFor = (prefix: 'attack' | 'hit', strength: number): AudioCueId =>
   `${prefix}-${strengthIndex(strength) === 3 ? 'finisher' : strengthIndex(strength) === 2 ? 'heavy' : 'light'}` as AudioCueId
 const particlesFor = (strength: number, lowEffect: boolean): number =>
-  (lowEffect ? [3, 5, 6] : [6, 8, 12])[strengthIndex(strength) - 1]
+  (lowEffect ? [7, 10, 12] : [12, 16, 20])[strengthIndex(strength) - 1]
 const durationFor = (strength: number): number =>
-  [90, 130, 170][strengthIndex(strength) - 1]
+  [280, 320, 360][strengthIndex(strength) - 1]
 
 const MAX_ACTIVE_EFFECTS = 32
-const MAX_BURST_PARTICLES = 24
+const MAX_BURST_PARTICLES = 48
 const MAX_TRAILS = 6
 const MAX_AFTERIMAGES = 3
 
@@ -97,6 +97,10 @@ export const planPresentationBatch = (
   let strongestShake = 0
   let screenFlashAdded = false
   let eventIndex = 0
+  const strongestHitStrength = input.events.reduce((strongest, event) =>
+    event.type === 'hit-confirmed'
+      ? Math.max(strongest, strengthIndex(event.strength))
+      : strongest, 0)
 
   const addBurst = (point: ActorPresentationPoint, strength: number, eventKey: string, tint: number = color.white) => {
     const normalized = strengthIndex(strength)
@@ -204,19 +208,33 @@ export const planPresentationBatch = (
           seed: hashText(`${event.attackId}:impact-ring`),
         })
       }
-      if (strength >= 2 && attacker) {
-        effects.push({ type: 'trail', from: attacker, to: point, color: strength === 3 ? color.meter : color.cyan,
-          strength, durationMs: strength === 3 ? 150 : 105, seed: eventIndex })
-      }
-      if (strength === 3 && !screenFlashAdded) {
+      // Every confirmed hit gets a short, readable contact flash and a floor
+      // reflection pulse; stronger hits additionally receive the larger ring.
+      effects.push({
+        type: 'ring',
+        point: { ...point, y: point.y + 22 },
+        color: 0xffa11a,
+        radius: 26 + strength * 5,
+        durationMs: 180,
+        seed: hashText(`${event.attackId}:floor-glow`),
+      })
+      if (!screenFlashAdded && strength === strongestHitStrength) {
+        const flashAlpha = input.lowEffect
+          ? [0.03, 0.05, 0.08][strength - 1]
+          : [0.07, 0.12, 0.18][strength - 1]
+        const flashDurationMs = [36, 46, 60][strength - 1]
         effects.push({
           type: 'screen-flash',
           color: color.hot,
-          alpha: input.lowEffect ? 0.06 : 0.14,
-          durationMs: 55,
+          alpha: flashAlpha,
+          durationMs: flashDurationMs,
           seed: eventIndex,
         })
         screenFlashAdded = true
+      }
+      if (strength >= 2 && attacker) {
+        effects.push({ type: 'trail', from: attacker, to: point, color: strength === 3 ? color.meter : color.cyan,
+          strength, durationMs: strength === 3 ? 150 : 105, seed: eventIndex })
       }
       addText(point, `${Math.ceil(event.damage)}`, strength === 3 ? color.meter : color.white)
       cues.push(cueFor('hit', strength))
@@ -282,9 +300,9 @@ export const planPresentationBatch = (
     effects.push({
       type: 'shake',
       strength: strongestShake,
-      amplitude: (strongestShake === 3 ? 4.2 : strongestShake === 2 ? 1.8 : 0) *
+      amplitude: (strongestShake === 3 ? 4.8 : strongestShake === 2 ? 2.2 : 0.72) *
         (input.lowEffect ? 0.3 : 1),
-      durationMs: strongestShake === 3 ? 105 : strongestShake === 2 ? 65 : 0,
+      durationMs: strongestShake === 3 ? 115 : strongestShake === 2 ? 76 : 46,
       seed: eventIndex,
     })
   }
@@ -420,9 +438,9 @@ export class CombatVfx {
       const effect = active.effect
       if (effect.type === 'burst') {
         const travel = 1 - ((1 - progress) ** 2)
-        const distance = (11 + effect.strength * 8) * (0.3 + travel * 0.82)
+        const distance = (24 + effect.strength * 15) * (0.42 + travel * 0.9)
         const rotation = (effect.seed % 17) * 0.03
-        this.worldGraphics.lineStyle(3 + effect.strength, effect.color, alpha * 0.18)
+        this.worldGraphics.lineStyle(4 + effect.strength, effect.color, alpha * 0.34)
         for (let ray = 0; ray < effect.particleCount; ray += 1) {
           const angle = ((ray / effect.particleCount) * Math.PI * 2) + rotation
           const rayDistance = distance * (ray % 3 === 0 ? 1.15 : ray % 2 === 0 ? 0.82 : 1)
@@ -434,7 +452,7 @@ export class CombatVfx {
             effect.point.y + Math.sin(angle) * rayDistance,
           )
         }
-        this.worldGraphics.lineStyle(effect.strength === 3 ? 2.25 : 1.25, color.hot, alpha * 0.92)
+        this.worldGraphics.lineStyle(effect.strength === 3 ? 3.5 : 2.5, color.hot, alpha)
         for (let ray = 0; ray < effect.particleCount; ray += 1) {
           const angle = ((ray / effect.particleCount) * Math.PI * 2) + rotation
           const rayDistance = distance * (ray % 3 === 0 ? 1.02 : 0.72)
@@ -465,14 +483,14 @@ export class CombatVfx {
             )
           }
         }
-        this.worldGraphics.fillStyle(effect.color, alpha * 0.42)
+        this.worldGraphics.fillStyle(0xffa11a, alpha * 0.72)
         this.worldGraphics.fillCircle(
           effect.point.x,
           effect.point.y,
-          Math.max(1, (7 + effect.strength * 1.5) * alpha),
+          Math.max(2, (12 + effect.strength * 3) * alpha),
         )
-        this.worldGraphics.fillStyle(color.hot, alpha * 0.96)
-        this.worldGraphics.fillCircle(effect.point.x, effect.point.y, Math.max(1, 4 * alpha))
+        this.worldGraphics.fillStyle(color.hot, alpha)
+        this.worldGraphics.fillCircle(effect.point.x, effect.point.y, Math.max(3, 10 * alpha))
       } else if (effect.type === 'trail') {
         const fromY = effect.from.y - 8
         this.worldGraphics.lineStyle(6 + effect.strength * 2, effect.color, alpha * 0.12)

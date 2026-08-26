@@ -100,7 +100,18 @@
           "loop": false,
           "frames": [
             "han/pickup-use/00",
-            "han/pickup-use/01"
+            "han/pickup-use/01",
+            "han/pickup-use/02",
+            "han/pickup-use/03"
+          ]
+        },
+        {
+          "id": "item-use",
+          "state": "item-use",
+          "loop": false,
+          "frames": [
+            "han/item-use/00",
+            "han/item-use/01"
           ]
         },
         {
@@ -216,14 +227,14 @@
         "width": 256,
         "height": 256
       },
-      "targetHeight": 114,
+      "targetHeight": 150,
       "anchor": {
         "x": 0.5,
         "y": 1
       },
       "visibleBounds": {
-        "left": 63,
-        "right": 63
+        "left": 69,
+        "right": 70
       },
       "shadow": {
         "width": 42,
@@ -306,7 +317,18 @@
           "loop": false,
           "frames": [
             "mina/pickup-use/00",
-            "mina/pickup-use/01"
+            "mina/pickup-use/01",
+            "mina/pickup-use/02",
+            "mina/pickup-use/03"
+          ]
+        },
+        {
+          "id": "item-use",
+          "state": "item-use",
+          "loop": false,
+          "frames": [
+            "mina/item-use/00",
+            "mina/item-use/01"
           ]
         },
         {
@@ -512,7 +534,18 @@
           "loop": false,
           "frames": [
             "jin/pickup-use/00",
-            "jin/pickup-use/01"
+            "jin/pickup-use/01",
+            "jin/pickup-use/02",
+            "jin/pickup-use/03"
+          ]
+        },
+        {
+          "id": "item-use",
+          "state": "item-use",
+          "loop": false,
+          "frames": [
+            "jin/item-use/00",
+            "jin/item-use/01"
           ]
         },
         {
@@ -628,14 +661,14 @@
         "width": 256,
         "height": 256
       },
-      "targetHeight": 104,
+      "targetHeight": 126,
       "anchor": {
         "x": 0.5,
         "y": 1
       },
       "visibleBounds": {
-        "left": 59,
-        "right": 59
+        "left": 74,
+        "right": 73
       },
       "shadow": {
         "width": 50,
@@ -705,6 +738,15 @@
           ]
         },
         {
+          "id": "item-use",
+          "state": "item-use",
+          "loop": false,
+          "frames": [
+            "scout-striker/item-use/00",
+            "scout-striker/item-use/01"
+          ]
+        },
+        {
           "id": "defeated",
           "state": "defeated",
           "loop": false,
@@ -767,14 +809,14 @@
         "width": 256,
         "height": 256
       },
-      "targetHeight": 100,
+      "targetHeight": 126,
       "anchor": {
         "x": 0.5,
         "y": 1
       },
       "visibleBounds": {
-        "left": 55,
-        "right": 55
+        "left": 75,
+        "right": 74
       },
       "shadow": {
         "width": 50,
@@ -844,6 +886,15 @@
           ]
         },
         {
+          "id": "item-use",
+          "state": "item-use",
+          "loop": false,
+          "frames": [
+            "scout-patrol/item-use/00",
+            "scout-patrol/item-use/01"
+          ]
+        },
+        {
           "id": "defeated",
           "state": "defeated",
           "loop": false,
@@ -883,14 +934,14 @@
         "width": 256,
         "height": 256
       },
-      "targetHeight": 128,
+      "targetHeight": 126,
       "anchor": {
         "x": 0.5,
         "y": 1
       },
       "visibleBounds": {
-        "left": 74,
-        "right": 74
+        "left": 76,
+        "right": 76
       },
       "shadow": {
         "width": 50,
@@ -960,6 +1011,15 @@
           ]
         },
         {
+          "id": "item-use",
+          "state": "item-use",
+          "loop": false,
+          "frames": [
+            "bulwark-sentinel/item-use/00",
+            "bulwark-sentinel/item-use/01"
+          ]
+        },
+        {
           "id": "defeated",
           "state": "defeated",
           "loop": false,
@@ -999,14 +1059,14 @@
         "width": 256,
         "height": 256
       },
-      "targetHeight": 124,
+      "targetHeight": 154,
       "anchor": {
         "x": 0.5,
         "y": 1
       },
       "visibleBounds": {
-        "left": 85,
-        "right": 85
+        "left": 107,
+        "right": 106
       },
       "shadow": {
         "width": 50,
@@ -1076,6 +1136,15 @@
           ]
         },
         {
+          "id": "item-use",
+          "state": "item-use",
+          "loop": false,
+          "frames": [
+            "bulwark-enforcer/item-use/00",
+            "bulwark-enforcer/item-use/01"
+          ]
+        },
+        {
           "id": "defeated",
           "state": "defeated",
           "loop": false,
@@ -1138,14 +1207,14 @@
         "width": 256,
         "height": 256
       },
-      "targetHeight": 136,
+      "targetHeight": 168,
       "anchor": {
         "x": 0.5,
         "y": 1
       },
       "visibleBounds": {
-        "left": 101,
-        "right": 100
+        "left": 124,
+        "right": 124
       },
       "shadow": {
         "width": 50,
@@ -1215,6 +1284,15 @@
           ]
         },
         {
+          "id": "item-use",
+          "state": "item-use",
+          "loop": false,
+          "frames": [
+            "elite-bulwark-frame/item-use/00",
+            "elite-bulwark-frame/item-use/01"
+          ]
+        },
+        {
           "id": "defeated",
           "state": "defeated",
           "loop": false,
@@ -1277,14 +1355,14 @@
         "width": 384,
         "height": 384
       },
-      "targetHeight": 172,
+      "targetHeight": 190,
       "anchor": {
         "x": 0.5,
         "y": 1
       },
       "visibleBounds": {
-        "left": 157,
-        "right": 156
+        "left": 171,
+        "right": 171
       },
       "shadow": {
         "width": 84,
@@ -1351,6 +1429,15 @@
           "frames": [
             "boss-silo-dredger/pickup-use/00",
             "boss-silo-dredger/pickup-use/01"
+          ]
+        },
+        {
+          "id": "item-use",
+          "state": "item-use",
+          "loop": false,
+          "frames": [
+            "boss-silo-dredger/item-use/00",
+            "boss-silo-dredger/item-use/01"
           ]
         },
         {

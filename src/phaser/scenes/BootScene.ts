@@ -40,6 +40,9 @@ export class BootScene extends Phaser.Scene {
       FLOODED_TUNNEL_BACKGROUND_KEY,
       './assets/environment/flooded-tunnel-v2.png',
     )
+    this.load.image('pickup-emp-canister', './assets/sprites/emp-canister.png')
+    this.load.image('pickup-repair-crate', './assets/sprites/repair-crate.png')
+    this.load.image('mina-portrait', './assets/sprites/mina-portrait.png')
     for (const cueId of AUDIO_CUE_IDS) {
       this.load.audio(cueId, `./assets/audio/${cueId}.wav`)
     }

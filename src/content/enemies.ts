@@ -39,8 +39,8 @@ export const enemyVariants: readonly EnemyVariantDefinition[] = freeze([
   {
     id: 'scout-striker',
     baseBodyId: 'scout-frame',
-    moveSpeed: 148,
-    chaseDistance: 180,
+    moveSpeed: 154,
+    chaseDistance: 270,
     guardDurationMs: 0,
     intentWeights: { attack: 1, guard: 0 },
     attacks: [
@@ -51,8 +51,8 @@ export const enemyVariants: readonly EnemyVariantDefinition[] = freeze([
   {
     id: 'scout-patrol',
     baseBodyId: 'scout-frame',
-    moveSpeed: 168,
-    chaseDistance: 200,
+    moveSpeed: 174,
+    chaseDistance: 290,
     guardDurationMs: 0,
     intentWeights: { attack: 1, guard: 0 },
     attacks: [attack('scout-patrol-kick', 300, 100, 210, 70, 26, 1)],
@@ -60,8 +60,8 @@ export const enemyVariants: readonly EnemyVariantDefinition[] = freeze([
   {
     id: 'bulwark-sentinel',
     baseBodyId: 'bulwark-frame',
-    moveSpeed: 92,
-    chaseDistance: 170,
+    moveSpeed: 98,
+    chaseDistance: 250,
     guardDurationMs: 420,
     intentWeights: { attack: 3, guard: 2 },
     attacks: [attack('bulwark-sentinel-slam', 460, 140, 340, 72, 34, 1)],
@@ -69,8 +69,8 @@ export const enemyVariants: readonly EnemyVariantDefinition[] = freeze([
   {
     id: 'bulwark-enforcer',
     baseBodyId: 'bulwark-frame',
-    moveSpeed: 106,
-    chaseDistance: 190,
+    moveSpeed: 112,
+    chaseDistance: 270,
     guardDurationMs: 300,
     intentWeights: { attack: 4, guard: 1 },
     attacks: [

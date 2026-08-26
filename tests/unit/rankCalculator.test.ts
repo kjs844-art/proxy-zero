@@ -8,7 +8,7 @@ import {
 const calculate = (overrides: Partial<RunRankInput> = {}) =>
   calculateRunRank({
     outcome: 'mission-clear',
-    activeTimeMs: 12 * 60_000 + 1,
+    activeTimeMs: 24 * 60_000 + 1,
     score: 0,
     maxCombo: 0,
     hitsTaken: 15,
@@ -22,36 +22,36 @@ describe('calculateRunRank', () => {
     expect(calculate({ score: Number.EPSILON, hitsTaken: 4 })).toBe('C')
     expect(calculate({ score: 7_499, maxCombo: 10, hitsTaken: 8 })).toBe('C')
     expect(calculate({ score: 7_500, maxCombo: 10, hitsTaken: 8 })).toBe('B')
-    expect(calculate({ score: 11_999, activeTimeMs: 9 * 60_000, maxCombo: 10 })).toBe('B')
-    expect(calculate({ score: 12_000, activeTimeMs: 9 * 60_000, maxCombo: 10 })).toBe('A')
+    expect(calculate({ score: 11_999, activeTimeMs: 18 * 60_000, maxCombo: 10 })).toBe('B')
+    expect(calculate({ score: 12_000, activeTimeMs: 18 * 60_000, maxCombo: 10 })).toBe('A')
     expect(calculate({
-      score: 14_999, activeTimeMs: 10 * 60_000, maxCombo: 10, hitsTaken: 4,
+      score: 14_999, activeTimeMs: 20 * 60_000, maxCombo: 10, hitsTaken: 4,
     })).toBe('A')
     expect(calculate({
-      score: 15_000, activeTimeMs: 10 * 60_000, maxCombo: 10, hitsTaken: 4,
+      score: 15_000, activeTimeMs: 20 * 60_000, maxCombo: 10, hitsTaken: 4,
     })).toBe('S')
   })
 
   it('applies every inclusive active-time boundary', () => {
-    expect(calculate({ activeTimeMs: 12 * 60_000, maxCombo: 10 })).toBe('C')
-    expect(calculate({ activeTimeMs: 12 * 60_000 + 1, maxCombo: 10 })).toBe('D')
+    expect(calculate({ activeTimeMs: 24 * 60_000, maxCombo: 10 })).toBe('C')
+    expect(calculate({ activeTimeMs: 24 * 60_000 + 1, maxCombo: 10 })).toBe('D')
     expect(calculate({
-      activeTimeMs: 11.5 * 60_000, score: 7_500, maxCombo: 10,
+      activeTimeMs: 22 * 60_000, score: 7_500, maxCombo: 10,
     })).toBe('B')
     expect(calculate({
-      activeTimeMs: 11.5 * 60_000 + 1, score: 7_500, maxCombo: 10,
+      activeTimeMs: 22 * 60_000 + 1, score: 7_500, maxCombo: 10,
     })).toBe('C')
     expect(calculate({
-      activeTimeMs: 10 * 60_000, score: 15_000, maxCombo: 10,
+      activeTimeMs: 20 * 60_000, score: 15_000, maxCombo: 10,
     })).toBe('A')
     expect(calculate({
-      activeTimeMs: 10 * 60_000 + 1, score: 15_000, maxCombo: 10,
+      activeTimeMs: 20 * 60_000 + 1, score: 15_000, maxCombo: 10,
     })).toBe('B')
     expect(calculate({
-      activeTimeMs: 9 * 60_000, score: 12_000, maxCombo: 10, hitsTaken: 4,
+      activeTimeMs: 18 * 60_000, score: 12_000, maxCombo: 10, hitsTaken: 4,
     })).toBe('S')
     expect(calculate({
-      activeTimeMs: 9 * 60_000 + 1, score: 12_000, maxCombo: 10, hitsTaken: 4,
+      activeTimeMs: 18 * 60_000 + 1, score: 12_000, maxCombo: 10, hitsTaken: 4,
     })).toBe('A')
   })
 
@@ -74,10 +74,10 @@ describe('calculateRunRank', () => {
   })
 
   it.each([
-    [{ score: 15_000, activeTimeMs: 10 * 60_000, maxCombo: 10, hitsTaken: 4 }, 'S'],
-    [{ score: 14_999, activeTimeMs: 10 * 60_000, maxCombo: 10, hitsTaken: 4 }, 'A'],
-    [{ score: 15_000, activeTimeMs: 10 * 60_000, maxCombo: 6, hitsTaken: 14 }, 'A'],
-    [{ score: 15_000, activeTimeMs: 10 * 60_000 + 1, maxCombo: 6, hitsTaken: 14 }, 'B'],
+    [{ score: 15_000, activeTimeMs: 20 * 60_000, maxCombo: 10, hitsTaken: 4 }, 'S'],
+    [{ score: 14_999, activeTimeMs: 20 * 60_000, maxCombo: 10, hitsTaken: 4 }, 'A'],
+    [{ score: 15_000, activeTimeMs: 20 * 60_000, maxCombo: 6, hitsTaken: 14 }, 'A'],
+    [{ score: 15_000, activeTimeMs: 20 * 60_000 + 1, maxCombo: 6, hitsTaken: 14 }, 'B'],
     [{ score: 15_000, hitsTaken: 4 }, 'B'],
     [{ score: 12_000, hitsTaken: 4 }, 'C'],
     [{ score: 15_000 }, 'C'],
@@ -94,7 +94,7 @@ describe('calculateRunRank', () => {
 
   it.each([
     [{ score: 15_000, activeTimeMs: 0, maxCombo: 10, hitsTaken: 0 }, 'C'],
-    [{ score: 15_000, activeTimeMs: 10 * 60_000, maxCombo: 6, hitsTaken: 14 }, 'C'],
+    [{ score: 15_000, activeTimeMs: 20 * 60_000, maxCombo: 6, hitsTaken: 14 }, 'C'],
     [{ score: 15_000, hitsTaken: 4 }, 'C'],
     [{ score: 12_000 }, 'D'],
   ] as const)('caps a successful Continue result for %o at %s', (overrides, expected) => {

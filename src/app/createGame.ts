@@ -24,7 +24,9 @@ export const resolveCanvasSamplingMode = (
 
 const installResponsiveCanvasSampling = (game: Phaser.Game): void => {
   const applySampling = (): void => {
-    const mode = resolveCanvasSamplingMode(game.canvas.clientWidth)
+    // Nearest-neighbour keeps the authored sprite clusters readable even when
+    // the desktop shell fits 640x360 to a fractional CSS size.
+    const mode: CanvasSamplingMode = 'pixelated'
     game.canvas.style.setProperty('image-rendering', mode, 'important')
     game.canvas.dataset.sampling = mode
   }
@@ -54,16 +56,14 @@ export async function createGame(
     parent,
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
-    // The authored sprites are high-resolution pixel illustrations that are
-    // reduced to their in-game size. Linear texture filtering keeps diagonal
-    // limbs and the painted depot background clean at that reduction while
-    // roundPixels still prevents movement shimmer in the 640 x 360 world.
-    pixelArt: false,
+    // Preserve the authored pixel clusters at the logical 640 x 360 resolution;
+    // roundPixels prevents movement shimmer while the browser scales the canvas.
+    pixelArt: true,
     render: {
-      antialias: true,
-      antialiasGL: true,
+      antialias: false,
+      antialiasGL: false,
       roundPixels: true,
-      pixelArt: false,
+      pixelArt: true,
       powerPreference: 'high-performance',
     },
     scale: {

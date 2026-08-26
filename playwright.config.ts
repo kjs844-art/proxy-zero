@@ -13,7 +13,9 @@ export default defineConfig({
   // compete for the same GPU process and mistake an allocated blank canvas for
   // the first meaningful frame.
   workers: 1,
-  timeout: 30_000,
+  // Pixel-diff screenshots are intentionally heavyweight on the submission
+  // laptop. Give them enough room without changing any in-game timing.
+  timeout: 90_000,
   expect: {
     timeout: 10_000,
   },

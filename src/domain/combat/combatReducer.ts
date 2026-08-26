@@ -525,7 +525,6 @@ const applyMovementAndPhysics = (
 ): void => {
   const deltaSeconds = deltaMs / 1_000
   const canControl = isActionable(actor) && actor.hitstunRemainingMs === 0
-  const wasRunning = actor.isRunning === true
   actor.isRunning = false
 
   if (canControl && command?.jump && isGrounded(actor) && actor.mode !== 'airborne') {
@@ -554,8 +553,10 @@ const applyMovementAndPhysics = (
     const priorLocomotionElapsedMs = Number.isFinite(actor.locomotionElapsedMs)
       ? Math.max(0, actor.locomotionElapsedMs ?? 0)
       : 0
+    const changesHorizontalDirection =
+      command.moveX !== 0 && (command.moveX < 0 ? -1 : 1) !== actor.facing
     actor.locomotionElapsedMs = isMoving
-      ? wasRunning !== isRunning
+      ? changesHorizontalDirection
         ? 0
         : priorLocomotionElapsedMs + deltaMs
       : 0
@@ -624,8 +625,9 @@ const applyHit = (
   const activeAttack = attacker.activeAttack
   if (!activeAttack) return
   const priorRecord = activeAttack.hitRecords[target.id]
+  const nextHitCount = (priorRecord?.count ?? 0) + 1
   activeAttack.hitRecords[target.id] = {
-    count: (priorRecord?.count ?? 0) + 1,
+    count: nextHitCount,
     lastHitAtMs: state.elapsedMs,
   }
 
@@ -633,9 +635,12 @@ const applyHit = (
   const oldHp = target.hp
   target.hp = Math.max(0, target.hp - damage)
   attacker.meter = Math.min(100, attacker.meter + attack.meterGain)
+  const fullHitstopMs = hitstopForStrength(attack.hit.strength)
+  const isIntermediateMultiHit = attack.hit.maxHitsPerTarget > 1 && nextHitCount < attack.hit.maxHitsPerTarget
+  const appliedHitstopMs = isIntermediateMultiHit ? Math.round(fullHitstopMs * 0.5) : fullHitstopMs
   state.hitstopRemainingMs = Math.max(
     state.hitstopRemainingMs,
-    hitstopForStrength(attack.hit.strength),
+    appliedHitstopMs,
   )
   state.combo = {
     hitCount: state.combo.hitCount + 1,

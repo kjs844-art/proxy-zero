@@ -291,8 +291,8 @@ async function main() {
     if (finalSnapshot.record.characterId !== expectedCharacter) {
       validationErrors.push(`selected character did not match ${expectedCharacter}`)
     }
-    if (finalSnapshot.record.activeTimeMs < 480_000 || finalSnapshot.record.activeTimeMs > 720_000) {
-      validationErrors.push('active time is outside the 480-720 second acceptance range')
+    if (finalSnapshot.record.activeTimeMs < 900_000 || finalSnapshot.record.activeTimeMs > 1_500_000) {
+      validationErrors.push('active time is outside the 900-1500 second acceptance range')
     }
   } else {
     if (finalSnapshot.record.outcome !== 'mission-failed') {

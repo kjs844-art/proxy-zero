@@ -107,11 +107,11 @@ describe('flooded-tunnel authored finale contracts', () => {
       arena: { minX: 48, maxX: 592, minY: 188, maxY: 320 },
       playerStart: { x: 112, y: 224, z: 0 },
       interWaveDelayMs: 900,
-      enemyDamageScale: 0.25,
+      enemyDamageScale: 0.35,
       bossDamageScale: 1,
       transitionDurationMs: 1_500,
-      targetDurationMs: 240_000,
-      acceptanceDurationMs: { min: 210_000, max: 270_000 },
+      targetDurationMs: 480_000,
+      acceptanceDurationMs: { min: 420_000, max: 600_000 },
       nextZoneEntry: null,
     })
     expect(floodedTunnelZone.waves).toEqual([
@@ -126,12 +126,29 @@ describe('flooded-tunnel authored finale contracts', () => {
       {
         id: 'flooded-tunnel-wave-2', seed: 0x8e192b58,
         orders: [
+          { id: 'tunnel-enforcer', enemyVariantId: 'bulwark-enforcer', delayMs: 0, position: { x: 490, y: 302 } },
+          { id: 'tunnel-upper-striker', enemyVariantId: 'scout-striker', delayMs: 650, position: { x: 575, y: 205 } },
+          { id: 'tunnel-lower-patrol', enemyVariantId: 'scout-patrol', delayMs: 1_300, position: { x: 520, y: 300 } },
+        ],
+      },
+      {
+        id: 'flooded-tunnel-wave-3', seed: 0x9f2a3c69,
+        orders: [
+          { id: 'tunnel-rear-sentinel', enemyVariantId: 'bulwark-sentinel', delayMs: 0, position: { x: 570, y: 250 } },
+          { id: 'tunnel-rear-striker', enemyVariantId: 'scout-striker', delayMs: 650, position: { x: 500, y: 214 } },
+          { id: 'tunnel-final-enforcer', enemyVariantId: 'bulwark-enforcer', delayMs: 1_300, position: { x: 548, y: 292 } },
+          { id: 'tunnel-final-patrol', enemyVariantId: 'scout-patrol', delayMs: 1_950, position: { x: 470, y: 236 } },
+        ],
+      },
+      {
+        id: 'flooded-tunnel-wave-4', seed: 0xaf3b4d7a,
+        orders: [
           { id: 'final-boss', enemyVariantId: 'boss-silo-dredger', delayMs: 0, position: { x: 500, y: 264 } },
         ],
       },
     ])
     expect(Object.isFrozen(floodedTunnelZone)).toBe(true)
-    expect(Object.isFrozen(floodedTunnelZone.waves[1].orders[0].position)).toBe(true)
+    expect(Object.isFrozen(floodedTunnelZone.waves[3].orders[0].position)).toBe(true)
   })
 
   it('authors one 960 HP boss, exactly two reducer attacks, and the existing 700ms EMP scale', () => {
@@ -273,9 +290,11 @@ const crossGateToNextWave = (scene: SceneHarness): void => {
 }
 
 const enterBossWave = (scene: SceneHarness): string => {
-  clearCurrentWave(scene)
-  expect(scene.zonePhase).toBe('inter-wave')
-  crossGateToNextWave(scene)
+  while (scene.currentZone.waves[scene.waveIndex]?.id !== 'flooded-tunnel-wave-4') {
+    clearCurrentWave(scene)
+    expect(scene.zonePhase).toBe('inter-wave')
+    crossGateToNextWave(scene)
+  }
   stepUntil(scene, () => scene.waveRuntime.wave.spawnedEnemyIds.length === 1)
   return scene.waveRuntime.wave.spawnedEnemyIds[0]
 }
@@ -373,7 +392,7 @@ describe('CombatScene flooded-tunnel orchestration', () => {
     const completeRun = vi.spyOn(services, 'completeRun')
     enterFloodedTunnel(scene)
     const bossId = enterBossWave(scene)
-    const bossSectionOffset = SIDE_SCROLL_VIEWPORT_WIDTH
+    const bossSectionOffset = 3 * SIDE_SCROLL_VIEWPORT_WIDTH
     scene.state.actors.han.position = { x: 300 + bossSectionOffset, y: 264, z: 0 }
     scene.state.actors[bossId].position = { x: 500 + bossSectionOffset, y: 220, z: 0 }
     scene.state.actors[bossId].hp = 60
@@ -452,7 +471,7 @@ describe('CombatScene flooded-tunnel orchestration', () => {
     const bossId = enterBossWave(scene)
     const player = scene.state.actors.han
     const boss = scene.state.actors[bossId]
-    const bossSectionOffset = SIDE_SCROLL_VIEWPORT_WIDTH
+    const bossSectionOffset = 3 * SIDE_SCROLL_VIEWPORT_WIDTH
     player.position = { x: 300 + bossSectionOffset, y: 220, z: 0 }
     player.hp = 24
     player.mode = 'idle'

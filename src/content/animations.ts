@@ -28,6 +28,7 @@ export type ActorBaseClipId =
   | 'knocked-down'
   | 'getting-up'
   | 'pickup-use'
+  | 'item-use'
   | 'defeated'
 
 export interface ActorAnimationClip {
@@ -148,14 +149,14 @@ const profileLayout: ReadonlyArray<{
   readonly visibleBounds: { readonly left: number; readonly right: number }
 }> = [
   { id: 'han', sheet: 'players', targetHeight: 120, visibleBounds: { left: 59, right: 59 } },
-  { id: 'mina', sheet: 'players', targetHeight: 114, visibleBounds: { left: 63, right: 63 } },
+  { id: 'mina', sheet: 'players', targetHeight: 150, visibleBounds: { left: 69, right: 70 } },
   { id: 'jin', sheet: 'players', targetHeight: 124, visibleBounds: { left: 68, right: 67 } },
-  { id: 'scout-striker', sheet: 'enemies', targetHeight: 104, visibleBounds: { left: 59, right: 59 } },
-  { id: 'scout-patrol', sheet: 'enemies', targetHeight: 100, visibleBounds: { left: 55, right: 55 } },
-  { id: 'bulwark-sentinel', sheet: 'enemies', targetHeight: 128, visibleBounds: { left: 74, right: 74 } },
-  { id: 'bulwark-enforcer', sheet: 'enemies', targetHeight: 124, visibleBounds: { left: 85, right: 85 } },
-  { id: 'elite-bulwark-frame', sheet: 'enemies', targetHeight: 136, visibleBounds: { left: 101, right: 100 } },
-  { id: 'boss-silo-dredger', sheet: 'boss', targetHeight: 172, visibleBounds: { left: 157, right: 156 } },
+  { id: 'scout-striker', sheet: 'enemies', targetHeight: 126, visibleBounds: { left: 74, right: 73 } },
+  { id: 'scout-patrol', sheet: 'enemies', targetHeight: 126, visibleBounds: { left: 75, right: 74 } },
+  { id: 'bulwark-sentinel', sheet: 'enemies', targetHeight: 126, visibleBounds: { left: 76, right: 76 } },
+  { id: 'bulwark-enforcer', sheet: 'enemies', targetHeight: 154, visibleBounds: { left: 107, right: 106 } },
+  { id: 'elite-bulwark-frame', sheet: 'enemies', targetHeight: 168, visibleBounds: { left: 124, right: 124 } },
+  { id: 'boss-silo-dredger', sheet: 'boss', targetHeight: 190, visibleBounds: { left: 171, right: 171 } },
 ]
 
 const makeProfile = (
@@ -201,7 +202,8 @@ const makeProfile = (
       hitstun: baseClip(id, 'hitstun', 1),
       'knocked-down': baseClip(id, 'knocked-down', 1),
       'getting-up': baseClip(id, 'getting-up', 2),
-      'pickup-use': baseClip(id, 'pickup-use', 2),
+      'pickup-use': baseClip(id, 'pickup-use', player ? 4 : 2),
+      'item-use': baseClip(id, 'item-use', 2),
       defeated: baseClip(id, 'defeated', 1),
     },
     attacks,
@@ -254,6 +256,7 @@ export interface ActorTelegraphSnapshot {
 }
 
 export interface ActorItemUseSnapshot {
+  readonly kind: 'pickup' | 'use'
   readonly startedAtMs: number
   readonly durationMs: number
 }
@@ -304,7 +307,9 @@ export const selectActorFrame = (snapshot: Readonly<ActorPresentationSnapshot>):
     snapshot.domainTimeMs >= snapshot.itemUse.startedAtMs &&
     snapshot.domainTimeMs - snapshot.itemUse.startedAtMs < snapshot.itemUse.durationMs
   ) {
-    clip = profile.clips['pickup-use']
+    clip = snapshot.itemUse.kind === 'pickup'
+      ? profile.clips['pickup-use']
+      : profile.clips['item-use']
     elapsedMs = snapshot.domainTimeMs - snapshot.itemUse.startedAtMs
   } else if (actor.mode === 'airborne' || actor.position.z > 0) {
     clip = profile.clips.airborne

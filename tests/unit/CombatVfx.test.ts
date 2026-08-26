@@ -90,7 +90,7 @@ describe('CombatVfx event planning', () => {
     expect(plan.effects.filter((effect) => effect.type === 'screen-flash')).toHaveLength(1)
     expect(plan.effects.filter((effect) => effect.type === 'burst').map((effect) =>
       effect.type === 'burst' ? effect.particleCount : 0,
-    )).toEqual([6, 8, 12, 8, 12])
+    )).toEqual([12, 16, 20, 16, 20])
     expect(plan.confirmedHitCount).toBe(4)
     expect(plan.cues).toContain('defeat')
   })
@@ -99,8 +99,8 @@ describe('CombatVfx event planning', () => {
     const normal = planPresentationBatch({ events: [hit(3)], itemEffects: [], warningIds: [], points, lowEffect: false })
     const low = planPresentationBatch({ events: [hit(3)], itemEffects: [], warningIds: [], points, lowEffect: true })
 
-    expect(normal.effects).toContainEqual(expect.objectContaining({ type: 'burst', particleCount: 12 }))
-    expect(low.effects).toContainEqual(expect.objectContaining({ type: 'burst', particleCount: 6 }))
+    expect(normal.effects).toContainEqual(expect.objectContaining({ type: 'burst', particleCount: 20 }))
+    expect(low.effects).toContainEqual(expect.objectContaining({ type: 'burst', particleCount: 12 }))
     expect(low.effects.map((effect) => effect.type)).toEqual(
       normal.effects.map((effect) => effect.type),
     )
@@ -133,7 +133,7 @@ describe('CombatVfx event planning', () => {
     })
 
     expect(normal.effects).toContainEqual(expect.objectContaining({
-      type: 'burst', strength: 3, particleCount: 12,
+      type: 'burst', strength: 3, particleCount: 20,
     }))
     expect(normal.effects).toContainEqual(expect.objectContaining({
       type: 'ring', radius: 32, durationMs: 125,
@@ -145,19 +145,39 @@ describe('CombatVfx event planning', () => {
       type: 'afterimage', strength: 3, durationMs: 145,
     }))
     expect(normal.effects).toContainEqual(expect.objectContaining({
-      type: 'screen-flash', alpha: 0.14, durationMs: 55,
+      type: 'screen-flash', alpha: 0.18, durationMs: 60,
     }))
     expect(normal.effects).toContainEqual(expect.objectContaining({
-      type: 'shake', strength: 3, amplitude: 4.2, durationMs: 105,
+      type: 'shake', strength: 3, amplitude: 4.8, durationMs: 115,
     }))
 
     expect(low.effects.some((effect) => effect.type === 'afterimage')).toBe(false)
     expect(low.effects).toContainEqual(expect.objectContaining({
-      type: 'screen-flash', alpha: 0.06,
+      type: 'screen-flash', alpha: 0.08,
     }))
     expect(low.effects).toContainEqual(expect.objectContaining({
-      type: 'shake', strength: 3, amplitude: 1.26, durationMs: 105,
+      type: 'shake', strength: 3, amplitude: 1.44, durationMs: 115,
     }))
+  })
+
+  it('gives even a light confirmed hit a restrained contact shake', () => {
+    const plan = planPresentationBatch({
+      events: [hit(1)], itemEffects: [], warningIds: [], points, lowEffect: false,
+    })
+
+    expect(plan.effects).toContainEqual(expect.objectContaining({
+      type: 'shake', strength: 1, amplitude: 0.72, durationMs: 46,
+    }))
+  })
+
+  it('uses the strongest confirmed hit for the single batch screen flash', () => {
+    const plan = planPresentationBatch({
+      events: [hit(1), hit(3), hit(2)], itemEffects: [], warningIds: [], points, lowEffect: false,
+    })
+
+    expect(plan.effects.filter((effect) => effect.type === 'screen-flash')).toEqual([
+      expect.objectContaining({ type: 'screen-flash', alpha: 0.18, durationMs: 60 }),
+    ])
   })
 
   it('sends each anatomical limb cue toward the fighter-facing direction', () => {
@@ -252,7 +272,7 @@ describe('CombatVfx event planning', () => {
     expect(renderer.consume(2, plan)).toBe(true)
     expect(renderer.consume(3, plan)).toBe(true)
     expect(renderer.snapshot()).toMatchObject({
-      activeBurstParticles: 24,
+      activeBurstParticles: 40,
       activeTextCount: 3,
     })
   })
